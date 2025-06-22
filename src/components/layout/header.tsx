@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, isFirebaseConfigured } from '@/lib/firebase';
 import { LogOut, User } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,14 @@ export function Header() {
   const { user } = useAuth();
 
   const handleLogout = async () => {
+    if (!isFirebaseConfigured || !auth) {
+      toast({
+        variant: 'destructive',
+        title: 'Firebase Not Configured',
+        description: 'Please provide Firebase credentials in .env.local and restart the server.',
+      });
+      return;
+    }
     try {
       await signOut(auth);
       toast({

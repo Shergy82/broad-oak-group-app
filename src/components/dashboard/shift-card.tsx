@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,15 @@ export function ShiftCard({ shift }: ShiftCardProps) {
   const statusInfo = statusDetails[shift.status];
 
   const handleUpdateStatus = async (newStatus: 'confirmed' | 'completed') => {
+    if (!isFirebaseConfigured || !db) {
+      toast({
+        variant: 'destructive',
+        title: 'Firebase Not Configured',
+        description: 'Please provide Firebase credentials in .env.local and restart the server.',
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const shiftRef = doc(db, 'shifts', shift.id);

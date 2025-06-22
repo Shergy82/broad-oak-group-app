@@ -1,7 +1,7 @@
 // Import the functions you need from the SDKs you need
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
+import { getAuth, type Auth } from "firebase/auth";
+import { getFirestore, type Firestore } from "firebase/firestore";
 
 // IMPORTANT: Your Firebase project configuration will be loaded from environment variables.
 // Make sure to create a .env.local file in the root of your project with your Firebase credentials.
@@ -14,14 +14,19 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Check if the Firebase API key is set.
-if (!firebaseConfig.apiKey) {
-    throw new Error("Firebase API key is not set. This is required to connect to Firebase services. Please ensure a `.env.local` file exists in the root directory of your project with your Firebase credentials. After creating or modifying the file, you MUST restart the development server for the changes to take effect.");
-}
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
 
-// Initialize Firebase
-const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// A flag to check if Firebase is configured
+export const isFirebaseConfigured = !!firebaseConfig.apiKey;
+
+if (isFirebaseConfigured) {
+    app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+} else {
+    console.error("Firebase API key is not set. This is required to connect to Firebase services. Please ensure a `.env.local` file exists in the root directory of your project with your Firebase credentials. After creating or modifying the file, you MUST restart the development server for the changes to take effect.");
+}
 
 export { app, auth, db };

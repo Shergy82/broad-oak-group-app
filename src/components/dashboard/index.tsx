@@ -2,12 +2,14 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { ShiftCard } from '@/components/dashboard/shift-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { startOfWeek, endOfWeek, startOfToday, isWithinInterval, addWeeks } from 'date-fns';
 import type { FirebaseUser, Shift } from '@/types';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Terminal } from 'lucide-react';
 
 interface DashboardProps {
   user: FirebaseUser;
@@ -16,10 +18,16 @@ interface DashboardProps {
 export default function Dashboard({ user }: DashboardProps) {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchShifts() {
+      if (!isFirebaseConfigured || !db) {
+        setLoading(false);
+        return;
+      }
       if (!user) return;
+
       try {
         const shiftsCollection = collection(db, 'shifts');
         const q = query(shiftsCollection, where('userId', '==', user.uid));
@@ -29,8 +37,9 @@ export default function Dashboard({ user }: DashboardProps) {
           fetchedShifts.push({ id: doc.id, ...doc.data() } as Shift);
         });
         setShifts(fetchedShifts.sort((a, b) => a.date.toMillis() - b.date.toMillis()));
-      } catch (error) {
-        console.error("Error fetching shifts: ", error);
+      } catch (e: any) {
+        console.error("Error fetching shifts: ", e);
+        setError('Failed to fetch shifts. Please try again later.');
       } finally {
         setLoading(false);
       }
@@ -60,11 +69,33 @@ export default function Dashboard({ user }: DashboardProps) {
       ));
     }
     if (shiftList.length === 0) {
-      return <p className="text-muted-foreground mt-4 text-center">No shifts scheduled for this period.</p>;
+      return <p className="text-muted-foreground mt-4 text-center col-span-full">No shifts scheduled for this period.</p>;
     }
     return shiftList.map(shift => <ShiftCard key={shift.id} shift={shift} />);
   };
   
+  if (!isFirebaseConfigured) {
+    return (
+      <Alert variant="destructive">
+        <Terminal className="h-4 w-4" />
+        <AlertTitle>Firebase Not Configured</AlertTitle>
+        <AlertDescription>
+          The application is not connected to Firebase. Please provide your project credentials in a `.env.local` file and restart the development server. Functionality will be limited.
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <Terminal className="h-4 w-4" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    )
+  }
+
   return (
     <Tabs defaultValue="today" className="w-full">
       <div className="flex items-center">
