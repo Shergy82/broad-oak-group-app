@@ -26,6 +26,7 @@ import { Spinner } from '../shared/spinner';
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Invalid email address.' }),
+  mobile: z.string().min(10, { message: 'Please enter a valid mobile number.' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
 });
 
@@ -39,6 +40,7 @@ export function SignupForm() {
     defaultValues: {
       name: '',
       email: '',
+      mobile: '',
       password: '',
     },
   });
@@ -52,6 +54,7 @@ export function SignupForm() {
       await setDoc(doc(db, 'users', user.uid), {
         name: values.name,
         email: values.email,
+        mobile: values.mobile,
       });
 
       toast({
@@ -100,6 +103,19 @@ export function SignupForm() {
                   <FormLabel>Email</FormLabel>
                   <FormControl>
                     <Input placeholder="m@example.com" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="mobile"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Mobile Number</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Enter your mobile number" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
