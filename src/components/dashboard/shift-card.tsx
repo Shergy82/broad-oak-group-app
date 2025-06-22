@@ -57,11 +57,15 @@ export function ShiftCard({ shift }: ShiftCardProps) {
         description: 'Your shift status has been updated.',
       });
       router.refresh(); // Re-fetches data on the server
-    } catch (error) {
+    } catch (error: any) {
+      let description = 'Could not update shift status.';
+      if (error.code === 'permission-denied') {
+        description = "You don't have permission to update this shift. Please check your Firestore security rules.";
+      }
       toast({
         variant: 'destructive',
         title: 'Update Failed',
-        description: 'Could not update shift status.',
+        description,
       });
     } finally {
       setIsLoading(false);

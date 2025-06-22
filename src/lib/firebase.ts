@@ -6,12 +6,13 @@ import { getFirestore, type Firestore } from "firebase/firestore";
 // IMPORTANT: Your Firebase project configuration will be loaded from environment variables.
 // Make sure to create a .env.local file in the root of your project with your Firebase credentials.
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: "AIzaSyCmch6jop04hdMOGhAq4RmYv9CuH_TRH3w",
+  authDomain: "broad-oak-build-live.firebaseapp.com",
+  projectId: "broad-oak-build-live",
+  storageBucket: "broad-oak-build-live.firebasestorage.app",
+  messagingSenderId: "510466083182",
+  appId: "1:510466083182:web:6261a80a83ee1fc31bd97f",
+  measurementId: "G-70KMYY2B80"
 };
 
 let app: FirebaseApp | null = null;

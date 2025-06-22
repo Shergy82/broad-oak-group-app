@@ -39,7 +39,13 @@ export default function Dashboard({ user }: DashboardProps) {
         setShifts(fetchedShifts.sort((a, b) => a.date.toMillis() - b.date.toMillis()));
       } catch (e: any) {
         console.error("Error fetching shifts: ", e);
-        setError('Failed to fetch shifts. Please try again later.');
+        let errorMessage = 'Failed to fetch shifts. Please try again later.';
+        if (e.code === 'permission-denied') {
+          errorMessage = "You don't have permission to view shifts. Please check your Firestore security rules in the Firebase Console.";
+        } else if (e.code === 'failed-precondition') {
+          errorMessage = 'Could not fetch shifts. This is likely due to a missing database index. Please check the browser console for a link to create the required index in Firebase.';
+        }
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -78,7 +84,7 @@ export default function Dashboard({ user }: DashboardProps) {
     return (
       <Alert variant="destructive">
         <Terminal className="h-4 w-4" />
-        <AlertTitle>Error</AlertTitle>
+        <AlertTitle>Error Fetching Data</AlertTitle>
         <AlertDescription>{error}</AlertDescription>
       </Alert>
     )
