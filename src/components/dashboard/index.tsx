@@ -1,21 +1,17 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, getDocs, Timestamp } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { ShiftCard } from '@/components/dashboard/shift-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { startOfWeek, endOfWeek, startOfToday, isWithinInterval, addWeeks } from 'date-fns';
-import type { FirebaseUser, Shift } from '@/types';
+import type { Shift } from '@/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Terminal } from 'lucide-react';
 
-interface DashboardProps {
-  user: FirebaseUser;
-}
-
-export default function Dashboard({ user }: DashboardProps) {
+export default function Dashboard() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,11 +22,10 @@ export default function Dashboard({ user }: DashboardProps) {
         setLoading(false);
         return;
       }
-      if (!user) return;
 
       try {
         const shiftsCollection = collection(db, 'shifts');
-        const q = query(shiftsCollection, where('userId', '==', user.uid));
+        const q = query(shiftsCollection);
         const querySnapshot = await getDocs(q);
         const fetchedShifts: Shift[] = [];
         querySnapshot.forEach((doc) => {
@@ -41,7 +36,7 @@ export default function Dashboard({ user }: DashboardProps) {
         console.error("Error fetching shifts: ", e);
         let errorMessage = 'Failed to fetch shifts. Please try again later.';
         if (e.code === 'permission-denied') {
-          errorMessage = "You don't have permission to view shifts. Please check your Firestore security rules in the Firebase Console.";
+          errorMessage = "You don't have permission to view shifts. Since user authentication has been removed, you may need to update your Firestore security rules to allow public read access to the 'shifts' collection. Please review your security requirements before making this change.";
         } else if (e.code === 'failed-precondition') {
           errorMessage = 'Could not fetch shifts. This is likely due to a missing database index. Please check the browser console for a link to create the required index in Firebase.';
         }
@@ -52,7 +47,7 @@ export default function Dashboard({ user }: DashboardProps) {
     }
 
     fetchShifts();
-  }, [user]);
+  }, []);
 
   const { todayShifts, thisWeekShifts, nextWeekShifts } = useMemo(() => {
     const today = startOfToday();

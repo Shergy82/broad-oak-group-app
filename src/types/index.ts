@@ -1,4 +1,3 @@
-import type { User } from 'firebase/auth';
 import type { Timestamp } from 'firebase/firestore';
 
 export interface Shift {
@@ -8,5 +7,3 @@ export interface Shift {
   type: 'am' | 'pm' | 'all-day';
   status: 'pending-confirmation' | 'confirmed' | 'completed';
 }
-
-export type FirebaseUser = User;
