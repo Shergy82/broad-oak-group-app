@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
@@ -62,7 +62,12 @@ export function SignupForm() {
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
       
+      await updateProfile(user, {
+        displayName: values.name,
+      });
+
       await setDoc(doc(db, 'users', user.uid), {
+        uid: user.uid,
         name: values.name,
         email: values.email,
         mobile: values.mobile,
@@ -90,7 +95,7 @@ export function SignupForm() {
             description = 'The password is too weak.';
             break;
           case 'permission-denied':
-            description = "You don't have permission to perform this action. This could be a database security rule issue."
+            description = "You don't have permission to save your profile data. This is likely a Firestore security rule issue. In your Firebase project, ensure your rules for the `users` collection allow creation by authenticated users, like this: `match /users/{userId} { allow create: if request.auth.uid == userId; }`";
             break;
           default:
             description = error.message;
