@@ -19,42 +19,48 @@ export const UserProfileContext = createContext<UserProfileContextType>({
 export function UserProfileProvider({ children }: { children: React.ReactNode }) {
     const { user, isLoading: isAuthLoading } = useAuth();
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [isProfileLoading, setProfileLoading] = useState(true);
 
     useEffect(() => {
-        if (isAuthLoading) {
-            setLoading(true);
-            return;
-        }
+        // Don't do anything until we have a user
         if (!user) {
             setUserProfile(null);
-            setLoading(false);
+            setProfileLoading(false);
             return;
         }
+        
+        // If firebase is not configured, stop loading.
         if (!db) {
-            setLoading(false);
+            setProfileLoading(false);
             return;
         }
-
-        const unsub = onSnapshot(doc(db, "users", user.uid), (doc) => {
-            if (doc.exists()) {
-                setUserProfile({ uid: doc.id, ...doc.data() } as UserProfile);
-            } else {
+        
+        setProfileLoading(true);
+        const unsubscribe = onSnapshot(doc(db, "users", user.uid), 
+            (doc) => {
+                if (doc.exists()) {
+                    setUserProfile({ uid: doc.id, ...doc.data() } as UserProfile);
+                } else {
+                    setUserProfile(null);
+                }
+                setProfileLoading(false);
+            }, 
+            (error) => {
+                console.error("Error fetching user profile:", error);
                 setUserProfile(null);
+                setProfileLoading(false);
             }
-            setLoading(false);
-        }, (error) => {
-            console.error("Error fetching user profile:", error);
-            setUserProfile(null);
-            setLoading(false);
-        });
+        );
 
-        return () => unsub();
+        // Cleanup subscription on unmount
+        return () => unsubscribe();
 
-    }, [user, isAuthLoading]);
+    }, [user]);
+
+    const isLoading = isAuthLoading || isProfileLoading;
 
     return (
-        <UserProfileContext.Provider value={{ userProfile, loading }}>
+        <UserProfileContext.Provider value={{ userProfile, loading: isLoading }}>
             {children}
         </UserProfileContext.Provider>
     );
