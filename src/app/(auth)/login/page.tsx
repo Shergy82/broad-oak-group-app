@@ -1,8 +1,31 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/use-auth';
 import { LoginForm } from '@/components/auth/login-form';
 import { Logo } from '@/components/shared/logo';
 import Link from 'next/link';
+import { Spinner } from '@/components/shared/spinner';
 
 export default function LoginPage() {
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      router.push('/');
+    }
+  }, [user, isLoading, router]);
+
+  if (isLoading || user) {
+    return (
+      <div className="flex min-h-screen w-full flex-col items-center justify-center">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
