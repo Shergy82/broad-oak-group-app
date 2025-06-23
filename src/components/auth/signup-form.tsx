@@ -60,6 +60,7 @@ export function SignUpForm() {
         name: values.name,
         email: values.email,
         phoneNumber: values.phoneNumber,
+        role: 'user',
       });
 
       toast({
