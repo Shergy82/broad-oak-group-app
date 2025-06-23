@@ -34,7 +34,7 @@ export function Header() {
               <Button variant="outline" asChild>
                 <Link href="/admin">
                   <Shield className="mr-2 h-4 w-4" />
-                  Admin Panel
+                  Admin
                 </Link>
               </Button>
             )}
