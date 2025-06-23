@@ -5,9 +5,14 @@ export function Logo() {
   return (
     <Link href="/" className="flex items-center gap-2 text-primary">
       <Building2 className="h-6 w-6" />
-      <h1 className="text-xl font-bold text-primary">
-        Broad Oak <span className="font-light">Build Live</span>
-      </h1>
+      <div>
+        <h1 className="text-xl font-bold">
+          Broad Oak Build
+        </h1>
+        <span className="block text-sm font-light leading-tight">
+          Live
+        </span>
+      </div>
     </Link>
   );
 }
