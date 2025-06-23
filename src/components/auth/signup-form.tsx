@@ -56,11 +56,13 @@ export function SignUpForm() {
 
       await updateProfile(user, { displayName: values.name });
 
+      const userRole = values.email.toLowerCase() === 'phil.s@broadoakgroup.com' ? 'owner' : 'user';
+
       await setDoc(doc(db, 'users', user.uid), {
         name: values.name,
         email: values.email,
         phoneNumber: values.phoneNumber,
-        role: 'user',
+        role: userRole,
       });
 
       toast({

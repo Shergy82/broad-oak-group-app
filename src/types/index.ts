@@ -13,5 +13,5 @@ export interface UserProfile {
   name: string;
   email: string;
   phoneNumber: string;
-  role: 'user' | 'admin';
+  role: 'user' | 'admin' | 'owner';
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Toaster } from "@/components/ui/toaster";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth-provider";
+import { UserProfileProvider } from "@/components/user-profile-provider";
 
 export const metadata: Metadata = {
   title: "Broad Oak Build Live",
@@ -22,8 +23,10 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased h-full">
         <AuthProvider>
-          {children}
-          <Toaster />
+          <UserProfileProvider>
+            {children}
+            <Toaster />
+          </UserProfileProvider>
         </AuthProvider>
       </body>
     </html>
