@@ -6,6 +6,9 @@ export interface Shift {
   date: Timestamp;
   type: 'am' | 'pm' | 'all-day';
   status: 'pending-confirmation' | 'confirmed' | 'completed';
+  address: string;
+  bNumber: string;
+  dailyTask: string;
 }
 
 export interface UserProfile {

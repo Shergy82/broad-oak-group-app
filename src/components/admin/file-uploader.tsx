@@ -3,20 +3,23 @@
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { collection, writeBatch, doc, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, writeBatch, doc, getDocs, Timestamp } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/shared/spinner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Upload } from 'lucide-react';
-import type { Shift, UserProfile } from '@/types';
+import type { Shift } from '@/types';
 
 // Define the expected structure of a row in the Excel file
 interface ShiftImportRow {
-  Date: string | number; // Excel dates can be numbers or strings
-  'User Email': string;
-  'Shift Type': 'am' | 'pm' | 'all-day';
+  Date: string | number;
+  Operative: string;
+  Address: string;
+  'B Number': string;
+  'Daily Task': string;
+  'Am/Pm All Day': 'am' | 'pm' | 'all-day';
 }
 
 export function FileUploader() {
@@ -59,35 +62,46 @@ export function FileUploader() {
             throw new Error("The selected Excel file is empty or in the wrong format.");
         }
 
-        // Fetch all users to match emails with uids
+        // Fetch all users to match names with uids
         const usersCollection = collection(db, 'users');
         const usersSnapshot = await getDocs(usersCollection);
-        const emailToUidMap = new Map<string, string>();
+        const nameToUidMap = new Map<string, string>();
         usersSnapshot.forEach(doc => {
-            const user = doc.data() as { email: string };
-            if (user.email) {
-              emailToUidMap.set(user.email.toLowerCase(), doc.id);
+            const user = doc.data() as { name: string };
+            if (user.name) {
+              nameToUidMap.set(user.name.toLowerCase(), doc.id);
             }
         });
 
         const batch = writeBatch(db);
         let shiftsAdded = 0;
-        const notFoundEmails = new Set<string>();
+        const notFoundNames = new Set<string>();
+        const invalidShiftTypes: string[] = [];
+
 
         jsonData.forEach((row, index) => {
-          const email = row['User Email']?.toLowerCase();
-          const shiftType = row['Shift Type'];
+          const operativeName = row['Operative']?.toLowerCase();
+          const shiftType = row['Am/Pm All Day']?.toLowerCase() as 'am' | 'pm' | 'all-day';
           const date = row.Date;
+          const address = row['Address'];
+          const bNumber = row['B Number'];
+          const dailyTask = row['Daily Task'];
 
-          if (!email || !shiftType || !date) {
+          if (!operativeName || !shiftType || !date || !address || !bNumber || !dailyTask) {
             console.warn(`Skipping row ${index + 2} due to missing data.`);
             return;
           }
           
-          const userId = emailToUidMap.get(email);
+          const validShiftTypes = ['am', 'pm', 'all-day'];
+          if (!validShiftTypes.includes(shiftType)) {
+            invalidShiftTypes.push(`Row ${index + 2}: '${row['Am/Pm All Day']}'`);
+            return;
+          }
+
+          const userId = nameToUidMap.get(operativeName);
 
           if (!userId) {
-            notFoundEmails.add(row['User Email']);
+            notFoundNames.add(row['Operative']);
             return;
           }
 
@@ -98,14 +112,21 @@ export function FileUploader() {
             date: Timestamp.fromDate(new Date(date)),
             type: shiftType,
             status: 'pending-confirmation',
+            address,
+            bNumber,
+            dailyTask,
           };
 
           batch.set(shiftDocRef, newShift);
           shiftsAdded++;
         });
         
-        if (notFoundEmails.size > 0) {
-            throw new Error(`The following user emails were not found in the database: ${Array.from(notFoundEmails).join(', ')}. Please add them as users before importing their shifts.`);
+        if (notFoundNames.size > 0) {
+            throw new Error(`The following operatives were not found in the database: ${Array.from(notFoundNames).join(', ')}. Please check the names or add them as users before importing their shifts.`);
+        }
+
+        if (invalidShiftTypes.length > 0) {
+          throw new Error(`Invalid shift types found. Must be 'am', 'pm', or 'all-day'. Errors at: ${invalidShiftTypes.join(', ')}.`);
         }
 
         if (shiftsAdded === 0) {
@@ -165,7 +186,7 @@ export function FileUploader() {
         />
         <Button onClick={handleImport} disabled={!file || isUploading} className="w-full sm:w-40">
           {isUploading ? <Spinner /> : <><Upload className="mr-2 h-4 w-4" /> Import Shifts</>}
-        Button>
+        </Button>
       </div>
     </div>
   );

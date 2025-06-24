@@ -149,8 +149,8 @@ export default function AdminPage() {
         <CardHeader>
           <CardTitle>Import Shifts from Excel</CardTitle>
           <CardDescription>
-            Upload an .xlsx file with shift data. The file must have columns with the exact headers "Date", "User Email", and "Shift Type".
-            The "Shift Type" must be one of 'am', 'pm', or 'all-day'. The date should be in a standard format like YYYY-MM-DD.
+            Upload an .xlsx file with shift data. The file must have columns with the exact headers "Date", "Operative", "Address", "B Number", "Daily Task", and "Am/Pm All Day".
+            The "Am/Pm All Day" value must be one of 'am', 'pm', or 'all-day'. The date should be in a standard format like YYYY-MM-DD. Operative names must match a user in the system.
           </CardDescription>
         </CardHeader>
         <CardContent>
