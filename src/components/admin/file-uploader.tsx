@@ -56,7 +56,7 @@ export function FileUploader() {
         const workbook = XLSX.read(data, { type: 'array', cellDates: true });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json<ShiftImportRow>(worksheet);
+        const jsonData = XLSX.utils.sheet_to_json<ShiftImportRow>(worksheet, { blankrows: false });
 
         if (jsonData.length === 0) {
             throw new Error("The selected Excel file is empty or in the wrong format.");
@@ -69,7 +69,7 @@ export function FileUploader() {
         usersSnapshot.forEach(doc => {
             const user = doc.data() as { name: string };
             if (user.name) {
-              nameToUidMap.set(user.name.toLowerCase(), doc.id);
+              nameToUidMap.set(user.name.trim().toLowerCase(), doc.id);
             }
         });
 
@@ -77,49 +77,59 @@ export function FileUploader() {
         let shiftsAdded = 0;
         const notFoundNames = new Set<string>();
         const invalidShiftTypes: string[] = [];
+        const missingDataRows: number[] = [];
 
-
-        jsonData.forEach((row, index) => {
-          const operativeName = row['Operative']?.toLowerCase();
-          const shiftType = row['Am/Pm All Day']?.toLowerCase() as 'am' | 'pm' | 'all-day';
+        for (const [index, row] of jsonData.entries()) {
+          const rowIndex = index + 2; // Excel rows are 1-based, plus header row
+          
+          const operativeName = typeof row['Operative'] === 'string' ? row['Operative'].trim() : row['Operative'];
+          const shiftTypeRaw = typeof row['Am/Pm All Day'] === 'string' ? row['Am/Pm All Day'].trim().toLowerCase() : row['Am/Pm All Day'];
           const date = row.Date;
-          const address = row['Address'];
+          const address = typeof row['Address'] === 'string' ? row['Address'].trim() : row['Address'];
           const bNumber = row['B Number'];
-          const dailyTask = row['Daily Task'];
+          const dailyTask = typeof row['Daily Task'] === 'string' ? row['Daily Task'].trim() : row['Daily Task'];
 
-          if (!operativeName || !shiftType || !date || !address || !bNumber || !dailyTask) {
-            console.warn(`Skipping row ${index + 2} due to missing data.`);
-            return;
+          if (!operativeName || !shiftTypeRaw || !date || !address || bNumber === undefined || !dailyTask) {
+            missingDataRows.push(rowIndex);
+            continue;
           }
           
           const validShiftTypes = ['am', 'pm', 'all-day'];
+          const shiftType = String(shiftTypeRaw).toLowerCase();
+
           if (!validShiftTypes.includes(shiftType)) {
-            invalidShiftTypes.push(`Row ${index + 2}: '${row['Am/Pm All Day']}'`);
-            return;
+            invalidShiftTypes.push(`Row ${rowIndex}: '${row['Am/Pm All Day']}'`);
+            continue;
           }
-
-          const userId = nameToUidMap.get(operativeName);
-
+          
+          const userId = nameToUidMap.get(operativeName.toLowerCase());
+          
           if (!userId) {
             notFoundNames.add(row['Operative']);
-            return;
+            continue;
+          }
+
+          const jsDate = new Date(date);
+          // @ts-ignore
+          if (isNaN(jsDate)) {
+             throw new Error(`Invalid date format found in row ${rowIndex} for value "${row.Date}". Please use a standard format like YYYY-MM-DD.`);
           }
 
           const shiftDocRef = doc(collection(db, 'shifts'));
           
           const newShift: Omit<Shift, 'id'> = {
             userId,
-            date: Timestamp.fromDate(new Date(date)),
-            type: shiftType,
+            date: Timestamp.fromDate(jsDate),
+            type: shiftType as 'am' | 'pm' | 'all-day',
             status: 'pending-confirmation',
             address,
-            bNumber,
+            bNumber: String(bNumber).trim(),
             dailyTask,
           };
 
           batch.set(shiftDocRef, newShift);
           shiftsAdded++;
-        });
+        }
         
         if (notFoundNames.size > 0) {
             throw new Error(`The following operatives were not found in the database: ${Array.from(notFoundNames).join(', ')}. Please check the names or add them as users before importing their shifts.`);
@@ -129,8 +139,12 @@ export function FileUploader() {
           throw new Error(`Invalid shift types found. Must be 'am', 'pm', or 'all-day'. Errors at: ${invalidShiftTypes.join(', ')}.`);
         }
 
+        if (shiftsAdded === 0 && missingDataRows.length > 0) {
+          throw new Error(`Import failed. Required data was missing in all processed rows. Check for empty cells in rows: ${missingDataRows.slice(0, 10).join(', ')}${missingDataRows.length > 10 ? '...' : ''}.`);
+        }
+        
         if (shiftsAdded === 0) {
-            throw new Error("No valid shifts were found to import. Please check the file content and format.");
+            throw new Error("No valid shifts were found to import. Please check that the file content and headers ('Date', 'Operative', 'Address', 'B Number', 'Daily Task', 'Am/Pm All Day') are correct.");
         }
 
         await batch.commit();
@@ -140,9 +154,7 @@ export function FileUploader() {
           description: `${shiftsAdded} shifts have been added to the schedule.`,
         });
         
-        // Reset the file input visually by clearing the state
         setFile(null);
-        // And reset the actual input element
         const fileInput = document.getElementById('shift-file-input') as HTMLInputElement;
         if (fileInput) {
             fileInput.value = "";
@@ -180,7 +192,7 @@ export function FileUploader() {
         <Input
           id="shift-file-input"
           type="file"
-          accept=".xlsx, .xls, .csv"
+          accept=".xlsx, .xls"
           onChange={handleFileChange}
           className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
         />
