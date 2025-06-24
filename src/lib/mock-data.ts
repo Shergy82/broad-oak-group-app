@@ -54,6 +54,7 @@ export const mockShifts: Shift[] = [
     type: 'am',
     status: 'pending-confirmation',
     address: '123 Main St, Anytown',
+    task: '1st Fix Electrics',
   },
   {
     id: 'mock-shift-2',
@@ -61,7 +62,8 @@ export const mockShifts: Shift[] = [
     date: createMockTimestamp(today),
     type: 'pm',
     status: 'confirmed',
-    address: '456 Oak Ave, Somecity',
+    address: '123 Main St, Anytown',
+    task: 'Fit kitchen sink',
   },
 
   // --- This Week's Shifts (Future) ---
@@ -72,6 +74,7 @@ export const mockShifts: Shift[] = [
     type: 'all-day',
     status: 'confirmed',
     address: '789 Pine Ln, Yourtown',
+    task: 'Foundation work',
   },
    {
     id: 'mock-shift-4',
@@ -79,7 +82,8 @@ export const mockShifts: Shift[] = [
     date: createMockTimestamp(addDays(today, 3)), // e.g., Thursday
     type: 'am',
     status: 'confirmed',
-    address: '101 Maple Dr, Anotherville',
+    address: '789 Pine Ln, Yourtown',
+    task: 'Framing',
   },
 
   // --- Next Week's Shifts ---
@@ -90,6 +94,7 @@ export const mockShifts: Shift[] = [
     type: 'all-day',
     status: 'pending-confirmation',
     address: '212 Birch Rd, Newplace',
+    task: 'Roofing',
   },
   {
     id: 'mock-shift-6',
@@ -97,6 +102,7 @@ export const mockShifts: Shift[] = [
     date: createMockTimestamp(addDays(today, 8)),
     type: 'pm',
     status: 'pending-confirmation',
-    address: '333 Cedar Ct, Nextown',
+    address: '212 Birch Rd, Newplace',
+    task: 'Install windows',
   },
 ];

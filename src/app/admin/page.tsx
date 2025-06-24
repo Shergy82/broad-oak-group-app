@@ -161,40 +161,45 @@ export default function AdminPage() {
           <CardTitle>Import Weekly Shifts from Excel</CardTitle>
            <div className="text-sm text-muted-foreground space-y-2 pt-1">
             <p>
-              Upload an .xlsx file to schedule shifts for multiple operatives. The file must be structured as a grid.
+              Upload an .xlsx file to schedule all tasks for a single project for one week.
             </p>
             <ul className="list-disc pl-5 space-y-1">
               <li>
-                <strong>Date Row:</strong> The importer automatically finds the row containing the week's dates (e.g., in DD/MM/YYYY format). This row can be anywhere in the sheet.
+                <strong>One Sheet Per Project:</strong> Each Excel file should represent one week of work at a single project address.
               </li>
               <li>
-                <strong>Operative Rows:</strong> Each row after the date row represents an operative's schedule.
-                <ul className="list-disc pl-5 mt-1">
-                  <li>
-                    <strong>Column A:</strong> Must contain the operative's full name (as it appears in the user list), followed by a space and the shift type: `ALL DAY`, `AM`, or `PM`. Example: `John Doe ALL DAY`.
-                  </li>
-                  <li>
-                    <strong>Columns B-H:</strong> These columns correspond to the dates. The text in these cells becomes the job address for that day.
-                  </li>
-                </ul>
+                <strong>Project Address:</strong> The full address for the project must be in cell <strong>A5</strong>.
               </li>
               <li>
-                <strong>Ignored Cells:</strong> Any cells that are empty or contain only `***` will be skipped.
+                <strong>Date Row:</strong> The importer will automatically find the row containing the week's dates (e.g., in DD/MM/YYYY format). This row can be anywhere in the sheet.
+              </li>
+               <li>
+                <strong>Task & Operative Cells:</strong> In the grid, each cell corresponding to a date should contain the task description, a hyphen, and the operative's full name.
+                The format must be: <code>Task Description - Operative Name</code>.
+              </li>
+              <li>
+                <strong>Operative Name Matching:</strong> The operative's name in the sheet must exactly match their full name in the user list above.
+              </li>
+               <li>
+                <strong>Shift Type:</strong> All imported tasks are automatically assigned as 'All Day' shifts.
+              </li>
+              <li>
+                <strong>Ignored Cells:</strong> Any cells that are empty or contain words like `holiday` or `on hold` will be skipped.
               </li>
             </ul>
             <p className="font-semibold pt-2">Example Structure:</p>
             <pre className="mt-2 rounded-md bg-muted p-4 text-xs font-mono overflow-x-auto">
-{`+------------------------+----------------+----------------+----------------+
-|        A               |        B       |        C       |        D       |
-+------------------------+----------------+----------------+----------------+
-|                        | 16/06/2025     | 17/06/2025     | 18/06/2025     |
-+------------------------+----------------+----------------+----------------+
-| John Doe ALL DAY       | 123 Main St    | 456 Oak Ave    |                |
-+------------------------+----------------+----------------+----------------+
-| Alice Johnson AM       |                | 789 Pine Ln    | Site Visit     |
-+------------------------+----------------+----------------+----------------+
-| Jane Smith (Admin) PM  | ***            |                | 111 Elm St     |
-+------------------------+----------------+----------------+----------------+`}
+{`+--------------------------------+-----------------+----------------------------+--------------------------------+
+|               A                |        B        |             C              |                D               |
++--------------------------------+-----------------+----------------------------+--------------------------------+
+| ...                            | ...             | 09/06/2025                 | 10/06/2025                     |
++--------------------------------+-----------------+----------------------------+--------------------------------+
+| ...                            | ...             |                            |                                |
++--------------------------------+-----------------+----------------------------+--------------------------------+
+| 9 EARDLEY CRESCENT...          | ...             | TASK 1 - John Doe          | TASK 2 - Jane Smith (Admin)    |
++--------------------------------+-----------------+----------------------------+--------------------------------+
+| ...                            | ...             | GROUNDWORK - Alice Johnson | JMP TO FIT WINDOW - John Doe   |
++--------------------------------+-----------------+----------------------------+--------------------------------+`}
             </pre>
           </div>
         </CardHeader>

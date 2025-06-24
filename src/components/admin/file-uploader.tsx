@@ -49,7 +49,7 @@ export function FileUploader() {
         const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, blankrows: false, defval: '' });
 
         if (jsonData.length < 2) {
-            throw new Error("The Excel file is too short. It must contain at least a date row and one operative shift row.");
+            throw new Error("The Excel file is too short. It must contain at least a date row and one task row.");
         }
         
         const usersCollection = collection(db, 'users');
@@ -61,6 +61,12 @@ export function FileUploader() {
               nameToUidMap.set(user.name.trim().toLowerCase(), doc.id);
             }
         });
+
+        // Find Project Address (Assume it's in A5 for this format)
+        const projectAddress = jsonData[4]?.[0]?.toString().trim();
+        if (!projectAddress) {
+          throw new Error("Could not find project address in cell A5. Please ensure the address is in the correct cell as per the format example.");
+        }
 
         const parseDate = (dateValue: any): Date | null => {
             if (!dateValue) return null;
@@ -87,16 +93,16 @@ export function FileUploader() {
         for (let i = 0; i < jsonData.length; i++) {
             const row = jsonData[i] || [];
             if (row.length < 2) continue;
-            const potentialDates = row.slice(1, 6).map(parseDate);
+            const potentialDates = row.slice(1).map(parseDate);
             if (potentialDates.filter(d => d !== null).length >= 3) {
                 dateRowIndex = i;
-                dates = row.slice(1, 8).map(parseDate);
+                dates = row.map(parseDate); // Parse all cells in that row for dates
                 break;
             }
         }
 
         if (dateRowIndex === -1) {
-            throw new Error("Could not find a valid date row in the spreadsheet. Ensure there is a row where at least 3 of the columns from B to F contain valid dates in a recognizable format (e.g., DD/MM/YYYY).");
+            throw new Error("Could not find a valid date row in the spreadsheet. Ensure there is a row where at least 3 columns contain valid dates in a recognizable format (e.g., DD/MM/YYYY).");
         }
         
         const batch = writeBatch(db);
@@ -104,58 +110,48 @@ export function FileUploader() {
         const unknownOperatives = new Set<string>();
         const parsingErrors: string[] = [];
 
-        for (let i = dateRowIndex + 1; i < jsonData.length; i++) {
-            const row = jsonData[i] as any[];
-            const operativeCell = (row[0] || '').toString();
-
-            if (!operativeCell || operativeCell.trim() === '' || operativeCell.includes('***')) {
-                continue;
+        for (let r = dateRowIndex + 1; r < jsonData.length; r++) {
+            const rowData = jsonData[r];
+            if (!rowData || rowData.every(cell => !cell || cell.toString().trim() === '')) {
+                continue; // Skip entirely empty rows
             }
 
-            let trimmedCell = operativeCell.trim();
-            let shiftType: 'am' | 'pm' | 'all-day' | null = null;
-            let operativeName = "";
+            for (let c = 0; c < rowData.length; c++) {
+                const cellValue = (rowData[c] || '').toString().trim();
+                const shiftDate = dates[c];
 
-            const upperCaseCell = trimmedCell.toUpperCase();
-            if (upperCaseCell.endsWith('ALL DAY')) {
-                shiftType = 'all-day';
-                operativeName = trimmedCell.slice(0, -7).trim();
-            } else if (upperCaseCell.endsWith('PM')) {
-                shiftType = 'pm';
-                operativeName = trimmedCell.slice(0, -2).trim();
-            } else if (upperCaseCell.endsWith('AM')) {
-                shiftType = 'am';
-                operativeName = trimmedCell.slice(0, -2).trim();
-            }
-
-            if (!shiftType || !operativeName) {
-                parsingErrors.push(`Row ${i + 1} ('${operativeCell}'): Could not identify a valid shift type (AM, PM, or ALL DAY) at the end.`);
-                continue;
-            }
-
-            const userId = nameToUidMap.get(operativeName.toLowerCase());
-            if (!userId) {
-                unknownOperatives.add(operativeName);
-                continue;
-            }
-            
-            for (let j = 0; j < 7; j++) { // Check Mon-Sun from columns B to H
-                const address = (row[j + 1] || '').toString();
-                const shiftDate = dates[j];
-
-                if (address && address.trim() !== '' && !address.includes('***') && shiftDate) {
-                    const shiftDocRef = doc(collection(db, 'shifts'));
-                    const newShift: Omit<Shift, 'id'> = {
-                        userId,
-                        date: Timestamp.fromDate(shiftDate),
-                        type: shiftType,
-                        status: 'pending-confirmation',
-                        address: address.trim(),
-                    };
-
-                    batch.set(shiftDocRef, newShift);
-                    shiftsAdded++;
+                if (!cellValue || !shiftDate || cellValue.toLowerCase().includes('holiday') || cellValue.toLowerCase().includes('on hold')) {
+                    continue;
                 }
+                
+                const parts = cellValue.split('-');
+                if (parts.length < 2) {
+                    parsingErrors.push(`Row ${r + 1}, Col ${c + 1}: Could not parse task and operative from "${cellValue}". Expected format: "Task Description - Operative Name"`);
+                    continue;
+                }
+
+                const operativeName = parts.pop()!.trim();
+                const task = parts.join('-').trim();
+
+                const userId = nameToUidMap.get(operativeName.toLowerCase());
+
+                if (!userId) {
+                    unknownOperatives.add(operativeName);
+                    continue;
+                }
+                
+                const shiftDocRef = doc(collection(db, 'shifts'));
+                const newShift: Omit<Shift, 'id'> = {
+                    userId,
+                    date: Timestamp.fromDate(shiftDate),
+                    type: 'all-day',
+                    status: 'pending-confirmation',
+                    address: projectAddress,
+                    task,
+                };
+
+                batch.set(shiftDocRef, newShift);
+                shiftsAdded++;
             }
         }
         
@@ -167,8 +163,6 @@ export function FileUploader() {
             let errorMessage = "No valid shifts were found to import. Please check the file's content.";
             if (parsingErrors.length > 0) {
                 errorMessage = `Import failed with parsing errors:\n- ${parsingErrors.join('\n- ')}`;
-            } else {
-                errorMessage += " This might be because all address fields are empty or operatives are not correctly named.";
             }
             throw new Error(errorMessage);
         }
@@ -177,7 +171,7 @@ export function FileUploader() {
 
         toast({
           title: 'Import Successful',
-          description: `${shiftsAdded} shifts have been added.`,
+          description: `${shiftsAdded} shifts have been added for project: ${projectAddress}.`,
         });
         
         setFile(null);
