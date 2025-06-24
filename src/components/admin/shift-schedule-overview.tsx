@@ -67,6 +67,7 @@ export function ShiftScheduleOverview() {
 
   const { thisWeekShifts, nextWeekShifts } = useMemo(() => {
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     const nextWeekDate = addDays(today, 7);
 
     const thisWeekShifts = shifts.filter(s => 
@@ -121,21 +122,28 @@ export function ShiftScheduleOverview() {
       }
     });
 
-    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+    const weekends = ['Sat', 'Sun'];
+    const allDays = [...weekdays, ...weekends];
+    
+    const hasWorkOnWeekend = weekends.some(day => 
+      activeUsers.some(user => scheduleMap.get(user.uid)?.has(day))
+    );
+    const daysToDisplay = hasWorkOnWeekend ? allDays : weekdays;
 
     return (
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead className="w-[120px] sticky left-0 bg-card z-10 shadow-sm">Operative</TableHead>
-            {weekdays.map(day => <TableHead key={day} className="text-center px-1">{day}</TableHead>)}
+            {daysToDisplay.map(day => <TableHead key={day} className="text-center px-1">{day}</TableHead>)}
           </TableRow>
         </TableHeader>
         <TableBody>
           {activeUsers.map(user => (
               <TableRow key={user.uid}>
                 <TableCell className="font-medium sticky left-0 bg-card z-10 shadow-sm">{user.name}</TableCell>
-                {weekdays.map(day => {
+                {daysToDisplay.map(day => {
                   const dayShifts = scheduleMap.get(user.uid)?.get(day) || [];
                   dayShifts.sort((a, b) => {
                       const order = { 'all-day': 0, 'am': 1, 'pm': 2 };
@@ -157,7 +165,8 @@ export function ShiftScheduleOverview() {
                                   {shift.type === 'all-day' ? 'All' : shift.type.toUpperCase()}
                                 </Badge>
                               </div>
-                              <p className="text-muted-foreground text-[11px] truncate pt-0.5">{shift.address}</p>
+                              <p className="text-muted-foreground text-[11px] truncate pt-0.5">{shift.address}{shift.postcode ? `, ${shift.postcode}` : ''}</p>
+                              {shift.contractManager && <p className="text-muted-foreground text-[11px] truncate pt-0.5">CM: {shift.contractManager}</p>}
                             </div>
                           ))}
                         </div>

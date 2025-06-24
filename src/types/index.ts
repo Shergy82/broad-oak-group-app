@@ -8,6 +8,8 @@ export interface Shift {
   status: 'pending-confirmation' | 'confirmed' | 'completed';
   address: string;
   task: string;
+  postcode?: string;
+  contractManager?: string;
 }
 
 export interface UserProfile {
