@@ -36,10 +36,9 @@ export function ShiftCard({ shift }: ShiftCardProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Correct for timezone differences by parsing the UTC date string
-  const utcDate = shift.date.toDate();
-  const dateString = utcDate.toISOString().substring(0, 10); // "YYYY-MM-DD"
-  const shiftDate = new Date(`${dateString}T00:00:00`);
+  // Correct for timezone differences by using UTC date parts to create a local date.
+  const d = shift.date.toDate();
+  const shiftDate = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 
   const ShiftIcon = shiftTypeDetails[shift.type].icon;
   const statusInfo = statusDetails[shift.status];
