@@ -55,12 +55,19 @@ export function FileUploader() {
         const usersCollection = collection(db, 'users');
         const usersSnapshot = await getDocs(usersCollection);
         const nameToUidMap = new Map<string, string>();
+        const userNames: string[] = [];
         usersSnapshot.forEach(doc => {
             const user = doc.data() as { name: string };
             if (user.name) {
-              nameToUidMap.set(user.name.trim().toLowerCase(), doc.id);
+              const trimmedName = user.name.trim();
+              nameToUidMap.set(trimmedName.toLowerCase(), doc.id);
+              userNames.push(trimmedName);
             }
         });
+
+        // Sort by length descending. This is crucial to match longer names first
+        // (e.g., "John Smith" before "John").
+        userNames.sort((a, b) => b.length - a.length);
 
         const parseDate = (dateValue: any): Date | null => {
             if (!dateValue) return null;
@@ -125,55 +132,58 @@ export function FileUploader() {
                 const cellValue = (rowData[c] || '').toString().trim();
                 const shiftDate = dates[c];
 
-                if (!cellValue || !shiftDate || cellValue.toLowerCase().includes('holiday') || cellValue.toLowerCase().includes('on hold') || !cellValue.includes(' - ')) {
+                if (!cellValue || !shiftDate || cellValue.toLowerCase().includes('holiday') || cellValue.toLowerCase().includes('on hold')) {
                     continue;
                 }
                 
-                const delimiter = ' - ';
-                const lastDelimiterIndex = cellValue.lastIndexOf(delimiter);
-
-                if (lastDelimiterIndex === -1) {
-                    // This case should be caught by the outer if, but as a safeguard.
-                    parsingErrors.push(`Row ${r + 1}, Col ${String.fromCharCode(65 + c)}: Could not parse task and operative from "${cellValue}". Expected format: "Task Description - Operative Name"`);
-                    continue;
-                }
-
-                const task = cellValue.substring(0, lastDelimiterIndex).trim();
-                const operativeName = cellValue.substring(lastDelimiterIndex + delimiter.length).trim();
+                let parsedShift: { task: string; userId: string; } | null = null;
                 
-                if (!task || !operativeName) {
-                     parsingErrors.push(`Row ${r + 1}, Col ${String.fromCharCode(65 + c)}: Could not parse task or operative from "${cellValue}". Make sure there is text on both sides of the " - " delimiter.`);
-                     continue;
+                // New, more robust parsing logic
+                for (const name of userNames) {
+                    const delimiter = ` - ${name}`;
+                    // Use case-insensitive check for the name
+                    if (cellValue.toLowerCase().endsWith(delimiter.toLowerCase())) {
+                        const task = cellValue.substring(0, cellValue.length - delimiter.length).trim();
+                        const userId = nameToUidMap.get(name.toLowerCase());
+                        if (task && userId) {
+                            parsedShift = { task, userId };
+                            break; 
+                        }
+                    }
                 }
 
-                const userId = nameToUidMap.get(operativeName.toLowerCase());
+                if (parsedShift) {
+                    const shiftDocRef = doc(collection(db, 'shifts'));
+                    const newShift: Omit<Shift, 'id'> = {
+                        userId: parsedShift.userId,
+                        date: Timestamp.fromDate(shiftDate),
+                        type: 'all-day',
+                        status: 'pending-confirmation',
+                        address: currentProjectAddress,
+                        task: parsedShift.task,
+                    };
 
-                if (!userId) {
-                    unknownOperatives.add(operativeName);
-                    continue;
+                    batch.set(shiftDocRef, newShift);
+                    shiftsAdded++;
+                } else if (cellValue.includes(' - ')) {
+                    // This cell looks like it *should* be a shift, but we couldn't match the user.
+                    // Add the suspected name to the unknown operatives list for better error reporting.
+                    const lastDelimiterIndex = cellValue.lastIndexOf(' - ');
+                    const operativeNameCandidate = cellValue.substring(lastDelimiterIndex + 3).trim();
+                    if (operativeNameCandidate) {
+                        unknownOperatives.add(operativeNameCandidate);
+                    }
                 }
-                
-                const shiftDocRef = doc(collection(db, 'shifts'));
-                const newShift: Omit<Shift, 'id'> = {
-                    userId,
-                    date: Timestamp.fromDate(shiftDate),
-                    type: 'all-day',
-                    status: 'pending-confirmation',
-                    address: currentProjectAddress,
-                    task,
-                };
-
-                batch.set(shiftDocRef, newShift);
-                shiftsAdded++;
+                // If the cell doesn't contain " - ", we now safely ignore it as a note.
             }
         }
         
         if (unknownOperatives.size > 0) {
-            throw new Error(`The following operatives were not found in the database: ${Array.from(unknownOperatives).join(', ')}. Please check spelling or add them as users.`);
+            throw new Error(`The following operatives were mentioned in shifts but are not in the database: ${Array.from(unknownOperatives).join(', ')}. Please check spelling or add them as users.`);
         }
 
         if (shiftsAdded === 0) {
-            let errorMessage = "No valid shifts were found to import. Please check the file's content and formatting.";
+            let errorMessage = "No valid shifts were found to import. Please check the file's content and formatting. Ensure operative names in the Excel file exactly match the names in the user list.";
             if (parsingErrors.length > 0) {
                 errorMessage = `Import failed with parsing errors:\n- ${parsingErrors.join('\n- ')}`;
             }
