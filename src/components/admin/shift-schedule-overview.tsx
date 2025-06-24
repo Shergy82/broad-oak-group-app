@@ -1,23 +1,25 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import { useEffect, useMemo, useState } from 'react';
+import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shift, UserProfile } from '@/types';
-import { format, isSameWeek, addDays } from 'date-fns';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { addDays, format, isSameWeek } from 'date-fns';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Terminal } from 'lucide-react';
+import { RefreshCw, Terminal } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 export function ShiftScheduleOverview() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!db) {
@@ -58,7 +60,7 @@ export function ShiftScheduleOverview() {
       unsubscribeUsers();
       unsubscribeShifts();
     };
-  }, []);
+  }, [refreshKey]);
 
   const getCorrectedLocalDate = (date: { toDate: () => Date }) => {
     const d = date.toDate();
@@ -75,7 +77,6 @@ export function ShiftScheduleOverview() {
 
     const nextWeekShifts = shifts.filter(s => {
         const shiftDate = getCorrectedLocalDate(s.date);
-        // Get the date for the Monday of next week
         const startOfThisWeek = addDays(today, - (today.getDay() === 0 ? 6 : today.getDay() - 1));
         const startOfNextWeek = addDays(startOfThisWeek, 7);
         return isSameWeek(shiftDate, startOfNextWeek, { weekStartsOn: 1 });
@@ -193,8 +194,16 @@ export function ShiftScheduleOverview() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Weekly Schedule Overview</CardTitle>
-        <CardDescription>A list of all upcoming shifts for the team, grouped by operative. This list updates automatically.</CardDescription>
+        <div className="flex items-center justify-between">
+            <div>
+                <CardTitle>Weekly Schedule Overview</CardTitle>
+                <CardDescription>A list of all upcoming shifts for the team, grouped by operative. The schedule updates in real-time.</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setRefreshKey(prev => prev + 1)}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
+            </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="this-week">

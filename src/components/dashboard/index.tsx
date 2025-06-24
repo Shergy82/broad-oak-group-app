@@ -11,10 +11,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { startOfToday, format, isToday, isSameWeek, addDays } from 'date-fns';
 import type { Shift } from '@/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Clock, Sunrise, Sunset, Terminal } from 'lucide-react';
+import { Clock, RefreshCw, Sunrise, Sunset, Terminal } from 'lucide-react';
 import { mockShifts } from '@/lib/mock-data';
+import { Button } from '@/components/ui/button';
 
-const getCorrectedLocalDate = (date: Timestamp) => {
+const getCorrectedLocalDate = (date: { toDate: () => Date }) => {
     const d = date.toDate();
     // Use UTC date parts to create a local date object to avoid timezone issues.
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -25,6 +26,7 @@ export default function Dashboard() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!isFirebaseConfigured || !db || !user) {
@@ -71,7 +73,7 @@ export default function Dashboard() {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, refreshKey]);
 
   const { 
     todayAmShifts,
@@ -209,12 +211,16 @@ export default function Dashboard() {
 
   return (
     <Tabs defaultValue="today" className="w-full">
-      <div className="flex items-center">
+      <div className="flex items-center justify-between">
         <TabsList>
           <TabsTrigger value="today">Today</TabsTrigger>
           <TabsTrigger value="this-week">This Week</TabsTrigger>
           <TabsTrigger value="next-week">Next Week</TabsTrigger>
         </TabsList>
+        <Button variant="outline" size="sm" onClick={() => setRefreshKey(prev => prev + 1)}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
       </div>
       <TabsContent value="today">
         {loading ? (
