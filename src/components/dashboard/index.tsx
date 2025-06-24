@@ -1,14 +1,14 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { ShiftCard } from '@/components/dashboard/shift-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { startOfToday, format, isToday, isSameWeek, addDays } from 'date-fns';
+import { isToday, isSameWeek, addDays, format } from 'date-fns';
 import type { Shift } from '@/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Clock, RefreshCw, Sunrise, Sunset, Terminal } from 'lucide-react';
@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 const getCorrectedLocalDate = (date: { toDate: () => Date }) => {
     const d = date.toDate();
     // Use UTC date parts to create a local date object to avoid timezone issues.
-    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 };
 
 export default function Dashboard() {
@@ -94,7 +94,7 @@ export default function Dashboard() {
       return grouped;
     };
     
-    const today = startOfToday();
+    const today = new Date();
     
     const todayShifts = shifts.filter(s => isToday(getCorrectedLocalDate(s.date)));
     const todayAmShifts = todayShifts.filter(s => s.type === 'am');
@@ -105,9 +105,7 @@ export default function Dashboard() {
     
     const allNextWeekShifts = shifts.filter(s => {
         const shiftDate = getCorrectedLocalDate(s.date);
-        // Get the date for the Monday of next week
-        const startOfThisWeek = addDays(today, - (today.getDay() === 0 ? 6 : today.getDay() - 1));
-        const startOfNextWeek = addDays(startOfThisWeek, 7);
+        const startOfNextWeek = addDays(today, 7);
         return isSameWeek(shiftDate, startOfNextWeek, { weekStartsOn: 1 });
     });
 
@@ -156,6 +154,9 @@ export default function Dashboard() {
                 if (!shiftsForDay || shiftsForDay.length === 0) {
                     return null;
                 }
+                const typeOrder = { 'am': 1, 'pm': 2, 'all-day': 3 };
+                shiftsForDay.sort((a,b) => typeOrder[a.type] - typeOrder[b.type]);
+
 
                 const amShifts = shiftsForDay.filter(s => s.type === 'am');
                 const pmShifts = shiftsForDay.filter(s => s.type === 'pm');
@@ -210,60 +211,67 @@ export default function Dashboard() {
   }
 
   return (
-    <Tabs defaultValue="today" className="w-full">
-      <div className="flex items-center justify-between">
-        <TabsList>
-          <TabsTrigger value="today">Today</TabsTrigger>
-          <TabsTrigger value="this-week">This Week</TabsTrigger>
-          <TabsTrigger value="next-week">Next Week</TabsTrigger>
-        </TabsList>
-        <Button variant="outline" size="sm" onClick={() => setRefreshKey(prev => prev + 1)}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Refresh
-        </Button>
-      </div>
-      <TabsContent value="today">
-        {loading ? (
-           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-32 w-full rounded-lg" />
-            ))}
-           </div>
-        ) : todayAmShifts.length === 0 && todayPmShifts.length === 0 && todayAllDayShifts.length === 0 ? (
-          <p className="text-muted-foreground mt-4 text-center col-span-full">No shifts scheduled for today.</p>
-        ) : (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                    <h3 className="text-xl font-semibold text-sky-600 dark:text-sky-400 flex items-center"><Sunrise className="mr-2 h-5 w-5" /> AM Shifts</h3>
-                    {todayAmShifts.length > 0 
-                        ? todayAmShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)
-                        : <p className="text-muted-foreground text-sm p-4 text-center border border-dashed rounded-lg">No AM shifts scheduled.</p>}
-                </div>
-                <div className="space-y-4">
-                    <h3 className="text-xl font-semibold text-orange-600 dark:text-orange-400 flex items-center"><Sunset className="mr-2 h-5 w-5" /> PM Shifts</h3>
-                    {todayPmShifts.length > 0
-                        ? todayPmShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)
-                        : <p className="text-muted-foreground text-sm p-4 text-center border border-dashed rounded-lg">No PM shifts scheduled.</p>}
-                </div>
+    <div className="w-full">
+      {user?.displayName && (
+        <h2 className="mb-4 text-2xl font-semibold tracking-tight">
+          Hi, {user.displayName.split(' ')[0]}
+        </h2>
+      )}
+      <Tabs defaultValue="today" className="w-full">
+        <div className="flex items-center justify-between">
+          <TabsList>
+            <TabsTrigger value="today">Today</TabsTrigger>
+            <TabsTrigger value="this-week">This Week</TabsTrigger>
+            <TabsTrigger value="next-week">Next Week</TabsTrigger>
+          </TabsList>
+          <Button variant="outline" size="sm" onClick={() => setRefreshKey(prev => prev + 1)}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
+        <TabsContent value="today">
+          {loading ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-32 w-full rounded-lg" />
+              ))}
             </div>
-            {todayAllDayShifts.length > 0 && (
-                <Card>
-                    <CardHeader><CardTitle className="flex items-center text-indigo-600 dark:text-indigo-400"><Clock className="mr-2 h-5 w-5" /> All Day</CardTitle></CardHeader>
-                    <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {todayAllDayShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)}
-                    </CardContent>
-                </Card>
-            )}
-          </div>
-        )}
-      </TabsContent>
-      <TabsContent value="this-week">
-        {renderWeekView(thisWeekShifts)}
-      </TabsContent>
-      <TabsContent value="next-week">
-        {renderWeekView(nextWeekShifts)}
-      </TabsContent>
-    </Tabs>
+          ) : todayAmShifts.length === 0 && todayPmShifts.length === 0 && todayAllDayShifts.length === 0 ? (
+            <p className="col-span-full mt-4 text-center text-muted-foreground">No shifts scheduled for today.</p>
+          ) : (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div className="space-y-4">
+                      <h3 className="flex items-center text-xl font-semibold text-sky-600 dark:text-sky-400"><Sunrise className="mr-2 h-5 w-5" /> AM Shifts</h3>
+                      {todayAmShifts.length > 0 
+                          ? todayAmShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)
+                          : <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No AM shifts scheduled.</p>}
+                  </div>
+                  <div className="space-y-4">
+                      <h3 className="flex items-center text-xl font-semibold text-orange-600 dark:text-orange-400"><Sunset className="mr-2 h-5 w-5" /> PM Shifts</h3>
+                      {todayPmShifts.length > 0
+                          ? todayPmShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)
+                          : <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No PM shifts scheduled.</p>}
+                  </div>
+              </div>
+              {todayAllDayShifts.length > 0 && (
+                  <Card>
+                      <CardHeader><CardTitle className="flex items-center text-indigo-600 dark:text-indigo-400"><Clock className="mr-2 h-5 w-5" /> All Day</CardTitle></CardHeader>
+                      <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                          {todayAllDayShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)}
+                      </CardContent>
+                  </Card>
+              )}
+            </div>
+          )}
+        </TabsContent>
+        <TabsContent value="this-week">
+          {renderWeekView(thisWeekShifts)}
+        </TabsContent>
+        <TabsContent value="next-week">
+          {renderWeekView(nextWeekShifts)}
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
