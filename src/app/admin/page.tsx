@@ -14,6 +14,9 @@ export default function AdminPage() {
             <p>
               Upload an .xlsx file to schedule all tasks for one or more projects for one week.
             </p>
+            <p className="font-bold text-destructive/90">
+              Important: Uploading a file will delete all existing shifts for the dates found in that file and replace them with the new schedule.
+            </p>
             <ul className="list-disc pl-5 space-y-1">
               <li>
                 <strong>Multiple Projects:</strong> You can include multiple projects in a single sheet.

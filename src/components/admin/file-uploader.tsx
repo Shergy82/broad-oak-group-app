@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { collection, writeBatch, doc, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, writeBatch, doc, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,8 +65,6 @@ export function FileUploader() {
             }
         });
 
-        // Sort by length descending. This is crucial to match longer names first
-        // (e.g., "John Smith" before "John").
         userNames.sort((a, b) => b.length - a.length);
 
         const parseDate = (dateValue: any): Date | null => {
@@ -109,13 +107,34 @@ export function FileUploader() {
         
         const batch = writeBatch(db);
         let shiftsAdded = 0;
+        let shiftsDeletedCount = 0;
         const unknownOperatives = new Set<string>();
+        
+        const validDates = dates.filter((d): d is Date => d !== null);
+        if (validDates.length > 0) {
+            const minDate = new Date(Math.min(...validDates.map(d => d.getTime())));
+            const maxDate = new Date(Math.max(...validDates.map(d => d.getTime())));
+
+            const shiftsToDeleteQuery = query(
+                collection(db, 'shifts'),
+                where('date', '>=', Timestamp.fromDate(minDate)),
+                where('date', '<=', Timestamp.fromDate(maxDate))
+            );
+            const shiftsToDeleteSnapshot = await getDocs(shiftsToDeleteQuery);
+            shiftsDeletedCount = shiftsToDeleteSnapshot.size;
+            if (shiftsDeletedCount > 0) {
+              shiftsToDeleteSnapshot.forEach(doc => {
+                  batch.delete(doc.ref);
+              });
+            }
+        }
+
         let currentProjectAddress = '';
 
         for (let r = dateRowIndex + 1; r < jsonData.length; r++) {
             const rowData = jsonData[r];
             if (!rowData || rowData.every(cell => !cell || cell.toString().trim() === '')) {
-                continue; // Skip entirely empty rows
+                continue;
             }
             
             const addressCandidate = (rowData[0] || '').toString().trim();
@@ -124,11 +143,10 @@ export function FileUploader() {
             }
 
             if (!currentProjectAddress) {
-                continue; // Skip rows until an address is found
+                continue;
             }
 
             for (let c = 1; c < rowData.length; c++) {
-                // Replace different types of dashes with a standard hyphen for consistent parsing
                 const cellValue = (rowData[c] || '').toString().trim().replace(/[\u2012\u2013\u2014\u2015]/g, '-');
                 const shiftDate = dates[c];
 
@@ -138,10 +156,7 @@ export function FileUploader() {
                 
                 let parsedShift: { task: string; userId: string; type: 'am' | 'pm' | 'all-day' } | null = null;
                 
-                // New, more robust parsing logic
                 for (const name of userNames) {
-                    // Regex to match " - name", "-name", etc. at the end of the string, case-insensitively.
-                    // Escapes special characters in the name for safety.
                     const escapedName = name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
                     const regex = new RegExp(`\\s*-\\s*${escapedName}$`, 'i');
                     const match = cellValue.match(regex);
@@ -151,18 +166,15 @@ export function FileUploader() {
                         const userId = nameToUidMap.get(name.toLowerCase());
                         
                         let type: 'am' | 'pm' | 'all-day' = 'all-day';
-
-                        // Check for AM/PM in the task and extract it
                         const amPmMatch = task.match(/\b(AM|PM)\b/i);
                         if (amPmMatch) {
                             type = amPmMatch[0].toLowerCase() as 'am' | 'pm';
-                            // Remove the AM/PM from the task string, leaving other text intact.
                             task = task.replace(new RegExp(`\\b${amPmMatch[0]}\\b`, 'i'), '').trim();
                         }
 
                         if (task && userId) {
                             parsedShift = { task, userId, type };
-                            break; // Found longest match, stop.
+                            break;
                         }
                     }
                 }
@@ -181,19 +193,16 @@ export function FileUploader() {
                     batch.set(shiftDocRef, newShift);
                     shiftsAdded++;
                 } else if (cellValue.includes('-')) {
-                    // This cell looks like it *should* be a shift, but we couldn't match the user.
-                    // Add the suspected name to the unknown operatives list for better error reporting.
                     const lastDelimiterIndex = cellValue.lastIndexOf('-');
                     const operativeNameCandidate = cellValue.substring(lastDelimiterIndex + 1).trim();
                     if (operativeNameCandidate) {
                         unknownOperatives.add(operativeNameCandidate);
                     }
                 }
-                // If the cell doesn't contain a hyphen, we now safely ignore it as a note.
             }
         }
         
-        if (shiftsAdded > 0) {
+        if (shiftsAdded > 0 || shiftsDeletedCount > 0) {
             await batch.commit();
         }
 
@@ -203,10 +212,10 @@ export function FileUploader() {
                 title: 'Partial Import: Operatives Not Found',
                 description: `Imported ${shiftsAdded} shifts, which will appear on the assigned operatives' dashboards. The following operatives were not found and their shifts were skipped: ${Array.from(unknownOperatives).join(', ')}. Please check spelling or add them as users.`,
             });
-        } else if (shiftsAdded > 0) {
+        } else if (shiftsAdded > 0 || shiftsDeletedCount > 0) {
             toast({
-                title: 'Import Successful',
-                description: `${shiftsAdded} shifts have been assigned to operatives and will appear on their individual dashboards.`,
+                title: 'Schedule Updated',
+                description: `Successfully cleared the schedule for the imported week and assigned ${shiftsAdded} new shifts.`,
             });
         } else {
             throw new Error("No valid shifts were found to import. Please check the file's content and formatting. Ensure operative names in the Excel file exactly match the names in the user list and that cells are formatted correctly ('Task - Name').");
