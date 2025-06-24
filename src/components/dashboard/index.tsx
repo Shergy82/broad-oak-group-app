@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { startOfWeek, endOfWeek, startOfToday, isWithinInterval, addWeeks, format, isToday } from 'date-fns';
 import type { Shift } from '@/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Terminal } from 'lucide-react';
+import { Clock, Sunrise, Sunset, Terminal } from 'lucide-react';
 import { mockShifts } from '@/lib/mock-data';
 
 export default function Dashboard() {
@@ -59,7 +59,13 @@ export default function Dashboard() {
     fetchShifts();
   }, [user]);
 
-  const { todayShifts, thisWeekShifts, nextWeekShifts } = useMemo(() => {
+  const { 
+    todayAmShifts,
+    todayPmShifts,
+    todayAllDayShifts,
+    thisWeekShifts, 
+    nextWeekShifts 
+  } = useMemo(() => {
     const today = startOfToday();
     const startOfCurrentWeek = startOfWeek(today, { weekStartsOn: 1 });
     const endOfCurrentWeek = endOfWeek(today, { weekStartsOn: 1 });
@@ -69,7 +75,7 @@ export default function Dashboard() {
     const groupShiftsByDay = (weekShifts: Shift[]) => {
       const grouped: { [key: string]: Shift[] } = {};
       weekShifts.forEach(shift => {
-        const dayName = format(shift.date.toDate(), 'eeee'); // "Monday", "Tuesday", etc.
+        const dayName = format(shift.date.toDate(), 'eeee');
         if (!grouped[dayName]) {
           grouped[dayName] = [];
         }
@@ -79,31 +85,26 @@ export default function Dashboard() {
     };
 
     const todayShifts = shifts.filter(s => isToday(s.date.toDate()));
+    const todayAmShifts = todayShifts.filter(s => s.type === 'am');
+    const todayPmShifts = todayShifts.filter(s => s.type === 'pm');
+    const todayAllDayShifts = todayShifts.filter(s => s.type === 'all-day');
+
     const allThisWeekShifts = shifts.filter(s => isWithinInterval(s.date.toDate(), { start: startOfCurrentWeek, end: endOfCurrentWeek }));
     const allNextWeekShifts = shifts.filter(s => isWithinInterval(s.date.toDate(), { start: startOfNextWeek, end: endOfNextWeek }));
 
     return {
-      todayShifts,
+      todayAmShifts,
+      todayPmShifts,
+      todayAllDayShifts,
       thisWeekShifts: groupShiftsByDay(allThisWeekShifts),
       nextWeekShifts: groupShiftsByDay(allNextWeekShifts),
     };
   }, [shifts]);
 
-  const renderTodayShifts = (shiftList: Shift[]) => {
-    if (loading) {
-      return Array.from({ length: 3 }).map((_, i) => (
-        <Skeleton key={i} className="h-32 w-full rounded-lg" />
-      ));
-    }
-    if (shiftList.length === 0) {
-      return <p className="text-muted-foreground mt-4 text-center col-span-full">No shifts scheduled for today.</p>;
-    }
-    return shiftList.map(shift => <ShiftCard key={shift.id} shift={shift} />);
-  };
-
   const renderWeekView = (groupedShifts: { [key: string]: Shift[] }) => {
     const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     const weekends = ['Saturday', 'Sunday'];
+    const allDays = [...weekdays, ...weekends];
     
     const hasShiftsThisWeek = Object.keys(groupedShifts).length > 0;
 
@@ -116,7 +117,7 @@ export default function Dashboard() {
                             <CardTitle>{day}</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <Skeleton className="h-24 w-full" />
+                            <Skeleton className="h-32 w-full" />
                         </CardContent>
                     </Card>
                 ))}
@@ -130,38 +131,50 @@ export default function Dashboard() {
 
     return (
         <div className="space-y-6">
-            {weekdays.map(day => (
-                <Card key={day}>
-                    <CardHeader>
-                        <CardTitle>{day}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {groupedShifts[day] && groupedShifts[day].length > 0 ? (
-                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                                {groupedShifts[day].map(shift => <ShiftCard key={shift.id} shift={shift} />)}
-                            </div>
-                        ) : (
-                            <p className="text-muted-foreground text-sm">No shifts scheduled.</p>
-                        )}
-                    </CardContent>
-                </Card>
-            ))}
-            {weekends.map(day => {
-                if (groupedShifts[day] && groupedShifts[day].length > 0) {
-                    return (
-                        <Card key={day}>
-                            <CardHeader>
-                                <CardTitle>{day}</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                                    {groupedShifts[day].map(shift => <ShiftCard key={shift.id} shift={shift} />)}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    );
+            {allDays.map(day => {
+                const shiftsForDay = groupedShifts[day];
+                if (!shiftsForDay || shiftsForDay.length === 0) {
+                    return null;
                 }
-                return null;
+
+                const amShifts = shiftsForDay.filter(s => s.type === 'am');
+                const pmShifts = shiftsForDay.filter(s => s.type === 'pm');
+                const allDayShifts = shiftsForDay.filter(s => s.type === 'all-day');
+
+                return (
+                    <Card key={day}>
+                        <CardHeader>
+                            <CardTitle>{day}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {allDayShifts.length > 0 && (
+                                <div>
+                                    <h4 className="text-md font-semibold mb-3 flex items-center text-indigo-600 dark:text-indigo-400"><Clock className="mr-2 h-4 w-4" /> All Day</h4>
+                                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                                        {allDayShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {(amShifts.length > 0 || pmShifts.length > 0) && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 pt-2">
+                                     <div className="space-y-4">
+                                        <h4 className="text-md font-semibold flex items-center text-sky-600 dark:text-sky-400"><Sunrise className="mr-2 h-4 w-4" /> AM</h4>
+                                        {amShifts.length > 0 
+                                            ? amShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />) 
+                                            : <p className="text-muted-foreground text-xs p-4 text-center border border-dashed rounded-lg">No AM shifts.</p>}
+                                    </div>
+                                     <div className="space-y-4">
+                                        <h4 className="text-md font-semibold flex items-center text-orange-600 dark:text-orange-400"><Sunset className="mr-2 h-4 w-4" /> PM</h4>
+                                        {pmShifts.length > 0 
+                                            ? pmShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />) 
+                                            : <p className="text-muted-foreground text-xs p-4 text-center border border-dashed rounded-lg">No PM shifts.</p>}
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                );
             })}
         </div>
     );
@@ -187,9 +200,40 @@ export default function Dashboard() {
         </TabsList>
       </div>
       <TabsContent value="today">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {renderTodayShifts(todayShifts)}
-        </div>
+        {loading ? (
+           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-32 w-full rounded-lg" />
+            ))}
+           </div>
+        ) : todayAmShifts.length === 0 && todayPmShifts.length === 0 && todayAllDayShifts.length === 0 ? (
+          <p className="text-muted-foreground mt-4 text-center col-span-full">No shifts scheduled for today.</p>
+        ) : (
+          <div className="space-y-6">
+            {todayAllDayShifts.length > 0 && (
+                <Card>
+                    <CardHeader><CardTitle className="flex items-center text-indigo-600 dark:text-indigo-400"><Clock className="mr-2 h-5 w-5" /> All Day</CardTitle></CardHeader>
+                    <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {todayAllDayShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)}
+                    </CardContent>
+                </Card>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                    <h3 className="text-xl font-semibold text-sky-600 dark:text-sky-400 flex items-center"><Sunrise className="mr-2 h-5 w-5" /> AM Shifts</h3>
+                    {todayAmShifts.length > 0 
+                        ? todayAmShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)
+                        : <p className="text-muted-foreground text-sm p-4 text-center border border-dashed rounded-lg">No AM shifts scheduled.</p>}
+                </div>
+                <div className="space-y-4">
+                    <h3 className="text-xl font-semibold text-orange-600 dark:text-orange-400 flex items-center"><Sunset className="mr-2 h-5 w-5" /> PM Shifts</h3>
+                    {todayPmShifts.length > 0
+                        ? todayPmShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)
+                        : <p className="text-muted-foreground text-sm p-4 text-center border border-dashed rounded-lg">No PM shifts scheduled.</p>}
+                </div>
+            </div>
+          </div>
+        )}
       </TabsContent>
       <TabsContent value="this-week">
         {renderWeekView(thisWeekShifts)}
