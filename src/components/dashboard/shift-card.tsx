@@ -90,11 +90,8 @@ export function ShiftCard({ shift }: ShiftCardProps) {
           {statusInfo.label}
         </Badge>
       </CardHeader>
-      <CardContent className="p-4 text-left grow flex flex-col justify-center space-y-1 text-sm">
-        <p className="font-semibold">{shift.address}</p>
-        <p><span className="text-muted-foreground">Task:</span> {shift.dailyTask}</p>
-        <p><span className="text-muted-foreground">B No:</span> {shift.bNumber}</p>
-        {shift.siteManager && <p><span className="text-muted-foreground">Site Manager:</span> {shift.siteManager}</p>}
+      <CardContent className="p-4 text-left grow flex flex-col justify-center">
+        <p className="font-semibold text-sm">{shift.address}</p>
       </CardContent>
       <CardFooter className="p-2 bg-muted/30">
         {shift.status === 'pending-confirmation' && (

@@ -7,9 +7,6 @@ export interface Shift {
   type: 'am' | 'pm' | 'all-day';
   status: 'pending-confirmation' | 'confirmed' | 'completed';
   address: string;
-  bNumber: string;
-  dailyTask: string;
-  siteManager?: string;
 }
 
 export interface UserProfile {

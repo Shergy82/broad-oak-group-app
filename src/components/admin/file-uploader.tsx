@@ -43,35 +43,15 @@ export function FileUploader() {
         const data = e.target?.result;
         if (!data) throw new Error("Could not read file data.");
         
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, blankrows: false });
 
-        if (jsonData.length < 6) {
-            throw new Error("The Excel file structure is incorrect. It must have at least 6 rows for the required information.");
+        if (jsonData.length < 2) {
+            throw new Error("The Excel file is too short. It must contain at least a date row and one operative shift row.");
         }
-
-        const getCellValue = (row: number, col: number): string => {
-            if (jsonData[row] && jsonData[row][col] != null) {
-                return String(jsonData[row][col]).trim();
-            }
-            return '';
-        };
-
-        const mondayDateValue = jsonData[0]?.[1]; // Cell B1
-        const operativeName = getCellValue(2, 1); // Cell B3
-        const address = getCellValue(3, 1); // Cell B4
-        const bNumber = getCellValue(4, 1); // Cell B5
-        const siteManager = getCellValue(5, 1); // Cell B6
-
-        if (!mondayDateValue) throw new Error("Monday's date is missing from cell B1.");
-        const mondayDate = new Date(mondayDateValue);
-        if (isNaN(mondayDate.getTime())) throw new Error(`Invalid date format in cell B1. Please use a standard format like YYYY-MM-DD.`);
         
-        if (!operativeName) throw new Error("Operative name is missing from cell B3.");
-        if (!address) throw new Error("Address is missing from cell B4.");
-
         const usersCollection = collection(db, 'users');
         const usersSnapshot = await getDocs(usersCollection);
         const nameToUidMap = new Map<string, string>();
@@ -81,49 +61,109 @@ export function FileUploader() {
               nameToUidMap.set(user.name.trim().toLowerCase(), doc.id);
             }
         });
-        
-        const userId = nameToUidMap.get(operativeName.toLowerCase());
-        if (!userId) {
-          throw new Error(`Operative '${operativeName}' not found in the database. Please check the name or add them as a user.`);
+
+        const parseDate = (dateValue: any): Date | null => {
+            if (!dateValue) return null;
+            if (typeof dateValue === 'number') {
+                const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+                return new Date(excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
+            }
+            if (typeof dateValue === 'string') {
+                const parts = dateValue.split(/[/.-]/);
+                if (parts.length === 3) {
+                    const [d, m, y] = parts.map(p => parseInt(p, 10));
+                    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+                       const year = y < 100 ? 2000 + y : y;
+                       return new Date(Date.UTC(year, m - 1, d));
+                    }
+                }
+            }
+            const parsed = new Date(dateValue);
+            return isNaN(parsed.getTime()) ? null : parsed;
+        };
+
+        let dateRowIndex = -1;
+        let dates: (Date | null)[] = [];
+        for (let i = 0; i < jsonData.length; i++) {
+            const row = jsonData[i] || [];
+            const potentialDates = row.slice(1, 8); // Check columns B-H
+            if (potentialDates.length >= 5 && potentialDates.slice(0, 5).every(d => parseDate(d))) {
+                dateRowIndex = i;
+                dates = potentialDates.map(parseDate);
+                break;
+            }
         }
 
+        if (dateRowIndex === -1) {
+            throw new Error("Could not find a valid date row in the spreadsheet. Ensure there is a row with 5 consecutive dates in columns starting from B.");
+        }
+        
         const batch = writeBatch(db);
         let shiftsAdded = 0;
-        
-        for (let i = 0; i < 5; i++) {
-          const colIndex = i + 1;
-          const dailyTask = getCellValue(1, colIndex);
+        const unknownOperatives = new Set<string>();
 
-          if (dailyTask) {
-            const shiftDate = new Date(mondayDate);
-            shiftDate.setDate(shiftDate.getDate() + i);
+        for (let i = dateRowIndex + 1; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            const operativeCell = row[0] as string | undefined;
 
-            const shiftDocRef = doc(collection(db, 'shifts'));
-            const newShift: Omit<Shift, 'id'> = {
-              userId,
-              date: Timestamp.fromDate(shiftDate),
-              type: 'all-day',
-              status: 'pending-confirmation',
-              address,
-              bNumber,
-              dailyTask,
-              ...(siteManager && { siteManager }),
-            };
+            if (!operativeCell || typeof operativeCell !== 'string' || operativeCell.includes('***')) continue;
 
-            batch.set(shiftDocRef, newShift);
-            shiftsAdded++;
-          }
+            const parts = operativeCell.trim().split(/\s+/);
+            if (parts.length < 2) continue;
+            
+            const lastPart = parts[parts.length - 1].toLowerCase();
+            let shiftType: 'am' | 'pm' | 'all-day' | null = null;
+            let operativeName = "";
+
+            if (lastPart === 'am' || lastPart === 'pm' || lastPart === 'day') {
+                shiftType = lastPart === 'day' ? 'all-day' : lastPart;
+                operativeName = parts.slice(0, -1).join(' ');
+            } else if (lastPart.startsWith('(kin') && parts[parts.length - 2].toLowerCase() === 'day') {
+                 shiftType = 'all-day';
+                 operativeName = parts.slice(0, -2).join(' ');
+            }
+            
+            if (!shiftType || !operativeName) continue;
+
+            const userId = nameToUidMap.get(operativeName.toLowerCase());
+            if (!userId) {
+                unknownOperatives.add(operativeName);
+                continue;
+            }
+            
+            for (let j = 0; j < 5; j++) { // Columns B to F for Mon-Fri
+                const address = row[j + 1] as string | undefined;
+                const shiftDate = dates[j];
+
+                if (address && typeof address === 'string' && !address.includes('***') && shiftDate) {
+                    const shiftDocRef = doc(collection(db, 'shifts'));
+                    const newShift: Omit<Shift, 'id'> = {
+                        userId,
+                        date: Timestamp.fromDate(shiftDate),
+                        type: shiftType,
+                        status: 'pending-confirmation',
+                        address: address.trim(),
+                    };
+
+                    batch.set(shiftDocRef, newShift);
+                    shiftsAdded++;
+                }
+            }
         }
         
+        if (unknownOperatives.size > 0) {
+            throw new Error(`The following operatives were not found in the database: ${Array.from(unknownOperatives).join(', ')}. Please check spelling or add them as users.`);
+        }
+
         if (shiftsAdded === 0) {
-            throw new Error("No daily tasks found in cells B2 through F2. At least one task is required to import shifts.");
+            throw new Error("No valid shifts were found to import. Please check that the file has shift data and operatives are correctly named.");
         }
 
         await batch.commit();
 
         toast({
           title: 'Import Successful',
-          description: `${shiftsAdded} shifts for '${operativeName}' have been added for the week of ${mondayDate.toLocaleDateString()}.`,
+          description: `${shiftsAdded} shifts have been added.`,
         });
         
         setFile(null);
@@ -134,17 +174,13 @@ export function FileUploader() {
 
       } catch (err: any) {
         console.error('Import failed:', err);
-        let errorMessage = err.message || 'An unexpected error occurred during import.';
-        if (errorMessage.includes('permission-denied')) {
-          errorMessage = "Permission denied. Please ensure your Firestore security rules allow admins to create shifts."
-        }
-        setError(errorMessage);
+        setError(err.message || 'An unexpected error occurred during import.');
       } finally {
         setIsUploading(false);
       }
     };
 
-    reader.onerror = (err) => {
+    reader.onerror = () => {
         setError('Failed to read the file.');
         setIsUploading(false);
     }
