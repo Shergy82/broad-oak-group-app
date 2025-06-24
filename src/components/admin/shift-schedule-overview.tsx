@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { collection, query, where, Timestamp, onSnapshot } from 'firebase/firestore';
+import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shift, UserProfile } from '@/types';
 import { format, isSameWeek, addDays } from 'date-fns';
@@ -11,16 +11,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Terminal } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 export function ShiftScheduleOverview() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const uidToNameMap = useMemo(() => {
-    return new Map(users.map(user => [user.uid, user.name]));
-  }, [users]);
 
   useEffect(() => {
     if (!db) {
@@ -29,10 +26,10 @@ export function ShiftScheduleOverview() {
       return;
     }
 
-    // Listener for users
     const usersQuery = query(collection(db, 'users'));
     const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
       const fetchedUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+      fetchedUsers.sort((a, b) => a.name.localeCompare(b.name));
       setUsers(fetchedUsers);
     }, (err) => {
       console.error("Error fetching users: ", err);
@@ -40,11 +37,9 @@ export function ShiftScheduleOverview() {
       setLoading(false);
     });
 
-    // Listener for shifts
     const shiftsQuery = query(collection(db, 'shifts'));
     const unsubscribeShifts = onSnapshot(shiftsQuery, (snapshot) => {
       const fetchedShifts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift));
-      fetchedShifts.sort((a, b) => a.date.toMillis() - b.date.toMillis());
       setShifts(fetchedShifts);
       setLoading(false);
     }, (err) => {
@@ -65,7 +60,7 @@ export function ShiftScheduleOverview() {
     };
   }, []);
 
-  const getCorrectedLocalDate = (date: Timestamp) => {
+  const getCorrectedLocalDate = (date: { toDate: () => Date }) => {
     const d = date.toDate();
     return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
   };
@@ -85,43 +80,93 @@ export function ShiftScheduleOverview() {
     return { thisWeekShifts, nextWeekShifts };
   }, [shifts]);
 
-  const renderWeekView = (weekShifts: Shift[]) => {
+  const renderWeekGrid = (weekShifts: Shift[], usersForGrid: UserProfile[]) => {
     if (loading) {
       return (
-        <TableBody>
+        <div className="space-y-2 mt-4">
           {Array.from({ length: 5 }).map((_, i) => (
-            <TableRow key={i}>
-              <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-              <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-              <TableCell><Skeleton className="h-4 w-40" /></TableCell>
-              <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-            </TableRow>
+            <div key={i} className="flex gap-2">
+                <Skeleton className="h-24 w-40" />
+                {Array.from({ length: 7 }).map((_, j) => (
+                    <Skeleton key={j} className="h-24 flex-1" />
+                ))}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    
+    const activeUserIdsThisWeek = new Set(weekShifts.map(s => s.userId));
+    const activeUsers = usersForGrid.filter(u => activeUserIdsThisWeek.has(u.uid));
+
+    if (activeUsers.length === 0) {
+      return (
+        <div className="h-24 text-center flex items-center justify-center text-muted-foreground mt-4 border border-dashed rounded-lg">
+          No shifts scheduled for this week.
+        </div>
+      );
+    }
+    
+    const scheduleMap = new Map<string, Map<string, Shift[]>>();
+    activeUsers.forEach(u => scheduleMap.set(u.uid, new Map()));
+    
+    weekShifts.forEach(shift => {
+      if (scheduleMap.has(shift.userId)) {
+        const dayName = format(getCorrectedLocalDate(shift.date), 'eeee');
+        const userShifts = scheduleMap.get(shift.userId)!;
+        if (!userShifts.has(dayName)) {
+            userShifts.set(dayName, []);
+        }
+        userShifts.get(dayName)!.push(shift);
+      }
+    });
+
+    const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[180px] sticky left-0 bg-card z-10 shadow-sm">Operative</TableHead>
+            {weekdays.map(day => <TableHead key={day} className="text-center">{day}</TableHead>)}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {activeUsers.map(user => (
+              <TableRow key={user.uid}>
+                <TableCell className="font-medium sticky left-0 bg-card z-10 shadow-sm">{user.name}</TableCell>
+                {weekdays.map(day => {
+                  const dayShifts = scheduleMap.get(user.uid)?.get(day) || [];
+                  dayShifts.sort((a, b) => {
+                      const order = { 'all-day': 0, 'am': 1, 'pm': 2 };
+                      return (order[a.type] ?? 99) - (order[b.type] ?? 99);
+                  });
+
+                  return (
+                    <TableCell key={day} className="align-top p-2 min-w-[140px]">
+                      {dayShifts.length > 0 && (
+                        <div className="space-y-2">
+                          {dayShifts.map(shift => (
+                            <div key={shift.id} className="text-xs p-2 rounded-md bg-muted/50 border border-muted-foreground/20">
+                              <p className="font-semibold">{shift.task}</p>
+                              <p className="text-muted-foreground text-[11px] truncate">{shift.address}</p>
+                              <Badge 
+                                variant={shift.type === 'am' ? 'default' : shift.type === 'pm' ? 'secondary' : 'outline'} 
+                                className="mt-1 text-[10px] py-0 px-1.5 h-auto capitalize"
+                              >
+                                {shift.type.replace('-', ' ')}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
           ))}
         </TableBody>
-      );
-    }
-    if (weekShifts.length === 0) {
-      return (
-        <TableBody>
-          <TableRow>
-            <TableCell colSpan={4} className="h-24 text-center">
-              No shifts scheduled for this week.
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      );
-    }
-    return (
-      <TableBody>
-        {weekShifts.map((shift, i) => (
-          <TableRow key={shift.id} className={i % 2 === 0 ? 'bg-muted/50' : ''}>
-            <TableCell className="font-medium">{format(getCorrectedLocalDate(shift.date), 'eeee, dd MMM')}</TableCell>
-            <TableCell>{uidToNameMap.get(shift.userId) || shift.userId}</TableCell>
-            <TableCell>{shift.address}</TableCell>
-            <TableCell>{shift.task}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
+      </Table>
     );
   };
   
@@ -139,7 +184,7 @@ export function ShiftScheduleOverview() {
     <Card>
       <CardHeader>
         <CardTitle>Weekly Schedule Overview</CardTitle>
-        <CardDescription>A summary of all upcoming shifts for the team. This list updates automatically.</CardDescription>
+        <CardDescription>A grid view of all upcoming shifts for the team. This list updates automatically.</CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="this-week">
@@ -148,30 +193,10 @@ export function ShiftScheduleOverview() {
             <TabsTrigger value="next-week">Next Week</TabsTrigger>
           </TabsList>
           <TabsContent value="this-week" className="mt-4">
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead className="w-[180px]">Date</TableHead>
-                        <TableHead className="w-[150px]">Operative</TableHead>
-                        <TableHead>Address</TableHead>
-                        <TableHead>Task</TableHead>
-                    </TableRow>
-                </TableHeader>
-                {renderWeekView(thisWeekShifts)}
-            </Table>
+            {renderWeekGrid(thisWeekShifts, users)}
           </TabsContent>
           <TabsContent value="next-week" className="mt-4">
-             <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead className="w-[180px]">Date</TableHead>
-                        <TableHead className="w-[150px]">Operative</TableHead>
-                        <TableHead>Address</TableHead>
-                        <TableHead>Task</TableHead>
-                    </TableRow>
-                </TableHeader>
-                {renderWeekView(nextWeekShifts)}
-            </Table>
+             {renderWeekGrid(nextWeekShifts, users)}
           </TabsContent>
         </Tabs>
       </CardContent>
