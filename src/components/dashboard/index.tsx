@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { ShiftCard } from '@/components/dashboard/shift-card';
@@ -14,6 +14,12 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Clock, Sunrise, Sunset, Terminal } from 'lucide-react';
 import { mockShifts } from '@/lib/mock-data';
 
+const getCorrectedLocalDate = (date: Timestamp) => {
+    const d = date.toDate();
+    // Use UTC date parts to create a local date object to avoid timezone issues.
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+};
+
 export default function Dashboard() {
   const { user } = useAuth();
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -21,58 +27,51 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchShifts() {
-      if (!isFirebaseConfigured || !db || !user) {
-        setShifts(mockShifts);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const shiftsCollection = collection(db, 'shifts');
-        const q = query(shiftsCollection, where('userId', '==', user.uid));
-        const querySnapshot = await getDocs(q);
-        const fetchedShifts: Shift[] = [];
-        querySnapshot.forEach((doc) => {
-          fetchedShifts.push({ id: doc.id, ...doc.data() } as Shift);
-        });
-        
-        if (fetchedShifts.length === 0) {
-            setShifts(mockShifts);
-        } else {
-            const typeOrder = { 'am': 1, 'pm': 2, 'all-day': 3 };
-            fetchedShifts.sort((a, b) => {
-                const dateA = a.date.toMillis();
-                const dateB = b.date.toMillis();
-                if (dateA !== dateB) {
-                    return dateA - dateB;
-                }
-                return typeOrder[a.type] - typeOrder[b.type];
-            });
-            setShifts(fetchedShifts);
-        }
-      } catch (e: any) {
-        console.error("Error fetching shifts: ", e);
-        let errorMessage = 'Failed to fetch shifts. Please try again later.';
-        if (e.code === 'permission-denied') {
-          errorMessage = "You don't have permission to view shifts. Please check your Firestore security rules in the Firebase Console.";
-        } else if (e.code === 'failed-precondition') {
-            errorMessage = 'Could not fetch shifts. This is likely due to a missing database index. Please check the browser console for a link to create the required index in Firebase.';
-        }
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
-      }
+    if (!isFirebaseConfigured || !db || !user) {
+      setShifts(mockShifts);
+      setLoading(false);
+      return;
     }
 
-    fetchShifts();
-  }, [user]);
+    setLoading(true);
+    const shiftsCollection = collection(db, 'shifts');
+    const q = query(shiftsCollection, where('userId', '==', user.uid));
 
-  const getCorrectedLocalDate = (date: Timestamp) => {
-      const d = date.toDate();
-      // Use UTC date parts to create a local date object to avoid timezone issues.
-      return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  };
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedShifts: Shift[] = [];
+      querySnapshot.forEach((doc) => {
+        fetchedShifts.push({ id: doc.id, ...doc.data() } as Shift);
+      });
+      
+      if (fetchedShifts.length === 0) {
+          setShifts(mockShifts);
+      } else {
+          const typeOrder = { 'am': 1, 'pm': 2, 'all-day': 3 };
+          fetchedShifts.sort((a, b) => {
+              const dateA = getCorrectedLocalDate(a.date).getTime();
+              const dateB = getCorrectedLocalDate(b.date).getTime();
+              if (dateA !== dateB) {
+                  return dateA - dateB;
+              }
+              return typeOrder[a.type] - typeOrder[b.type];
+          });
+          setShifts(fetchedShifts);
+      }
+      setLoading(false);
+    }, (e: any) => {
+      console.error("Error fetching shifts: ", e);
+      let errorMessage = 'Failed to fetch shifts. Please try again later.';
+      if (e.code === 'permission-denied') {
+        errorMessage = "You don't have permission to view shifts. Please check your Firestore security rules in the Firebase Console.";
+      } else if (e.code === 'failed-precondition') {
+          errorMessage = 'Could not fetch shifts. This is likely due to a missing database index. Please check the browser console for a link to create the required index in Firebase.';
+      }
+      setError(errorMessage);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   const { 
     todayAmShifts,
