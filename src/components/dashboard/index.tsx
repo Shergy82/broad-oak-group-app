@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { ShiftCard } from '@/components/dashboard/shift-card';
@@ -66,6 +66,13 @@ export default function Dashboard() {
     thisWeekShifts, 
     nextWeekShifts 
   } = useMemo(() => {
+    const getCorrectedLocalDate = (date: Timestamp) => {
+      const utcDate = date.toDate();
+      // This creates a new Date object at midnight in the local timezone,
+      // using the day/month/year from the UTC date. This corrects for timezone-related day shifts.
+      return new Date(utcDate.getUTCFullYear(), utcDate.getUTCMonth(), utcDate.getUTCDate());
+    };
+
     const today = startOfToday();
     const startOfCurrentWeek = startOfWeek(today, { weekStartsOn: 1 });
     const endOfCurrentWeek = endOfWeek(today, { weekStartsOn: 1 });
@@ -75,7 +82,7 @@ export default function Dashboard() {
     const groupShiftsByDay = (weekShifts: Shift[]) => {
       const grouped: { [key: string]: Shift[] } = {};
       weekShifts.forEach(shift => {
-        const dayName = format(shift.date.toDate(), 'eeee');
+        const dayName = format(getCorrectedLocalDate(shift.date), 'eeee');
         if (!grouped[dayName]) {
           grouped[dayName] = [];
         }
@@ -84,13 +91,13 @@ export default function Dashboard() {
       return grouped;
     };
 
-    const todayShifts = shifts.filter(s => isToday(s.date.toDate()));
+    const todayShifts = shifts.filter(s => isToday(getCorrectedLocalDate(s.date)));
     const todayAmShifts = todayShifts.filter(s => s.type === 'am');
     const todayPmShifts = todayShifts.filter(s => s.type === 'pm');
     const todayAllDayShifts = todayShifts.filter(s => s.type === 'all-day');
 
-    const allThisWeekShifts = shifts.filter(s => isWithinInterval(s.date.toDate(), { start: startOfCurrentWeek, end: endOfCurrentWeek }));
-    const allNextWeekShifts = shifts.filter(s => isWithinInterval(s.date.toDate(), { start: startOfNextWeek, end: endOfNextWeek }));
+    const allThisWeekShifts = shifts.filter(s => isWithinInterval(getCorrectedLocalDate(s.date), { start: startOfCurrentWeek, end: endOfCurrentWeek }));
+    const allNextWeekShifts = shifts.filter(s => isWithinInterval(getCorrectedLocalDate(s.date), { start: startOfNextWeek, end: endOfNextWeek }));
 
     return {
       todayAmShifts,

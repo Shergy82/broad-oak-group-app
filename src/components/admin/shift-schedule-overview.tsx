@@ -70,18 +70,23 @@ export function ShiftScheduleOverview() {
     };
   }, []);
 
+  const getCorrectedLocalDate = (date: Timestamp) => {
+    const utcDate = date.toDate();
+    return new Date(utcDate.getUTCFullYear(), utcDate.getUTCMonth(), utcDate.getUTCDate());
+  };
+
   const { thisWeekShifts, nextWeekShifts } = useMemo(() => {
     const today = new Date();
     const startOfCurrentWeek = startOfWeek(today, { weekStartsOn: 1 });
     const endOfCurrentWeek = endOfWeek(today, { weekStartsOn: 1 });
 
     const thisWeekShifts = shifts.filter(s => {
-        const shiftDate = s.date.toDate();
+        const shiftDate = getCorrectedLocalDate(s.date);
         return shiftDate >= startOfCurrentWeek && shiftDate <= endOfCurrentWeek;
     });
 
     const nextWeekShifts = shifts.filter(s => {
-        const shiftDate = s.date.toDate();
+        const shiftDate = getCorrectedLocalDate(s.date);
         const startOfNextWeek = addWeeks(startOfCurrentWeek, 1);
         const endOfNextWeek = addWeeks(endOfCurrentWeek, 1);
         return shiftDate >= startOfNextWeek && shiftDate <= endOfNextWeek;
@@ -120,7 +125,7 @@ export function ShiftScheduleOverview() {
       <TableBody>
         {weekShifts.map((shift, i) => (
           <TableRow key={shift.id} className={i % 2 === 0 ? 'bg-muted/50' : ''}>
-            <TableCell className="font-medium">{format(shift.date.toDate(), 'eeee, dd MMM')}</TableCell>
+            <TableCell className="font-medium">{format(getCorrectedLocalDate(shift.date), 'eeee, dd MMM')}</TableCell>
             <TableCell>{uidToNameMap.get(shift.userId) || shift.userId}</TableCell>
             <TableCell>{shift.address}</TableCell>
             <TableCell>{shift.task}</TableCell>
