@@ -128,7 +128,8 @@ export function FileUploader() {
             }
 
             for (let c = 1; c < rowData.length; c++) {
-                const cellValue = (rowData[c] || '').toString().trim();
+                // Replace different types of dashes with a standard hyphen for consistent parsing
+                const cellValue = (rowData[c] || '').toString().trim().replace(/[\u2012\u2013\u2014\u2015]/g, '-');
                 const shiftDate = dates[c];
 
                 if (!cellValue || !shiftDate || cellValue.toLowerCase().includes('holiday') || cellValue.toLowerCase().includes('on hold')) {
@@ -185,12 +186,12 @@ export function FileUploader() {
             toast({
                 variant: 'destructive',
                 title: 'Partial Import: Operatives Not Found',
-                description: `Imported ${shiftsAdded} shifts. The following were skipped as they are not in the user list: ${Array.from(unknownOperatives).join(', ')}. Please check spelling or add them as users.`,
+                description: `Imported ${shiftsAdded} shifts, which will appear on the assigned operatives' dashboards. The following operatives were not found and their shifts were skipped: ${Array.from(unknownOperatives).join(', ')}. Please check spelling or add them as users.`,
             });
         } else if (shiftsAdded > 0) {
             toast({
                 title: 'Import Successful',
-                description: `${shiftsAdded} shifts have been added.`,
+                description: `${shiftsAdded} shifts have been assigned to operatives and will appear on their individual dashboards.`,
             });
         } else {
             throw new Error("No valid shifts were found to import. Please check the file's content and formatting. Ensure operative names in the Excel file exactly match the names in the user list and that cells are formatted correctly ('Task - Name').");
