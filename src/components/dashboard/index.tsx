@@ -8,7 +8,7 @@ import { ShiftCard } from '@/components/dashboard/shift-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { startOfWeek, endOfWeek, startOfToday, isWithinInterval, addWeeks, format, isToday } from 'date-fns';
+import { startOfToday, format, isToday, isSameWeek, addDays } from 'date-fns';
 import type { Shift } from '@/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Clock, Sunrise, Sunset, Terminal } from 'lucide-react';
@@ -72,12 +72,6 @@ export default function Dashboard() {
       return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
     };
 
-    const today = startOfToday();
-    const startOfCurrentWeek = startOfWeek(today, { weekStartsOn: 1 });
-    const endOfCurrentWeek = endOfWeek(today, { weekStartsOn: 1 });
-    const startOfNextWeek = addWeeks(startOfCurrentWeek, 1);
-    const endOfNextWeek = addWeeks(endOfCurrentWeek, 1);
-
     const groupShiftsByDay = (weekShifts: Shift[]) => {
       const grouped: { [key: string]: Shift[] } = {};
       weekShifts.forEach(shift => {
@@ -89,14 +83,17 @@ export default function Dashboard() {
       });
       return grouped;
     };
+    
+    const today = startOfToday();
+    const nextWeekDate = addDays(today, 7);
 
     const todayShifts = shifts.filter(s => isToday(getCorrectedLocalDate(s.date)));
     const todayAmShifts = todayShifts.filter(s => s.type === 'am');
     const todayPmShifts = todayShifts.filter(s => s.type === 'pm');
     const todayAllDayShifts = todayShifts.filter(s => s.type === 'all-day');
 
-    const allThisWeekShifts = shifts.filter(s => isWithinInterval(getCorrectedLocalDate(s.date), { start: startOfCurrentWeek, end: endOfCurrentWeek }));
-    const allNextWeekShifts = shifts.filter(s => isWithinInterval(getCorrectedLocalDate(s.date), { start: startOfNextWeek, end: endOfNextWeek }));
+    const allThisWeekShifts = shifts.filter(s => isSameWeek(getCorrectedLocalDate(s.date), today, { weekStartsOn: 1 }));
+    const allNextWeekShifts = shifts.filter(s => isSameWeek(getCorrectedLocalDate(s.date), nextWeekDate, { weekStartsOn: 1 }));
 
     return {
       todayAmShifts,

@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { collection, query, where, Timestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shift, UserProfile } from '@/types';
-import { startOfWeek, endOfWeek, addWeeks, format } from 'date-fns';
+import { format, isSameWeek, addDays } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -41,12 +41,7 @@ export function ShiftScheduleOverview() {
     });
 
     // Listener for shifts
-    const today = new Date();
-    const startOfThisWeek = startOfWeek(today, { weekStartsOn: 1 });
-    const shiftsQuery = query(
-      collection(db, 'shifts'),
-      where('date', '>=', Timestamp.fromDate(startOfThisWeek))
-    );
+    const shiftsQuery = query(collection(db, 'shifts'));
     const unsubscribeShifts = onSnapshot(shiftsQuery, (snapshot) => {
       const fetchedShifts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift));
       fetchedShifts.sort((a, b) => a.date.toMillis() - b.date.toMillis());
@@ -72,26 +67,20 @@ export function ShiftScheduleOverview() {
 
   const getCorrectedLocalDate = (date: Timestamp) => {
     const d = date.toDate();
-    // Use UTC date parts to create a local date object to avoid timezone issues.
     return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
   };
 
   const { thisWeekShifts, nextWeekShifts } = useMemo(() => {
     const today = new Date();
-    const startOfCurrentWeek = startOfWeek(today, { weekStartsOn: 1 });
-    const endOfCurrentWeek = endOfWeek(today, { weekStartsOn: 1 });
+    const nextWeekDate = addDays(today, 7);
 
-    const thisWeekShifts = shifts.filter(s => {
-        const shiftDate = getCorrectedLocalDate(s.date);
-        return shiftDate >= startOfCurrentWeek && shiftDate <= endOfCurrentWeek;
-    });
+    const thisWeekShifts = shifts.filter(s => 
+        isSameWeek(getCorrectedLocalDate(s.date), today, { weekStartsOn: 1 })
+    );
 
-    const nextWeekShifts = shifts.filter(s => {
-        const shiftDate = getCorrectedLocalDate(s.date);
-        const startOfNextWeek = addWeeks(startOfCurrentWeek, 1);
-        const endOfNextWeek = addWeeks(endOfCurrentWeek, 1);
-        return shiftDate >= startOfNextWeek && shiftDate <= endOfNextWeek;
-    });
+    const nextWeekShifts = shifts.filter(s => 
+        isSameWeek(getCorrectedLocalDate(s.date), nextWeekDate, { weekStartsOn: 1 })
+    );
 
     return { thisWeekShifts, nextWeekShifts };
   }, [shifts]);
