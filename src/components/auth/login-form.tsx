@@ -54,8 +54,6 @@ export function LoginForm() {
       let errorMessage = 'An unexpected error occurred. Please try again.';
       if (error.code) {
         switch (error.code) {
-          case 'auth/user-not-found':
-          case 'auth/wrong-password':
           case 'auth/invalid-credential':
             errorMessage = 'Invalid email or password. Please try again.';
             break;
