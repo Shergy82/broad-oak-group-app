@@ -40,7 +40,16 @@ export default function Dashboard() {
         if (fetchedShifts.length === 0) {
             setShifts(mockShifts);
         } else {
-            setShifts(fetchedShifts.sort((a, b) => a.date.toMillis() - b.date.toMillis()));
+            const typeOrder = { 'am': 1, 'pm': 2, 'all-day': 3 };
+            fetchedShifts.sort((a, b) => {
+                const dateA = a.date.toMillis();
+                const dateB = b.date.toMillis();
+                if (dateA !== dateB) {
+                    return dateA - dateB;
+                }
+                return typeOrder[a.type] - typeOrder[b.type];
+            });
+            setShifts(fetchedShifts);
         }
       } catch (e: any) {
         console.error("Error fetching shifts: ", e);
@@ -59,6 +68,12 @@ export default function Dashboard() {
     fetchShifts();
   }, [user]);
 
+  const getCorrectedLocalDate = (date: Timestamp) => {
+      const d = date.toDate();
+      // Use UTC date parts to create a local date object to avoid timezone issues.
+      return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  };
+
   const { 
     todayAmShifts,
     todayPmShifts,
@@ -66,12 +81,6 @@ export default function Dashboard() {
     thisWeekShifts, 
     nextWeekShifts 
   } = useMemo(() => {
-    const getCorrectedLocalDate = (date: Timestamp) => {
-      const d = date.toDate();
-      // Use UTC date parts to create a local date object to avoid timezone issues.
-      return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-    };
-
     const groupShiftsByDay = (weekShifts: Shift[]) => {
       const grouped: { [key: string]: Shift[] } = {};
       weekShifts.forEach(shift => {
@@ -85,15 +94,22 @@ export default function Dashboard() {
     };
     
     const today = startOfToday();
-    const nextWeekDate = addDays(today, 7);
-
+    
     const todayShifts = shifts.filter(s => isToday(getCorrectedLocalDate(s.date)));
     const todayAmShifts = todayShifts.filter(s => s.type === 'am');
     const todayPmShifts = todayShifts.filter(s => s.type === 'pm');
     const todayAllDayShifts = todayShifts.filter(s => s.type === 'all-day');
 
     const allThisWeekShifts = shifts.filter(s => isSameWeek(getCorrectedLocalDate(s.date), today, { weekStartsOn: 1 }));
-    const allNextWeekShifts = shifts.filter(s => isSameWeek(getCorrectedLocalDate(s.date), nextWeekDate, { weekStartsOn: 1 }));
+    
+    const allNextWeekShifts = shifts.filter(s => {
+        const shiftDate = getCorrectedLocalDate(s.date);
+        // Get the date for the Monday of next week
+        const startOfThisWeek = addDays(today, - (today.getDay() === 0 ? 6 : today.getDay() - 1));
+        const startOfNextWeek = addDays(startOfThisWeek, 7);
+        return isSameWeek(shiftDate, startOfNextWeek, { weekStartsOn: 1 });
+    });
+
 
     return {
       todayAmShifts,
@@ -150,16 +166,7 @@ export default function Dashboard() {
                             <CardTitle>{day}</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {allDayShifts.length > 0 && (
-                                <div>
-                                    <h4 className="text-md font-semibold mb-3 flex items-center text-indigo-600 dark:text-indigo-400"><Clock className="mr-2 h-4 w-4" /> All Day</h4>
-                                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                                        {allDayShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)}
-                                    </div>
-                                </div>
-                            )}
-                            
-                            {(amShifts.length > 0 || pmShifts.length > 0) && (
+                             {(amShifts.length > 0 || pmShifts.length > 0) && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 pt-2">
                                      <div className="space-y-4">
                                         <h4 className="text-md font-semibold flex items-center text-sky-600 dark:text-sky-400"><Sunrise className="mr-2 h-4 w-4" /> AM</h4>
@@ -172,6 +179,14 @@ export default function Dashboard() {
                                         {pmShifts.length > 0 
                                             ? pmShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />) 
                                             : <p className="text-muted-foreground text-xs p-4 text-center border border-dashed rounded-lg">No PM shifts.</p>}
+                                    </div>
+                                </div>
+                            )}
+                            {allDayShifts.length > 0 && (
+                                <div>
+                                    <h4 className="text-md font-semibold mb-3 flex items-center text-indigo-600 dark:text-indigo-400"><Clock className="mr-2 h-4 w-4" /> All Day</h4>
+                                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                                        {allDayShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)}
                                     </div>
                                 </div>
                             )}
@@ -213,14 +228,6 @@ export default function Dashboard() {
           <p className="text-muted-foreground mt-4 text-center col-span-full">No shifts scheduled for today.</p>
         ) : (
           <div className="space-y-6">
-            {todayAllDayShifts.length > 0 && (
-                <Card>
-                    <CardHeader><CardTitle className="flex items-center text-indigo-600 dark:text-indigo-400"><Clock className="mr-2 h-5 w-5" /> All Day</CardTitle></CardHeader>
-                    <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {todayAllDayShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)}
-                    </CardContent>
-                </Card>
-            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                     <h3 className="text-xl font-semibold text-sky-600 dark:text-sky-400 flex items-center"><Sunrise className="mr-2 h-5 w-5" /> AM Shifts</h3>
@@ -235,6 +242,14 @@ export default function Dashboard() {
                         : <p className="text-muted-foreground text-sm p-4 text-center border border-dashed rounded-lg">No PM shifts scheduled.</p>}
                 </div>
             </div>
+            {todayAllDayShifts.length > 0 && (
+                <Card>
+                    <CardHeader><CardTitle className="flex items-center text-indigo-600 dark:text-indigo-400"><Clock className="mr-2 h-5 w-5" /> All Day</CardTitle></CardHeader>
+                    <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {todayAllDayShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)}
+                    </CardContent>
+                </Card>
+            )}
           </div>
         )}
       </TabsContent>

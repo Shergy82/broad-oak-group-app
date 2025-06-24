@@ -68,15 +68,18 @@ export function ShiftScheduleOverview() {
   const { thisWeekShifts, nextWeekShifts } = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const nextWeekDate = addDays(today, 7);
 
     const thisWeekShifts = shifts.filter(s => 
         isSameWeek(getCorrectedLocalDate(s.date), today, { weekStartsOn: 1 })
     );
 
-    const nextWeekShifts = shifts.filter(s => 
-        isSameWeek(getCorrectedLocalDate(s.date), nextWeekDate, { weekStartsOn: 1 })
-    );
+    const nextWeekShifts = shifts.filter(s => {
+        const shiftDate = getCorrectedLocalDate(s.date);
+        // Get the date for the Monday of next week
+        const startOfThisWeek = addDays(today, - (today.getDay() === 0 ? 6 : today.getDay() - 1));
+        const startOfNextWeek = addDays(startOfThisWeek, 7);
+        return isSameWeek(shiftDate, startOfNextWeek, { weekStartsOn: 1 });
+    });
 
     return { thisWeekShifts, nextWeekShifts };
   }, [shifts]);
@@ -119,7 +122,15 @@ export function ShiftScheduleOverview() {
     });
 
     shiftsByUser.forEach(userShifts => {
-        userShifts.sort((a, b) => getCorrectedLocalDate(a.date).getTime() - getCorrectedLocalDate(b.date).getTime());
+        const typeOrder = { 'am': 1, 'pm': 2, 'all-day': 3 };
+        userShifts.sort((a, b) => {
+            const dateA = getCorrectedLocalDate(a.date).getTime();
+            const dateB = getCorrectedLocalDate(b.date).getTime();
+            if (dateA !== dateB) {
+                return dateA - dateB;
+            }
+            return typeOrder[a.type] - typeOrder[b.type];
+        });
     });
 
     return (
