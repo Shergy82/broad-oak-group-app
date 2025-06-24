@@ -56,7 +56,7 @@ export function ShiftScheduleOverview() {
       console.error("Error fetching shifts: ", err);
       let errorMessage = 'Failed to fetch schedule. Please try again later.';
       if (err.code === 'permission-denied') {
-        errorMessage = "You don't have permission to view the full schedule. Please check your Firestore security rules.";
+        errorMessage = "You don't have permission to view the full schedule. This is because your project's Firestore security rules are too restrictive. Please open the `firestore.rules` file in your project, copy its contents, and paste them into the 'Rules' tab of your Cloud Firestore database in the Firebase Console.";
       } else if (err.code === 'failed-precondition') {
         errorMessage = 'Could not fetch schedule. This is likely due to a missing database index. Please check the browser console for a link to create the required index in Firebase.';
       }
@@ -135,7 +135,7 @@ export function ShiftScheduleOverview() {
           <Alert variant="destructive">
               <Terminal className="h-4 w-4" />
               <AlertTitle>Error Loading Schedule</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription style={{ whiteSpace: 'pre-wrap' }}>{error}</AlertDescription>
           </Alert>
       )
   }

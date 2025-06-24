@@ -56,7 +56,7 @@ export default function UserManagementPage() {
       toast({
         variant: 'destructive',
         title: 'Permission Error',
-        description: "Could not fetch user list. This is likely a Firestore security rule issue. Please check the instructions provided.",
+        description: "Could not fetch user list. Please open the `firestore.rules` file, copy its contents, and paste them into the 'Rules' tab of your Cloud Firestore database in the Firebase Console.",
       });
       setUsers(mockUsers);
       setLoading(false);
