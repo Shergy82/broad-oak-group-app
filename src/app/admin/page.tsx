@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { FileUploader } from '@/components/admin/file-uploader';
+import { mockUsers } from '@/lib/mock-data';
 
 export default function AdminPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -33,6 +34,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!db) {
+      setUsers(mockUsers);
       setLoading(false);
       return;
     }
@@ -44,7 +46,12 @@ export default function AdminPage() {
       querySnapshot.forEach((doc) => {
         fetchedUsers.push({ uid: doc.id, ...doc.data() } as UserProfile);
       });
-      setUsers(fetchedUsers.sort((a, b) => a.name.localeCompare(b.name)));
+      
+      if (fetchedUsers.length === 0) {
+        setUsers(mockUsers);
+      } else {
+        setUsers(fetchedUsers.sort((a, b) => a.name.localeCompare(b.name)));
+      }
       setLoading(false);
     }, (error) => {
       console.error("Error fetching users: ", error);
@@ -53,6 +60,7 @@ export default function AdminPage() {
         title: 'Permission Error',
         description: "Could not fetch the user list. This is a Firestore security rule issue. Please ensure your rules in the Firebase Console match the latest version provided. Also, verify that your logged-in user has a document in the 'users' collection with the 'role' field correctly set to 'owner' or 'admin'.",
       });
+      setUsers(mockUsers);
       setLoading(false);
     });
 

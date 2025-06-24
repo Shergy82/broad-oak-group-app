@@ -12,6 +12,7 @@ import { startOfWeek, endOfWeek, startOfToday, isWithinInterval, addWeeks, forma
 import type { Shift } from '@/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Terminal } from 'lucide-react';
+import { mockShifts } from '@/lib/mock-data';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -22,6 +23,7 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchShifts() {
       if (!isFirebaseConfigured || !db || !user) {
+        setShifts(mockShifts);
         setLoading(false);
         return;
       }
@@ -34,7 +36,12 @@ export default function Dashboard() {
         querySnapshot.forEach((doc) => {
           fetchedShifts.push({ id: doc.id, ...doc.data() } as Shift);
         });
-        setShifts(fetchedShifts.sort((a, b) => a.date.toMillis() - b.date.toMillis()));
+        
+        if (fetchedShifts.length === 0) {
+            setShifts(mockShifts);
+        } else {
+            setShifts(fetchedShifts.sort((a, b) => a.date.toMillis() - b.date.toMillis()));
+        }
       } catch (e: any) {
         console.error("Error fetching shifts: ", e);
         let errorMessage = 'Failed to fetch shifts. Please try again later.';
