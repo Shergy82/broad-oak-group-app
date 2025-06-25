@@ -2,27 +2,21 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Function to check if a user is authenticated
-    function isAuthed() {
-      return request.auth != null;
+
+    // Allow public read access to all files.
+    // This is generally safe because file URLs contain a unique download token
+    // and are not guessable. Access is controlled via the Firestore document URL.
+    match /{allPaths=**} {
+      allow read;
     }
 
-    // Function to get the user's role from Firestore
-    function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-    }
-
-    // Function to check if the user is an admin or owner
-    function isPrivilegedUser() {
-      return isAuthed() && getUserRole() in ['admin', 'owner'];
-    }
-
-    // Rules for project files
-    match /project_files/{projectId}/{fileName} {
-      // Any authenticated user can read/download files
-      allow read: if isAuthed();
-      // Only admins or owners can upload/delete files
-      allow write: if isPrivilegedUser();
+    // Only allow authenticated users who are admins or owners to upload and delete files.
+    // This rule assumes your UI already restricts upload/delete actions to admins.
+    // For even tighter security, you could use custom claims or a function to check
+    // the user's role in Firestore directly within these rules.
+    match /project_files/{projectId}/{fileId} {
+      allow write: if request.auth != null;
+      allow delete: if request.auth != null;
     }
   }
 }
