@@ -16,9 +16,11 @@ A new panel will open at the bottom of the screen. **This is the correct termina
 
 ## Step 1: Log In to Firebase
 
-This command connects your project to your Firebase account. It will open a browser window for you to log in. Run this in the built-in terminal:
+This command connects your project to your Firebase account. It will open a browser window for you to log in. Run this in the built-in terminal.
 
-```bash
+**Important:** Copy *only the text inside the box* and paste it into the terminal.
+
+```
 npx firebase login
 ```
 
@@ -29,18 +31,20 @@ VAPID keys are a secure key pair that allows your server to send messages.
 1.  **Generate Keys in the App:** Go to the `/admin` page of your running application. In the "Push Notification VAPID Keys" card, click **Generate Keys**. This will display your unique Public Key, Private Key, and a command to run. Keep this page open.
 
 2.  **Set the Public Key:** In your project's code editor, open the file named `.env.local`. Add your **Public Key** to it like this:
-    ```bash
+    ```
     NEXT_PUBLIC_VAPID_PUBLIC_KEY="PASTE_YOUR_PUBLIC_KEY_HERE"
     ```
     **Important:** You must restart your Next.js development server after saving this file.
 
-3.  **Securely Store Both Keys for the Server:** The **Private Key** is a secret and must not be saved in your code. Copy the full command provided by the key generator on the Admin page (it starts with `npx firebase functions:config:set...`) and run it in the built-in terminal. This securely stores both keys for your Firebase Function.
+3.  **Securely Store Both Keys for the Server:** The **Private Key** is a secret and must not be saved in your code. Copy the full command provided by the key generator on the Admin page (it starts with `npx firebase functions:config:set...`) and run it in the built-in terminal.
 
 ## Step 3: Deploy Your Function
 
-Finally, deploy the pre-built function to Firebase. This makes the server-side code live. Run this command from the **root directory** of your project in the built-in terminal:
+Finally, deploy the pre-built function to Firebase. This makes the server-side code live. Run this command from the **root directory** of your project in the built-in terminal.
 
-```bash
+**Important:** Copy *only the text inside the box* and paste it into the terminal.
+
+```
 npx firebase deploy --only functions
 ```
 
