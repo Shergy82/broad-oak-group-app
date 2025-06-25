@@ -1,6 +1,7 @@
 'use server';
 
 import { db } from '@/lib/firebase';
+import { collection, addDoc, Timestamp } from 'firebase/firestore';
 
 // This function will only ever run on the server.
 export async function generateVapidKeysAction(): Promise<{ publicKey: string; privateKey: string }> {
@@ -16,9 +17,18 @@ export async function sendTestShiftNotificationAction(userId: string): Promise<{
     return { success: false, error: 'User ID is required.' };
   }
 
-  // To break the user out of a frustrating permission error loop, we will
-  // bypass the actual database write. This stops the server from logging
-  // PERMISSION_DENIED errors. The client will interpret this specific
-  // error message and show a "simulated success" toast.
-  return { success: false, error: 'SIMULATED_PERMISSION_DENIED' };
+  try {
+    await addDoc(collection(db, 'shifts'), {
+      userId: userId,
+      date: Timestamp.now(),
+      type: 'all-day',
+      status: 'pending-confirmation',
+      address: 'Test Address',
+      task: 'This is a test notification shift.',
+    });
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error sending test notification:", error);
+    return { success: false, error: error.message || "An unknown error occurred." };
+  }
 }

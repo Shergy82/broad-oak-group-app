@@ -54,20 +54,16 @@ export function TestNotificationSender() {
     if (result.success) {
       toast({ title: 'Test Shift Created', description: 'A test notification will be sent to the selected user shortly.' });
     } else {
-      if (result.error && (result.error.includes('PERMISSION_DENIED') || result.error.includes('permission-denied') || result.error.includes('SIMULATED_PERMISSION_DENIED'))) {
-        toast({
-          title: 'Simulation: Notification Sent',
-          description: "Your database is currently read-only due to server permissions. This is a simulated success. To fix this for real, please follow the GCR_CLEANUP_GUIDE.md instructions.",
-          duration: 10000,
-        });
-      } else {
+        let description = `An unexpected error occurred: ${result.error || 'Unknown error'}`;
+        if (result.error && (result.error.includes('PERMISSION_DENIED') || result.error.includes('permission-denied'))) {
+            description = "You do not have permission to create shifts. Please ensure you are an admin and that the Firestore security rules are correctly deployed. Follow the GCR_CLEANUP_GUIDE.md for instructions.";
+        }
         toast({
           variant: 'destructive',
           title: 'Action Failed',
-          description: `An unexpected error occurred: ${result.error || 'Unknown error'}`,
-          duration: 10000
+          description: description,
+          duration: 10000,
         });
-      }
     }
   };
   
