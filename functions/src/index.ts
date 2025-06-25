@@ -10,6 +10,7 @@ const db = admin.firestore();
 // Helper to safely get VAPID keys from the function's configuration
 const getVapidKeys = () => {
   const config = functions.config();
+  // Check for the existence of the webpush object and its keys
   if (!config.webpush || !config.webpush.public_key || !config.webpush.private_key) {
     functions.logger.warn("VAPID keys are not configured. Skipping push notification.");
     return null;
@@ -26,7 +27,7 @@ export const sendShiftNotification = functions
   .onWrite(async (change, context) => {
     const vapidKeys = getVapidKeys();
     if (!vapidKeys) {
-      return null;
+      return null; // Exit gracefully if keys are not set
     }
 
     // Configure web-push with your VAPID keys
