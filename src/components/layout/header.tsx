@@ -9,6 +9,7 @@ import { useUserProfile } from '@/hooks/use-user-profile';
 import { Logo } from '../shared/logo';
 import { Button } from '@/components/ui/button';
 import { Briefcase, LogOut, Shield } from 'lucide-react';
+import { NotificationButton } from '../shared/notification-button';
 
 export function Header() {
   const { user } = useAuth();
@@ -44,6 +45,7 @@ export function Header() {
                 </Link>
               </Button>
             )}
+            <NotificationButton />
             <Button variant="ghost" onClick={handleSignOut}>
               <LogOut className="mr-2 h-4 w-4" />
               Logout

@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth-provider";
 import { UserProfileProvider } from "@/components/user-profile-provider";
+import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
 
 export default function RootLayout({
   children,
@@ -21,6 +22,7 @@ export default function RootLayout({
       <body className="font-body antialiased h-full">
         <AuthProvider>
           <UserProfileProvider>
+            <ServiceWorkerRegistrar />
             {children}
             <Toaster />
           </UserProfileProvider>

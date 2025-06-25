@@ -78,7 +78,7 @@ export function NotificationButton() {
       // The VAPID_PUBLIC_KEY is guaranteed to be a string here due to the check at the top of the component.
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY!),
       });
 
       // Save subscription to Firestore
