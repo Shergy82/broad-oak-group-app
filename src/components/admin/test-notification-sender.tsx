@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -47,25 +46,29 @@ export function TestNotificationSender() {
       toast({ variant: 'destructive', title: 'No User Selected', description: 'Please select a user to send a notification to.' });
       return;
     }
+
     setIsLoading(true);
-    try {
-      const result = await sendTestShiftNotificationAction(selectedUserId);
-      if (result.success) {
-        toast({ title: 'Test Shift Created', description: `A test notification will be sent to the selected user shortly.` });
-      } else {
-        throw new Error(result.error);
+    const result = await sendTestShiftNotificationAction(selectedUserId);
+    setIsLoading(false);
+
+    if (result.success) {
+      toast({ title: 'Test Shift Created', description: 'A test notification will be sent to the selected user shortly.' });
+    } else {
+      console.error('Error sending test notification:', result.error);
+      let errorMessage = 'An unexpected error occurred while creating the test shift.';
+      
+      if (result.error && result.error.includes('PERMISSION_DENIED')) {
+        errorMessage = "Permission Denied. Your Firestore security rules are blocking this action. To fix this, you must deploy the latest rules by running `npx firebase deploy --only firestore` in your terminal.";
+      } else if (result.error) {
+        errorMessage = result.error;
       }
-    } catch (error: any) {
-      console.error('Error sending test notification:', error);
-      let errorMessage = 'Failed to create test shift.';
-      if (error.message && error.message.includes('PERMISSION_DENIED')) {
-          errorMessage = "Permission Denied. Your security rules are blocking this action. Please deploy the new rules by running `npx firebase deploy --only firestore` in the terminal.";
-      } else if (error.message) {
-          errorMessage = error.message;
-      }
-      toast({ variant: 'destructive', title: 'Error Creating Test Shift', description: errorMessage });
-    } finally {
-      setIsLoading(false);
+
+      toast({ 
+        variant: 'destructive', 
+        title: 'Error Creating Test Shift', 
+        description: errorMessage,
+        duration: 15000 // Give user more time to read the command
+      });
     }
   };
   
