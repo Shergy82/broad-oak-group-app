@@ -62,8 +62,16 @@ export function NotificationButton() {
             <DialogTitle>Push Notifications Not Configured</DialogTitle>
             <DialogDescription>
               <div className="space-y-4 pt-4">
-                <p>To enable push notifications, a one-time setup is required.</p>
-                <p>An administrator needs to visit the Admin page to generate the necessary security keys and follow the on-screen instructions.</p>
+                 <p>To enable push notifications, a one-time setup is required by an administrator.</p>
+                <div className="rounded-lg border bg-muted/50 p-4">
+                  <h4 className="font-semibold text-foreground">If you have already generated keys:</h4>
+                  <ul className="list-disc pl-5 mt-2 text-sm space-y-1">
+                      <li>Make sure you have created a <strong>.env.local</strong> file in your project's root directory.</li>
+                      <li>Ensure the Public Key is saved in that file.</li>
+                      <li className="font-bold text-destructive">Crucially, you must restart the development server after saving the .env.local file.</li>
+                  </ul>
+                </div>
+                <p>If you have not generated the keys yet, please visit the Admin page to do so.</p>
               </div>
             </DialogDescription>
           </DialogHeader>
