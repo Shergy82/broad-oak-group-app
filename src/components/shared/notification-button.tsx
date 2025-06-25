@@ -31,6 +31,11 @@ export function NotificationButton() {
   const [isLoading, setIsLoading] = useState(true);
   const [isUnsupported, setIsUnsupported] = useState(false);
 
+  // If push notifications are not configured, don't render the button at all.
+  if (!VAPID_PUBLIC_KEY) {
+    return null;
+  }
+
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
       setIsUnsupported(true);
@@ -54,15 +59,6 @@ export function NotificationButton() {
       toast({ variant: 'destructive', title: 'You must be logged in to subscribe.' });
       return;
     }
-    if (!VAPID_PUBLIC_KEY) {
-      console.error('VAPID public key not found. Please set NEXT_PUBLIC_VAPID_PUBLIC_KEY in your .env.local file.');
-      toast({
-        variant: 'destructive',
-        title: 'Configuration Error',
-        description: 'Push notifications are not configured on this site.',
-      });
-      return;
-    }
 
     setIsLoading(true);
 
@@ -79,6 +75,7 @@ export function NotificationButton() {
 
     try {
       const registration = await navigator.serviceWorker.ready;
+      // The VAPID_PUBLIC_KEY is guaranteed to be a string here due to the check at the top of the component.
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
