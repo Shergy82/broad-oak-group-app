@@ -7,7 +7,6 @@ import { KeyRound, ClipboardCopy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Spinner } from '@/components/shared/spinner';
 import { generateVapidKeysAction } from '@/app/admin/actions';
-import { Input } from '@/components/ui/input';
 
 export function VapidKeyGenerator() {
   const [keys, setKeys] = useState<{ publicKey: string; privateKey: string } | null>(null);
@@ -32,19 +31,27 @@ export function VapidKeyGenerator() {
   };
   
   const copyToClipboard = (text: string, itemName: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-        toast({
-            title: 'Copied to Clipboard',
-            description: `${itemName} has been copied.`,
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            toast({
+                title: 'Copied to Clipboard',
+                description: `${itemName} has been copied.`,
+            });
+        }).catch(err => {
+            console.error('Failed to copy text: ', err);
+            toast({
+                variant: 'destructive',
+                title: 'Copy Failed',
+                description: 'Could not copy to clipboard. Please select the text and copy it manually.',
+            });
         });
-    }).catch(err => {
-        console.error('Failed to copy text: ', err);
+    } else {
         toast({
             variant: 'destructive',
-            title: 'Copy Failed',
-            description: 'Could not copy to clipboard. Please select the text and copy it manually.',
+            title: 'Clipboard Unavailable',
+            description: 'Please select the text and copy it manually. This browser does not support the Clipboard API.',
         });
-    });
+    }
   };
 
   const firebaseConfigCommand = keys ? `npx firebase functions:config:set webpush.public_key="${keys.publicKey}" webpush.private_key="${keys.privateKey}"` : '';
@@ -67,17 +74,19 @@ export function VapidKeyGenerator() {
           <div className="space-y-6 rounded-lg border bg-muted/50 p-4">
             <div className="space-y-2">
               <h3 className="font-semibold text-lg">Keys Generated Successfully</h3>
-              <p className="text-sm text-muted-foreground">Follow these steps to configure your app and server.</p>
+              <p className="text-sm text-muted-foreground">Follow these steps to configure your app and server. If a copy button fails, manually select the text below and press Ctrl+C (or Cmd+C).</p>
             </div>
             
             <div className="space-y-2">
-              <h4 className="font-mono text-sm font-semibold text-green-600 dark:text-green-400">Step 1: Configure the App</h4>
+              <h4 className="font-semibold">Step 1: Configure the App</h4>
               <p className="text-xs text-muted-foreground">
                 Copy the Public Key and add it to your <code>.env.local</code> file as <code>NEXT_PUBLIC_VAPID_PUBLIC_KEY</code>.
               </p>
-              <div className="flex w-full items-center gap-2">
-                <Input readOnly value={keys.publicKey} className="flex-1 font-mono text-xs" />
-                <Button variant="outline" size="sm" onClick={() => copyToClipboard(keys.publicKey, 'Public Key')}>
+              <div className="flex w-full items-start gap-2">
+                <pre className="flex-1 font-mono text-xs bg-background p-3 rounded-md border overflow-x-auto whitespace-pre-wrap break-all">
+                  <code>{keys.publicKey}</code>
+                </pre>
+                <Button variant="outline" size="sm" onClick={() => copyToClipboard(keys.publicKey, 'Public Key')} className="shrink-0">
                   <ClipboardCopy className="mr-2" />
                   Copy
                 </Button>
@@ -85,13 +94,15 @@ export function VapidKeyGenerator() {
             </div>
 
             <div className="space-y-2">
-              <h4 className="font-mono text-sm font-semibold text-orange-600 dark:text-orange-400">Step 2: Configure the Server</h4>
+              <h4 className="font-semibold">Step 2: Configure the Server</h4>
                <p className="text-xs text-muted-foreground">
                 The Private Key is a secret. Run the following Firebase CLI command in your terminal to store both keys securely for your server-side function.
               </p>
-              <div className="flex w-full items-center gap-2">
-                <Input readOnly value={firebaseConfigCommand} className="flex-1 font-mono text-xs" />
-                <Button variant="outline" size="sm" onClick={() => copyToClipboard(firebaseConfigCommand, 'Firebase CLI command')}>
+              <div className="flex w-full items-start gap-2">
+                <pre className="flex-1 font-mono text-xs bg-background p-3 rounded-md border overflow-x-auto whitespace-pre-wrap break-all">
+                    <code>{firebaseConfigCommand}</code>
+                </pre>
+                <Button variant="outline" size="sm" onClick={() => copyToClipboard(firebaseConfigCommand, 'Firebase CLI command')} className="shrink-0">
                   <ClipboardCopy className="mr-2" />
                   Copy
                 </Button>
