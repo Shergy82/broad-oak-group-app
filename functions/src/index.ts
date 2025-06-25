@@ -43,41 +43,48 @@ export const sendShiftNotification = functions.firestore
     const shiftId = context.params.shiftId;
     let userId: string | undefined;
     let payload: string | null = null;
-    
+    let shiftData: functions.firestore.DocumentData | undefined;
+
     // Case 1: A new shift is created
     if (!change.before.exists && change.after.exists) {
-        const shiftData = change.after.data();
-        userId = shiftData.userId;
-        if (userId) {
-            functions.logger.log(`New shift ${shiftId} created for user ${userId}.`);
-            payload = JSON.stringify({
-                title: "New Shift Assigned!",
-                body: `You have a new shift for '${shiftData.task}' at ${shiftData.address}.`,
-            });
+        shiftData = change.after.data();
+        if (shiftData) {
+            userId = shiftData.userId;
+            if (userId) {
+                functions.logger.log(`New shift ${shiftId} created for user ${userId}.`);
+                payload = JSON.stringify({
+                    title: "New Shift Assigned!",
+                    body: `You have a new shift for '${shiftData.task}' at ${shiftData.address}.`,
+                });
+            }
         }
     }
     // Case 2: A shift is updated
     else if (change.before.exists && change.after.exists) {
-        const shiftData = change.after.data();
-        userId = shiftData.userId;
-        if (userId) {
-            functions.logger.log(`Shift ${shiftId} updated for user ${userId}.`);
-            payload = JSON.stringify({
-                title: "Shift Updated!",
-                body: `Your shift for '${shiftData.task}' at ${shiftData.address} has been updated.`,
-            });
+        shiftData = change.after.data();
+        if (shiftData) {
+            userId = shiftData.userId;
+            if (userId) {
+                functions.logger.log(`Shift ${shiftId} updated for user ${userId}.`);
+                payload = JSON.stringify({
+                    title: "Shift Updated!",
+                    body: `Your shift for '${shiftData.task}' at ${shiftData.address} has been updated.`,
+                });
+            }
         }
     }
     // Case 3: A shift is deleted
     else if (change.before.exists && !change.after.exists) {
-        const shiftData = change.before.data();
-        userId = shiftData.userId;
-        if (userId) {
-            functions.logger.log(`Shift ${shiftId} deleted for user ${userId}.`);
-            payload = JSON.stringify({
-                title: "Shift Cancelled",
-                body: `Your shift for '${shiftData.task}' at ${shiftData.address} has been cancelled.`,
-            });
+        shiftData = change.before.data();
+        if (shiftData) {
+            userId = shiftData.userId;
+            if (userId) {
+                functions.logger.log(`Shift ${shiftId} deleted for user ${userId}.`);
+                payload = JSON.stringify({
+                    title: "Shift Cancelled",
+                    body: `Your shift for '${shiftData.task}' at ${shiftData.address} has been cancelled.`,
+                });
+            }
         }
     }
 
