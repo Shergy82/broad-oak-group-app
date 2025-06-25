@@ -1,6 +1,7 @@
+
 # Step-by-Step Guide: Setting Up Push Notifications
 
-This guide has been simplified to make it as easy as possible to get push notifications running. I've automated most of the setup.
+This guide has been simplified to make it as easy as possible to get push notifications running.
 
 All you need to do is run a few commands from the **built-in terminal** inside this IDE. It's very important to use the correct terminal because it's already configured for you.
 
@@ -61,4 +62,4 @@ npx firebase deploy --only functions
 
 ---
 
-**That's it!** You're done. The "install dependencies" step from the previous guide has been automated. Your application is now fully configured to send push notifications.
+**That's it!** You're done. Your application is now fully configured to send push notifications.
