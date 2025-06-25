@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { FileUploader } from '@/components/admin/file-uploader';
 import { ShiftScheduleOverview } from '@/components/admin/shift-schedule-overview';
 import { ProjectManager } from '@/components/admin/project-manager';
+import { VapidKeyGenerator } from '@/components/admin/vapid-key-generator';
 
 export default function AdminPage() {
   return (
@@ -67,6 +68,7 @@ export default function AdminPage() {
         </CardContent>
       </Card>
       <ShiftScheduleOverview />
+      <VapidKeyGenerator />
     </div>
   );
 }
