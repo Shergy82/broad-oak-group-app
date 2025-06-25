@@ -3,12 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, Timestamp } from 'firebase/firestore';
 import type { UserProfile } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { sendTestShiftNotificationAction } from '@/app/admin/actions';
 import { Spinner } from '../shared/spinner';
 import { Send } from 'lucide-react';
 import { Label } from '../ui/label';
@@ -48,18 +47,37 @@ export function TestNotificationSender() {
     }
 
     setIsLoading(true);
-    const result = await sendTestShiftNotificationAction(selectedUserId);
-    setIsLoading(false);
-
-    if (result.success) {
-      toast({ title: 'Test Shift Created', description: 'A test notification will be sent to the selected user shortly.' });
-    } else {
+    try {
+      // This client-side write will trigger the `sendShiftNotification` onWrite function on the backend.
+      // This is expected to fail if the Firestore rules have not been correctly deployed.
+      await addDoc(collection(db, 'shifts'), {
+        userId: selectedUserId,
+        date: Timestamp.now(),
+        type: 'all-day',
+        status: 'pending-confirmation',
+        address: 'Test Address',
+        task: 'Test Notification Shift',
+      });
+      toast({ title: 'Test Shift Created', description: 'The onWrite trigger will now send a notification to the selected user.' });
+    } catch (error: any) {
+      console.error('Error creating test shift:', error);
+      if (error.code === 'permission-denied') {
+        toast({
+          variant: 'destructive',
+          title: 'Permission Denied: Manual Fix Required',
+          description: "Your database rules are blocking this. Please open your project's Firebase Console, go to Firestore > Rules, and replace the content with the text from the `firestore.rules` file in your project.",
+          duration: 20000,
+        });
+      } else {
         toast({
           variant: 'destructive',
           title: 'Action Failed',
-          description: `An unexpected error occurred: ${result.error || 'Unknown error'}`,
+          description: `An unexpected error occurred: ${error.message || 'Unknown error'}`,
           duration: 10000,
         });
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
   
