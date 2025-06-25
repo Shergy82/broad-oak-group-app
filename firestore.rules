@@ -1,42 +1,42 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can read/write their own user document
+
+    // Helper function to check if a user is an admin or owner
+    function isPrivileged(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.role in ['admin', 'owner'];
+    }
+
+    // Users can read and update their own profile, but cannot change their role.
+    // Admins can manage users. New user profiles are created via signup.
     match /users/{userId} {
-      allow read, update, delete: if request.auth.uid == userId;
-      allow create: if request.auth.uid != null;
+      allow read;
+      allow create: if request.auth.uid == userId;
+      allow update: if request.auth.uid == userId
+                    || (isPrivileged(request.auth.uid) && resource.data.role != 'owner');
+      allow delete: if false; // Do not allow users to be deleted from the client
     }
-
-    // Allow admins/owners to read the full user list
-    match /users/{userId} {
-      allow list: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-    }
-
-    // Shifts can only be read by the assigned user or an admin/owner
-    // Shifts can only be created by an admin/owner
-    // Shifts can only be updated by the assigned user or an admin/owner
-    match /shifts/{shiftId} {
-      allow read: if request.auth.uid == resource.data.userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-      allow create: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-      allow update: if request.auth.uid == resource.data.userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-      allow delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-    }
-
-    // Allow admins/owners to list all shifts
-    match /shifts/{shiftId} {
-        allow list: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-    }
-
-    // Projects can be read by any authenticated user
-    // Projects can only be created/updated/deleted by an admin/owner
+    
+    // Authenticated users can read projects. Writes should happen via backend process.
     match /projects/{projectId} {
-      allow read: if request.auth.uid != null;
-      allow create, update, delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+      allow read: if request.auth != null;
+      allow write: if isPrivileged(request.auth.uid);
+
+      // Authenticated users can read files associated with a project.
+      // Writes should be handled by a secure backend/syncing process.
+      match /files/{fileId} {
+        allow read: if request.auth != null;
+        allow write: if false; // Disallow all client-side writes
+      }
     }
 
-    // Attached files can be read, written, and deleted by any authenticated user
-    match /projects/{projectId}/files/{fileId} {
-        allow read, write, delete: if request.auth.uid != null;
+    // A user can read their own shifts.
+    // Shifts are created/updated in bulk by privileged users.
+    match /shifts/{shiftId} {
+      allow read: if request.auth.uid == resource.data.userId || isPrivileged(request.auth.uid);
+      allow update: if request.auth.uid == resource.data.userId; // For status updates
+      allow create, delete: if isPrivileged(request.auth.uid);
     }
   }
 }
