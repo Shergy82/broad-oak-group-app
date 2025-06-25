@@ -5,19 +5,20 @@ import * as webpush from "web-push";
 // Initialize the Firebase Admin SDK
 admin.initializeApp();
 
-// You will set these in the next step using the Firebase CLI
-const vapidPublicKey = functions.config().webpush.public_key;
-const vapidPrivateKey = functions.config().webpush.private_key;
+// Safely access the VAPID keys from Firebase environment configuration
+const webpushConfig = functions.config().webpush;
+const vapidPublicKey = webpushConfig ? webpushConfig.public_key : undefined;
+const vapidPrivateKey = webpushConfig ? webpushConfig.private_key : undefined;
 
 // Configure the web-push library with your VAPID keys
 if (vapidPublicKey && vapidPrivateKey) {
     webpush.setVapidDetails(
-      "mailto:support@broadoakbuild.com", // Using a more realistic email
+      "mailto:support@broadoakbuild.com",
       vapidPublicKey,
       vapidPrivateKey,
     );
 } else {
-    functions.logger.warn("VAPID keys not configured. Push notifications will not work.");
+    functions.logger.warn("VAPID keys not configured. Push notifications will not work. Please complete the setup steps in PUSH_NOTIFICATIONS_GUIDE.md.");
 }
 
 
