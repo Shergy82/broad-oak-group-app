@@ -56,8 +56,7 @@ export default function ProjectsPage() {
 
   const filteredProjects = useMemo(() => {
     return projects.filter(project =>
-      project.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.bNumber?.toLowerCase().includes(searchTerm.toLowerCase())
+      project.address.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [projects, searchTerm]);
   
@@ -76,10 +75,10 @@ export default function ProjectsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Projects</CardTitle>
-            <CardDescription>Search for projects by address or B Number to view details and attached files.</CardDescription>
+            <CardDescription>Search for projects by address to view details and attached files.</CardDescription>
             <div className="pt-4">
               <Input
-                placeholder="Search by address or B Number..."
+                placeholder="Search by address..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="max-w-sm"
@@ -107,7 +106,6 @@ export default function ProjectsPage() {
                   <Card key={project.id}>
                     <CardHeader>
                       <CardTitle className="text-lg">{project.address}</CardTitle>
-                      {project.bNumber && <CardDescription>B Number: {project.bNumber}</CardDescription>}
                     </CardHeader>
                     <CardContent>
                       <ProjectFiles project={project} />

@@ -111,16 +111,13 @@ export const mockProjects: Project[] = [
   {
     id: 'proj-1',
     address: '123 Main St, Anytown',
-    bNumber: 'B-001',
   },
   {
     id: 'proj-2',
     address: '789 Pine Ln, Yourtown',
-    bNumber: 'B-002',
   },
   {
     id: 'proj-3',
     address: '212 Birch Rd, Newplace',
-    bNumber: 'B-003',
   },
 ];

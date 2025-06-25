@@ -55,21 +55,19 @@ import {
 
 function CreateProjectDialog({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
   const [address, setAddress] = useState('');
-  const [bNumber, setBNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   const handleCreateProject = async () => {
-    if (!address || !bNumber) {
-      toast({ variant: 'destructive', title: 'Missing Information', description: 'Please provide both an address and a B Number.' });
+    if (!address) {
+      toast({ variant: 'destructive', title: 'Missing Information', description: 'Please provide an address.' });
       return;
     }
     setIsLoading(true);
     try {
-      await addDoc(collection(db, 'projects'), { address, bNumber });
+      await addDoc(collection(db, 'projects'), { address });
       toast({ title: 'Success', description: 'Project created successfully.' });
       setAddress('');
-      setBNumber('');
       onOpenChange(false);
     } catch (error) {
       console.error('Error creating project:', error);
@@ -96,10 +94,6 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean, onOpenChan
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="address" className="text-right">Address</Label>
             <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} className="col-span-3" />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="bNumber" className="text-right">B Number</Label>
-            <Input id="bNumber" value={bNumber} onChange={(e) => setBNumber(e.target.value)} className="col-span-3" />
           </div>
         </div>
         <DialogFooter>
@@ -334,8 +328,7 @@ export function ProjectManager() {
 
   const filteredProjects = useMemo(() => {
     return projects.filter(project =>
-      project.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.bNumber?.toLowerCase().includes(searchTerm.toLowerCase())
+      project.address.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [projects, searchTerm]);
 
@@ -361,7 +354,6 @@ export function ProjectManager() {
           <TableHeader>
             <TableRow>
               <TableHead>Address</TableHead>
-              <TableHead>B Number</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -369,12 +361,12 @@ export function ProjectManager() {
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={3}><Skeleton className="h-8 w-full" /></TableCell>
+                  <TableCell colSpan={2}><Skeleton className="h-8 w-full" /></TableCell>
                 </TableRow>
               ))
             ) : filteredProjects.length === 0 ? (
                 <TableRow>
-                    <TableCell colSpan={3} className="h-24 text-center">
+                    <TableCell colSpan={2} className="h-24 text-center">
                         No projects found.
                     </TableCell>
                 </TableRow>
@@ -382,7 +374,6 @@ export function ProjectManager() {
               filteredProjects.map(project => (
                 <TableRow key={project.id}>
                   <TableCell className="font-medium">{project.address}</TableCell>
-                  <TableCell>{project.bNumber}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="outline" size="sm" onClick={() => handleManageFiles(project)}>
                       <FolderOpen className="mr-2" />

@@ -22,7 +22,7 @@ export interface UserProfile {
 export interface Project {
   id: string; // Firestore document ID
   address: string;
-  bNumber: string;
+  bNumber?: string;
 }
 
 export interface ProjectFile {
