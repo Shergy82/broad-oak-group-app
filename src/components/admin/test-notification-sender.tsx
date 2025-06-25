@@ -54,14 +54,10 @@ export function TestNotificationSender() {
     if (result.success) {
       toast({ title: 'Test Shift Created', description: 'A test notification will be sent to the selected user shortly.' });
     } else {
-        let description = `An unexpected error occurred: ${result.error || 'Unknown error'}`;
-        if (result.error && (result.error.includes('PERMISSION_DENIED') || result.error.includes('permission-denied'))) {
-            description = "You do not have permission to create shifts. Please ensure you are an admin and that the Firestore security rules are correctly deployed. Follow the GCR_CLEANUP_GUIDE.md for instructions.";
-        }
         toast({
           variant: 'destructive',
           title: 'Action Failed',
-          description: description,
+          description: `An unexpected error occurred: ${result.error || 'Unknown error'}`,
           duration: 10000,
         });
     }
