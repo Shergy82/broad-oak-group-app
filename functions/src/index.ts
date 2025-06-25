@@ -12,7 +12,7 @@ const vapidPrivateKey = functions.config().webpush.private_key;
 // Configure the web-push library with your VAPID keys
 if (vapidPublicKey && vapidPrivateKey) {
     webpush.setVapidDetails(
-      "mailto:your-email@example.com", // IMPORTANT: Replace with your actual contact email
+      "mailto:support@broadoakbuild.com", // Using a more realistic email
       vapidPublicKey,
       vapidPrivateKey,
     );
@@ -55,7 +55,6 @@ export const sendShiftNotification = functions.firestore
                 payload = JSON.stringify({
                     title: "New Shift Assigned!",
                     body: `You have a new shift for '${shiftData.task}' at ${shiftData.address}.`,
-                    icon: "/icons/icon-192x192.png",
                 });
             }
         }
@@ -70,7 +69,6 @@ export const sendShiftNotification = functions.firestore
                 payload = JSON.stringify({
                     title: "Shift Updated!",
                     body: `Your shift for '${shiftData.task}' at ${shiftData.address} has been updated.`,
-                    icon: "/icons/icon-192x192.png",
                 });
             }
         }
@@ -85,7 +83,6 @@ export const sendShiftNotification = functions.firestore
                 payload = JSON.stringify({
                     title: "Shift Cancelled",
                     body: `Your shift for '${shiftData.task}' at ${shiftData.address} has been cancelled.`,
-                    icon: "/icons/icon-192x192.png",
                 });
             }
         }
