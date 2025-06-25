@@ -29,6 +29,7 @@ export interface ProjectFile {
   id: string;
   name: string;
   url: string;
+  fullPath: string; // Full path in Firebase Storage for deletion
   size?: number; // Optional size in bytes
   type?: string; // Optional MIME type
   uploadedAt: Timestamp;

@@ -1,42 +1,49 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check if a user is an admin or owner
-    function isPrivileged(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.role in ['admin', 'owner'];
+    // Function to check if a user is authenticated
+    function isAuthed() {
+      return request.auth != null;
     }
 
-    // Users can read and update their own profile, but cannot change their role.
-    // Admins can manage users. New user profiles are created via signup.
-    match /users/{userId} {
-      allow read;
-      allow create: if request.auth.uid == userId;
-      allow update: if request.auth.uid == userId
-                    || (isPrivileged(request.auth.uid) && resource.data.role != 'owner');
-      allow delete: if false; // Do not allow users to be deleted from the client
+    // Function to get the user's role from their user document
+    function getUserRole(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.role;
+    }
+
+    // Function to check if the current user is an admin or owner
+    function isPrivilegedUser() {
+      return isAuthed() && getUserRole(request.auth.uid) in ['admin', 'owner'];
     }
     
-    // Authenticated users can read projects. Writes should happen via backend process.
-    match /projects/{projectId} {
-      allow read: if request.auth != null;
-      allow write: if isPrivileged(request.auth.uid);
-
-      // Authenticated users can read files associated with a project.
-      // Writes should be handled by a secure backend/syncing process.
-      match /files/{fileId} {
-        allow read: if request.auth != null;
-        allow write: if false; // Disallow all client-side writes
-      }
+    // Anyone can create their own user document on signup
+    match /users/{userId} {
+      allow read: if isAuthed();
+      allow create: if request.auth.uid == userId;
+      allow update: if isPrivilegedUser() || request.auth.uid == userId; // Allow users to update their own profile, or admins to update any.
+    }
+    
+    // Shifts can be read by their assigned user or by privileged users.
+    // Shifts can be updated by their assigned user (e.g. to confirm) or by privileged users.
+    // Shifts can only be created/deleted by privileged users (via the Excel import).
+    match /shifts/{shiftId} {
+      allow read: if isAuthed() && (resource.data.userId == request.auth.uid || isPrivilegedUser());
+      allow create: if isPrivilegedUser();
+      allow update: if isAuthed() && (resource.data.userId == request.auth.uid || isPrivilegedUser());
+      allow delete: if isPrivilegedUser();
     }
 
-    // A user can read their own shifts.
-    // Shifts are created/updated in bulk by privileged users.
-    match /shifts/{shiftId} {
-      allow read: if request.auth.uid == resource.data.userId || isPrivileged(request.auth.uid);
-      allow update: if request.auth.uid == resource.data.userId; // For status updates
-      allow create, delete: if isPrivileged(request.auth.uid);
+    // Projects and their files can be read by any authenticated user.
+    // They can only be created, updated, or deleted by privileged users.
+    match /projects/{projectId} {
+      allow read: if isAuthed();
+      allow create, update, delete: if isPrivilegedUser();
+      
+      match /files/{fileId} {
+        allow read: if isAuthed();
+        allow create, delete: if isPrivilegedUser();
+      }
     }
   }
 }
