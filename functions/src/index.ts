@@ -38,7 +38,7 @@ interface PushSubscription {
  * This function triggers whenever a document in the 'shifts' collection is written.
  * It sends a specific push notification to the user for creation, update, or deletion events.
  */
-export const sendShiftNotification = functions.firestore
+export const sendShiftNotification = functions.region("europe-west2").firestore
   .document("shifts/{shiftId}")
   .onWrite(async (change, context) => {
     const shiftId = context.params.shiftId;
