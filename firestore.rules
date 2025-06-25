@@ -3,43 +3,36 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check if a user is an admin or owner
-    function isPrivileged(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.role in ['admin', 'owner'];
-    }
-
-    // Users can be created by anyone (during sign-up).
-    // Users can read their own profile.
-    // Admins can read any user profile and update any user's role (except owner).
+    // Users can read their own profile, admins can read all profiles.
+    // Logged-in users can create their own profile.
     match /users/{userId} {
-      allow read: if request.auth.uid == userId || isPrivileged(request.auth.uid);
+      allow read: if request.auth.uid == userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
       allow create: if request.auth.uid == userId;
-      allow update: if isPrivileged(request.auth.uid) && resource.data.role != 'owner';
+      allow update: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+
+      // Rules for push notification subscriptions
+      match /pushSubscriptions/{subscriptionId} {
+        allow read, create: if request.auth.uid == userId;
+        allow delete: if request.auth.uid == userId;
+      }
     }
 
-    // Shifts can be created/deleted by admins (via Excel import).
-    // Shifts can be read by admins or by the user assigned to the shift.
-    // Users can update the status of their own shifts.
+    // Only logged-in users can read shifts.
     match /shifts/{shiftId} {
-      allow read: if isPrivileged(request.auth.uid) || request.auth.uid == resource.data.userId;
-      // Allow admin write for import
-      allow create, delete: if isPrivileged(request.auth.uid);
-      // Allow user to update status, and admin to update anything
-      allow update: if (request.auth.uid == resource.data.userId && request.resource.data.keys().hasOnly(['status'])) || isPrivileged(request.auth.uid);
+      allow read, create, update, delete: if request.auth != null;
     }
 
-    // Projects can be read by any authenticated user.
-    // Projects can be created/updated/deleted only by privileged users.
+    // Only logged-in users can read projects.
+    // Admins can create and delete projects.
     match /projects/{projectId} {
       allow read: if request.auth != null;
-      allow write: if isPrivileged(request.auth.uid);
-    }
+      allow create, delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
 
-    // Project files can be read by any authenticated user.
-    // Project files can be created/deleted only by privileged users.
-    match /projects/{projectId}/files/{fileId} {
-      allow read: if request.auth != null;
-      allow write: if isPrivileged(request.auth.uid);
+      // Files subcollection
+      match /files/{fileId} {
+        allow read: if request.auth != null;
+        allow create, delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+      }
     }
   }
 }
