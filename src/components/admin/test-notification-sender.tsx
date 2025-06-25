@@ -54,7 +54,6 @@ export function TestNotificationSender() {
     if (result.success) {
       toast({ title: 'Test Shift Created', description: 'A test notification will be sent to the selected user shortly.' });
     } else {
-      // The console.error is removed to avoid confusion. The toast is the only user feedback.
       let errorMessage = `An unexpected error occurred: ${result.error || 'Unknown error'}`;
       
       if (result.error && result.error.includes('PERMISSION_DENIED')) {

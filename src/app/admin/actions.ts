@@ -44,7 +44,7 @@ export async function sendTestShiftNotificationAction(userId: string): Promise<{
 
     return { success: true };
   } catch (error: any) {
-    console.error('Failed to create test shift document:', error);
+    // The error is now only returned, not logged, to avoid confusing overlays. The client handles the user-facing message.
     return { success: false, error: error.message || 'An unexpected error occurred.' };
   }
 }
