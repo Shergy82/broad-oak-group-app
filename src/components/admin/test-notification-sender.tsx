@@ -54,20 +54,18 @@ export function TestNotificationSender() {
     if (result.success) {
       toast({ title: 'Test Shift Created', description: 'A test notification will be sent to the selected user shortly.' });
     } else {
-      console.error('Error sending test notification:', result.error);
-      let errorMessage = 'An unexpected error occurred while creating the test shift.';
+      // The console.error is removed to avoid confusion. The toast is the only user feedback.
+      let errorMessage = `An unexpected error occurred: ${result.error || 'Unknown error'}`;
       
       if (result.error && result.error.includes('PERMISSION_DENIED')) {
-        errorMessage = "Permission Denied. Your Firestore security rules are blocking this action. To fix this, you must deploy the latest rules by running `npx firebase deploy --only firestore` in your terminal.";
-      } else if (result.error) {
-        errorMessage = result.error;
+        errorMessage = "Your server's security rules are blocking this request. This is a configuration issue, not a code error. To grant the necessary permissions, please run the following command from your project's root directory in the terminal: npx firebase deploy --only firestore";
       }
 
       toast({ 
         variant: 'destructive', 
-        title: 'Error Creating Test Shift', 
+        title: 'Action Blocked by Server', 
         description: errorMessage,
-        duration: 15000 // Give user more time to read the command
+        duration: 20000 // Give user more time to read the command
       });
     }
   };
