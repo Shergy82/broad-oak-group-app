@@ -4,7 +4,6 @@ import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
-import { getFunctions, type Functions } from "firebase/functions";
 
 // IMPORTANT: Your Firebase project configuration will be loaded from environment variables.
 const firebaseConfig = {
@@ -23,23 +22,15 @@ let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
-let functionsInstance: Functions | null = null;
 
 if (isFirebaseConfigured) {
     app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
     storage = getStorage(app);
-    
-    if (typeof window !== 'undefined') {
-        // Initialize functions only on the client-side where they are used for callable functions.
-        // This avoids initializing it on the server where it might not be needed.
-        functionsInstance = getFunctions(app, 'europe-west2'); 
-    }
-
 } else {
     // This console.error is helpful for server-side debugging
     console.error("Firebase not configured. Please check your .env.local file.");
 }
 
-export { app, auth, db, storage, functionsInstance as functions };
+export { app, auth, db, storage };
