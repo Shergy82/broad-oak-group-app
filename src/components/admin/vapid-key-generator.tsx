@@ -2,7 +2,6 @@
 'use client';
 
 import { useState } from 'react';
-import * as webPush from 'web-push';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,14 +9,33 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Copy, KeyRound, Terminal } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Spinner } from '@/components/shared/spinner';
 
 export function VapidKeyGenerator() {
   const [keys, setKeys] = useState<{ publicKey: string; privateKey: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const handleGenerateKeys = () => {
-    const vapidKeys = webPush.generateVAPIDKeys();
-    setKeys(vapidKeys);
+  const handleGenerateKeys = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/generate-vapid-keys');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch keys from server');
+      }
+      const vapidKeys = await response.json();
+      setKeys(vapidKeys);
+    } catch (error: any) {
+      console.error('Failed to generate VAPID keys:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Key Generation Failed',
+        description: error.message || 'Could not generate VAPID keys. Check the server logs.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCopy = (textToCopy: string, type: string) => {
@@ -41,9 +59,8 @@ export function VapidKeyGenerator() {
       </CardHeader>
       <CardContent className="space-y-6">
         {!keys && (
-          <Button onClick={handleGenerateKeys}>
-            <KeyRound className="mr-2" />
-            Generate Keys
+          <Button onClick={handleGenerateKeys} disabled={isLoading}>
+            {isLoading ? <Spinner /> : <><KeyRound className="mr-2 h-4 w-4" /> Generate Keys</>}
           </Button>
         )}
 
@@ -51,34 +68,34 @@ export function VapidKeyGenerator() {
           <div className="space-y-6">
             <Alert>
               <Terminal className="h-4 w-4" />
-              <AlertTitle>Action Required!</AlertTitle>
+              <AlertTitle>Action Required: One-Time Setup</AlertTitle>
               <AlertDescription>
-                You must complete both steps below for notifications to work.
+                You must complete both steps below for notifications to work. After setting the keys, deploy your functions by running `npx firebase deploy --only functions` in your terminal. For more details, see the `PUSH_NOTIFICATIONS_GUIDE.md` file.
               </AlertDescription>
             </Alert>
             
             <div className="space-y-4 p-4 border rounded-lg">
-                <h3 className="font-semibold text-lg">Step 1: Configure the Server</h3>
+                <h3 className="font-semibold text-lg">Step 1: Set Server Keys</h3>
                 <p className="text-sm text-muted-foreground">
-                    Copy this command and run it in your terminal. This securely saves your keys on the Firebase server where your function can access them.
+                    Copy this command and run it in your terminal. This securely saves your keys on the Firebase server where your cloud function can access them.
                 </p>
                 <div className="flex gap-2">
                     <Input id="cli-command" readOnly value={cliCommand} className="font-mono text-xs" />
                     <Button variant="outline" size="icon" onClick={() => handleCopy(cliCommand, 'CLI Command')}>
-                    <Copy />
+                    <Copy className="h-4 w-4" />
                     </Button>
                 </div>
             </div>
 
             <div className="space-y-4 p-4 border rounded-lg">
-                <h3 className="font-semibold text-lg">Step 2: Configure the Client App</h3>
+                <h3 className="font-semibold text-lg">Step 2: Configure Client App</h3>
                  <p className="text-sm text-muted-foreground">
                     Create a file named <code className="bg-muted px-1 py-0.5 rounded">.env.local</code> in the root of your project (if it doesn't exist) and add the following line to it. Then, restart your dev server.
                 </p>
                 <div className="flex gap-2">
                     <Input id="env-var" readOnly value={envContent} className="font-mono text-xs"/>
                     <Button variant="outline" size="icon" onClick={() => handleCopy(envContent, 'Environment Variable')}>
-                        <Copy />
+                        <Copy className="h-4 w-4" />
                     </Button>
                 </div>
             </div>
