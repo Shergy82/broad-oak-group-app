@@ -5,9 +5,8 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
-import { db, functions as functionsInstance } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { collection, addDoc } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
 import { Bell, BellRing, BellOff } from 'lucide-react';
 import { Spinner } from './spinner';
 import {
@@ -34,7 +33,7 @@ export function NotificationButton() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isUnsupported, setIsUnsupported] = useState(false);
-  const [vapidPublicKey, setVapidPublicKey] = useState<string | null>(null);
+  const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -42,42 +41,11 @@ export function NotificationButton() {
       setIsLoading(false);
       return;
     }
-
-    const fetchVapidKey = async () => {
-      if (!functionsInstance) {
-        toast({ variant: 'destructive', title: 'Firebase Not Initialized' });
-        setIsLoading(false);
-        return;
-      }
-      try {
-        const getVapidPublicKeyCallable = httpsCallable(functionsInstance, 'getVapidPublicKey');
-        const result = await getVapidPublicKeyCallable();
-        const key = (result.data as { publicKey: string }).publicKey;
-        if (!key) {
-           throw new Error("VAPID public key was not returned from the server.");
-        }
-        setVapidPublicKey(key);
-      } catch (error: any) {
-        console.error("Failed to fetch VAPID public key:", error);
-        toast({
-            variant: 'destructive',
-            title: 'Push Notification Setup Error',
-            description: "Could not fetch configuration from the server. An admin may need to generate and set the VAPID keys.",
-            duration: 10000,
-        });
-        setVapidPublicKey(''); // Set to empty string to signify failure
-      }
-    };
     
-    fetchVapidKey();
-  }, [toast]);
-  
-  useEffect(() => {
-    if (vapidPublicKey === null) return; // Key is still loading
-    
-    if (vapidPublicKey === '') { // Key fetching failed
-        setIsLoading(false);
-        return;
+    // Don't do anything if the key isn't present.
+    if (!vapidPublicKey) {
+      setIsLoading(false);
+      return;
     }
 
     const checkSubscription = async () => {
@@ -163,7 +131,7 @@ export function NotificationButton() {
       </Button>
     );
   }
-
+  
   if (!vapidPublicKey) {
       return (
         <TooltipProvider>
@@ -174,7 +142,7 @@ export function NotificationButton() {
                     </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                    <p>Notifications are not configured on the server.</p>
+                    <p>Notifications not configured. Admin must set VAPID keys.</p>
                 </TooltipContent>
             </Tooltip>
         </TooltipProvider>

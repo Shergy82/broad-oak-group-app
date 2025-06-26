@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { KeyRound, ClipboardCopy } from 'lucide-react';
+import { KeyRound, ClipboardCopy, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Spinner } from '@/components/shared/spinner';
 import { generateVapidKeysAction } from '@/app/admin/actions';
@@ -81,8 +81,17 @@ export function VapidKeyGenerator() {
             
             <div className="space-y-2">
               <h4 className="font-semibold">Step 1: Configure the App</h4>
-              <p className="text-xs text-muted-foreground">
-                Copy the full line below and paste it into your <code>.env.local</code> file. If the file doesn't exist, create it. <strong className="text-destructive">You must restart the server after saving this file.</strong>
+              <div className="text-xs text-muted-foreground space-y-2 rounded-md border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 p-3">
+                <div className="flex items-start gap-2 text-yellow-800 dark:text-yellow-200">
+                    <AlertTriangle className="h-4 w-4 mt-0.5" />
+                    <div>
+                        <p className="font-bold">CRITICAL: You MUST restart the development server after completing this step.</p>
+                        <p className="mt-1">The application will not see the new key until you stop and restart the server.</p>
+                    </div>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground pt-2">
+                Copy the full line below and paste it into your <code>.env.local</code> file. If the file doesn't exist, create it in the project's root directory.
               </p>
               <div className="flex w-full items-start gap-2">
                 <pre className="flex-1 font-mono text-xs bg-background p-3 rounded-md border overflow-x-auto whitespace-pre-wrap break-all">

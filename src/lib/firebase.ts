@@ -30,8 +30,13 @@ if (isFirebaseConfigured) {
     auth = getAuth(app);
     db = getFirestore(app);
     storage = getStorage(app);
-    // Initialize with the correct region for your functions
-    functionsInstance = getFunctions(app, 'europe-west2'); 
+    
+    if (typeof window !== 'undefined') {
+        // Initialize functions only on the client-side where they are used for callable functions.
+        // This avoids initializing it on the server where it might not be needed.
+        functionsInstance = getFunctions(app, 'europe-west2'); 
+    }
+
 } else {
     // This console.error is helpful for server-side debugging
     console.error("Firebase not configured. Please check your .env.local file.");
