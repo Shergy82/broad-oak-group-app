@@ -56,7 +56,7 @@ export function VapidKeyGenerator() {
     }
   };
 
-  const firebaseConfigCommand = keys ? `npx firebase functions:config:set WEBPUSH_PUBLIC_KEY="${keys.publicKey}" WEBPUSH_PRIVATE_KEY="${keys.privateKey}"` : '';
+  const firebaseConfigCommand = keys ? `npx firebase functions:config:set webpush_public_key="${keys.publicKey}" webpush_private_key="${keys.privateKey}"` : '';
   const deployCommand = 'npx firebase deploy --only functions';
 
   return (
