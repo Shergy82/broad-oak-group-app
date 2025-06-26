@@ -5,8 +5,9 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
-import { db } from '@/lib/firebase';
+import { db, functions } from '@/lib/firebase';
 import { collection, addDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { Bell, BellRing, BellOff } from 'lucide-react';
 import { Spinner } from './spinner';
 import {
@@ -32,36 +33,53 @@ export function NotificationButton() {
   const { toast } = useToast();
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isUnsupported, setIsUnsupported] = useState(false);
-  const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const [vapidPublicKey, setVapidPublicKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-      setIsUnsupported(true);
+      setError("Notifications not supported by this browser.");
       setIsLoading(false);
       return;
     }
     
-    // Don't do anything if the key isn't present.
-    if (!vapidPublicKey) {
-      setIsLoading(false);
-      return;
+    if (!functions) {
+        setError("Firebase not configured.");
+        setIsLoading(false);
+        return;
     }
 
-    const checkSubscription = async () => {
-      try {
-        const registration = await navigator.serviceWorker.ready;
-        const subscription = await registration.pushManager.getSubscription();
-        setIsSubscribed(!!subscription);
-      } catch (error) {
-        console.error("Error checking push subscription:", error);
-      } finally {
-        setIsLoading(false);
-      }
+    const initialize = async () => {
+        try {
+            // Fetch the public key from the backend
+            const getVapidPublicKey = httpsCallable(functions, 'getVapidPublicKey');
+            const result = await getVapidPublicKey();
+            const key = (result.data as { publicKey: string }).publicKey;
+
+            if (!key) {
+              throw new Error("VAPID public key not returned from server.");
+            }
+            
+            setVapidPublicKey(key);
+
+            // Check existing subscription
+            const registration = await navigator.serviceWorker.ready;
+            const subscription = await registration.pushManager.getSubscription();
+            setIsSubscribed(!!subscription);
+        } catch (e: any) {
+            console.error("Failed to initialize push notifications:", e);
+            if (e.code === 'not-found') {
+              setError("Notifications not configured. Admin must generate and set VAPID keys.");
+            } else {
+              setError("Could not connect to notification service.");
+            }
+        } finally {
+            setIsLoading(false);
+        }
     };
 
-    checkSubscription();
-  }, [vapidPublicKey]);
+    initialize();
+  }, []);
 
   const handleSubscribe = async () => {
     if (!user) {
@@ -120,10 +138,6 @@ export function NotificationButton() {
     }
   };
 
-  if (isUnsupported) {
-    return null;
-  }
-
   if (isLoading) {
     return (
       <Button variant="outline" size="icon" disabled>
@@ -132,7 +146,7 @@ export function NotificationButton() {
     );
   }
   
-  if (!vapidPublicKey) {
+  if (error || !vapidPublicKey) {
       return (
         <TooltipProvider>
             <Tooltip>
@@ -142,7 +156,7 @@ export function NotificationButton() {
                     </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                    <p>Notifications not configured. Admin must set VAPID keys.</p>
+                    <p>{error || "Notifications are unavailable."}</p>
                 </TooltipContent>
             </Tooltip>
         </TooltipProvider>

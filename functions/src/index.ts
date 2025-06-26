@@ -1,5 +1,4 @@
-
-import * as functions from "firebase-functions/v1";
+import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as webPush from "web-push";
 
@@ -12,7 +11,6 @@ const getVapidKeys = () => {
   const config = functions.config();
   // Check for the existence of the webpush object and its keys
   if (!config.webpush || !config.webpush.public_key || !config.webpush.private_key) {
-    functions.logger.warn("VAPID keys are not configured. Skipping push notification.");
     return null;
   }
   return {
@@ -21,13 +19,28 @@ const getVapidKeys = () => {
   };
 };
 
+export const getVapidPublicKey = functions
+  .region("europe-west2")
+  .https.onCall(() => {
+    const config = functions.config();
+    if (!config.webpush || !config.webpush.public_key) {
+      functions.logger.error("VAPID public key is not configured in Firebase Functions environment.");
+      throw new functions.https.HttpsError('not-found', 'VAPID public key not configured.');
+    }
+    return { publicKey: config.webpush.public_key };
+  });
+
 export const sendShiftNotification = functions
   .region("europe-west2") // Specify the London region
   .firestore.document("shifts/{shiftId}")
   .onWrite(async (change, context) => {
+    const shiftId = context.params.shiftId;
+    functions.logger.log(`Function triggered for shiftId: ${shiftId}`);
+
     const vapidKeys = getVapidKeys();
     if (!vapidKeys) {
-      return null; // Exit gracefully if keys are not set
+      functions.logger.error("CRITICAL: VAPID keys are not configured in Firebase Functions environment. Push notifications cannot be sent. Run the Firebase CLI command from the 'VAPID Key Generator' in the admin panel.");
+      return null;
     }
 
     // Configure web-push with your VAPID keys
@@ -37,7 +50,6 @@ export const sendShiftNotification = functions
       vapidKeys.privateKey
     );
 
-    const shiftId = context.params.shiftId;
     const shiftDataAfter = change.after.exists ? change.after.data() as admin.firestore.DocumentData : null;
     const shiftDataBefore = change.before.exists ? change.before.data() as admin.firestore.DocumentData : null;
 
@@ -63,15 +75,16 @@ export const sendShiftNotification = functions
       };
     }
     // Case 3: A shift is updated (optional, can be noisy)
-    // To keep it simple, we'll log but not send a notification for updates.
     else {
         functions.logger.log(`Shift ${shiftId} was updated, no notification sent.`);
     }
 
     if (!userId || !payload) {
-      functions.logger.log("No notification necessary for this event.");
+      functions.logger.log("No notification necessary for this event (e.g., an update).", {shiftId});
       return null;
     }
+
+    functions.logger.log(`Preparing to send notification for userId: ${userId}`);
 
     // Get all push subscriptions for the user
     const subscriptionsSnapshot = await db
@@ -81,9 +94,11 @@ export const sendShiftNotification = functions
       .get();
 
     if (subscriptionsSnapshot.empty) {
-      functions.logger.log(`User ${userId} has no subscriptions.`);
+      functions.logger.warn(`User ${userId} has no push subscriptions. Cannot send notification. Did the user subscribe in the browser?`);
       return null;
     }
+
+    functions.logger.log(`Found ${subscriptionsSnapshot.size} subscriptions for user ${userId}. Preparing to send.`);
 
     const sendPromises = subscriptionsSnapshot.docs.map((subDoc) => {
       const subscription = subDoc.data();
