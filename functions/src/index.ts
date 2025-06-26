@@ -4,12 +4,11 @@ import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import * as webPush from "web-push";
-import { defineString } from "firebase-functions/params";
 
-// Define parameters for VAPID keys using the new recommended way.
-// The values MUST be lowercase and use dot notation.
-const VAPID_PUBLIC_KEY = defineString("webpush.public_key");
-const VAPID_PRIVATE_KEY = defineString("webpush.private_key");
+// V2 functions read runtime config from process.env.
+// The key 'webpush.public_key' is automatically converted to 'WEBPUSH_PUBLIC_KEY'.
+const VAPID_PUBLIC_KEY = process.env.WEBPUSH_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = process.env.WEBPUSH_PRIVATE_KEY;
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -19,13 +18,12 @@ const db = admin.firestore();
  * This is a public key and is safe to expose.
  */
 export const getVapidPublicKey = onCall({ region: "europe-west2" }, (request) => {
-  const publicKey = VAPID_PUBLIC_KEY.value();
-  if (!publicKey) {
-    logger.error("CRITICAL: VAPID public key (webpush.public_key) not set in function configuration.");
-    throw new HttpsError('not-found', 'VAPID public key is not configured on the server.');
+  if (!VAPID_PUBLIC_KEY) {
+    logger.error("CRITICAL: VAPID public key (webpush.public_key) not set in function configuration. Please run the command from the Admin panel.");
+    throw new HttpsError('failed-precondition', 'VAPID public key is not configured on the server.');
   }
   
-  return { publicKey };
+  return { publicKey: VAPID_PUBLIC_KEY };
 });
 
 export const sendShiftNotification = onDocumentWritten(
@@ -37,18 +35,15 @@ export const sendShiftNotification = onDocumentWritten(
     const shiftId = event.params.shiftId;
     logger.log(`Function triggered for shiftId: ${shiftId}`);
 
-    const publicKey = VAPID_PUBLIC_KEY.value();
-    const privateKey = VAPID_PRIVATE_KEY.value();
-
-    if (!publicKey || !privateKey) {
+    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
       logger.error("CRITICAL: VAPID keys are not configured. Run the Firebase CLI command from the 'VAPID Key Generator' in the admin panel to set webpush.public_key and webpush.private_key.");
       return;
     }
 
     webPush.setVapidDetails(
       "mailto:example@your-project.com",
-      publicKey,
-      privateKey
+      VAPID_PUBLIC_KEY,
+      VAPID_PRIVATE_KEY
     );
 
     const shiftDataBefore = event.data?.before.data();
