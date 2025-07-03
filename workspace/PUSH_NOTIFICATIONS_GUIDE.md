@@ -5,7 +5,7 @@ This guide will walk you through the one-time setup required to get push notific
 
 ## Step 1: Deploy Your Cloud Function
 
-Before you can configure keys, you must have successfully deployed your backend function code.
+Before you can configure keys, you must have successfully deployed your backend function code. This is because the application needs to call a live function to get the security key for subscribing.
 
 1.  Open your terminal in the project's root directory.
 2.  Run the following command:
@@ -22,7 +22,7 @@ Once your function is deployed, you need to generate VAPID keys so your server c
 2.  **Generate Keys**: Find the card titled **Push Notification VAPID Keys** and click the **Generate Keys** button. This will reveal two setup steps.
 3.  **Step 2a: Configure the Server**:
     *   In the "Step 1" box on the admin page, click the **Copy** button to copy the entire `npx firebase functions:config:set ...` command.
-    *   Paste this command into your terminal and press Enter. This securely saves your keys on the Firebase server where your cloud function can access them.
+    *   Paste this command into your terminal and press Enter. This securely saves your keys on the Firebase server where your cloud function can access them. You only need to do this once.
 4.  **Step 2b: Configure the Client App**:
     *   In the "Step 2" box, click the **Copy** button for the environment variable (`NEXT_PUBLIC_VAPID_PUBLIC_KEY=...`).
     *   In the root directory of your project, create a new file named `.env.local` if it doesn't already exist.
@@ -50,3 +50,4 @@ If you are still not receiving notifications after following all the steps:
 *   **Check the Function Logs**: Go to the [Firebase Console](https://console.firebase.google.com/), select your project, navigate to **Functions** in the "Build" menu, and click the **Logs** tab. Send a test notification from the Admin page and look for any new error messages in the logs. An error saying "VAPID keys are not configured" means you missed or had an error with Step 2a.
 *   **Check Browser Permissions**: In your browser's address bar, click the lock icon to see site settings and ensure that "Notifications" are set to "Allow".
 *   **Check `.env.local`**: Ensure you correctly copied the public key into `.env.local` and that you restarted your development server afterward.
+*   **Check Callable Function Logs:** In the Firebase Console, check the logs for the `getVapidPublicKey` function. If it's erroring, it might be because the config wasn't set correctly.

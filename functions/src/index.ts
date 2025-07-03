@@ -21,6 +21,24 @@ const getVapidKeys = () => {
   };
 };
 
+/**
+ * Provides the VAPID public key to the client application.
+ * This is a public key and is safe to expose.
+ */
+export const getVapidPublicKey = functions
+  .region("europe-west2")
+  .https.onCall((data, context) => {
+    // We only need the public key from the config
+    const publicKey = functions.config().webpush?.public_key;
+    
+    if (!publicKey) {
+      functions.logger.error("CRITICAL: VAPID public key (webpush.public_key) not set in function configuration.");
+      throw new functions.https.HttpsError('not-found', 'VAPID public key is not configured on the server.');
+    }
+    
+    return { publicKey };
+  });
+
 export const sendShiftNotification = functions
   .region("europe-west2") // Specify a region for best performance
   .firestore.document("shifts/{shiftId}")

@@ -1,39 +1,45 @@
 
-// This file must be in the public folder.
+// This is the service worker file for handling push notifications.
 
 self.addEventListener('push', (event) => {
   if (!event.data) {
     console.error('Push event but no data');
     return;
   }
-
+  
   const data = event.data.json();
+  const title = data.title || 'New Notification';
   const options = {
     body: data.body,
-    icon: '/logo-192.png', // You can add a 192x192 icon in your /public folder
-    badge: '/logo-72.png', // And a 72x72 badge
-    data: {
-      url: data.data.url, // URL to open on click
-    },
+    icon: '/icon-192x192.png', // A default icon for the notification
+    badge: '/badge-72x72.png', // A badge for the notification bar
+    data: data.data, // Custom data to handle clicks
   };
-  event.waitUntil(self.registration.showNotification(data.title, options));
+
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  const urlToOpen = new URL(event.notification.data.url, self.location.origin).href;
-  
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Check if there is already a window/tab open with the target URL
-      let matchingClient = windowClients.find((client) => client.url === urlToOpen);
+  event.notification.close(); // Close the notification
 
-      // If so, focus it.
-      if (matchingClient) {
-        return matchingClient.focus();
+  const urlToOpen = event.notification.data?.url || '/';
+
+  // This opens the app to the specified URL or the root if none is specified.
+  event.waitUntil(
+    clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true,
+    }).then((clientList) => {
+      // If a window for the app is already open, focus it.
+      for (const client of clientList) {
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
       }
-      // If not, open a new tab.
-      return clients.openWindow(urlToOpen);
+      // Otherwise, open a new window.
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
     })
   );
 });
