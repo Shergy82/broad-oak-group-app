@@ -9,19 +9,34 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Copy, KeyRound, Terminal } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Spinner } from '@/components/shared/spinner';
-import * as webPush from 'web-push';
 
 export function VapidKeyGenerator() {
   const [keys, setKeys] = useState<{ publicKey: string; privateKey: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const handleGenerateKeys = () => {
+  const handleGenerateKeys = async () => {
     setIsLoading(true);
-    // VAPID key generation can safely be done on the client-side.
-    const vapidKeys = webPush.generateVAPIDKeys();
-    setKeys(vapidKeys);
-    setIsLoading(false);
+    try {
+      const response = await fetch('/api/generate-vapid-keys');
+      if (!response.ok) {
+        throw new Error('Failed to fetch keys from the server.');
+      }
+      const vapidKeys = await response.json();
+      if (vapidKeys.error) {
+        throw new Error(vapidKeys.error);
+      }
+      setKeys(vapidKeys);
+    } catch (error) {
+      console.error('Error generating VAPID keys:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Generation Failed',
+        description: 'Could not generate VAPID keys. Please check the server logs and try again.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCopy = (textToCopy: string, type: string) => {
