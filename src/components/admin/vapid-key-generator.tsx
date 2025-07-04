@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Copy, KeyRound, Terminal } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Spinner } from '@/components/shared/spinner';
+import { functions, httpsCallable } from '@/lib/firebase';
 
 export function VapidKeyGenerator() {
   const [keys, setKeys] = useState<{ publicKey: string; privateKey: string } | null>(null);
@@ -18,13 +19,15 @@ export function VapidKeyGenerator() {
   const handleGenerateKeys = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/generate-vapid-keys');
-      if (!response.ok) {
-        throw new Error('Failed to fetch keys from the server.');
+      if (!functions) {
+        throw new Error("Firebase Functions not initialized. Check your Firebase config.");
       }
-      const vapidKeys = await response.json();
-      if (vapidKeys.error) {
-        throw new Error(vapidKeys.error);
+      const generateVapidKeysFn = httpsCallable(functions, 'generateVapidKeys');
+      const result: any = await generateVapidKeysFn();
+      const vapidKeys = result.data;
+
+      if (!vapidKeys || !vapidKeys.publicKey || !vapidKeys.privateKey) {
+        throw new Error("Invalid VAPID keys received from the server.");
       }
       setKeys(vapidKeys);
     } catch (error) {
@@ -32,7 +35,7 @@ export function VapidKeyGenerator() {
       toast({
         variant: 'destructive',
         title: 'Generation Failed',
-        description: 'Could not generate VAPID keys. Please check the server logs and try again.',
+        description: 'Could not generate VAPID keys. Please check the function logs and try again.',
       });
     } finally {
       setIsLoading(false);

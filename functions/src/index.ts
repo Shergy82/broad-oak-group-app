@@ -39,6 +39,26 @@ export const getVapidPublicKey = functions
     return { publicKey };
   });
 
+/**
+ * Generates and returns a new set of VAPID keys for push notifications.
+ * This can be called from the client to initialize the setup process.
+ */
+export const generateVapidKeys = functions
+  .region("europe-west2")
+  .https.onCall((data, context) => {
+    try {
+      const vapidKeys = webPush.generateVAPIDKeys();
+      return vapidKeys;
+    } catch (error) {
+      functions.logger.error("Error generating VAPID keys:", error);
+      throw new functions.https.HttpsError(
+        "internal",
+        "Failed to generate VAPID keys on the server."
+      );
+    }
+  });
+
+
 export const sendShiftNotification = functions
   .region("europe-west2") // Specify a region for best performance
   .firestore.document("shifts/{shiftId}")
