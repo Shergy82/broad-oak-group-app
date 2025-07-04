@@ -37,11 +37,20 @@ export const sendShiftNotification = functions
   .firestore.document("shifts/{shiftId}")
   .onWrite(async (change, context) => {
     const shiftId = context.params.shiftId;
-    functions.logger.log(`Function triggered for shiftId: ${shiftId}`);
+
+    // Only trigger on CREATION of a new shift.
+    // This simplifies the logic and avoids firing on updates or deletes.
+    if (!change.after.exists || change.before.exists) {
+      functions.logger.log(`Event for shift ${shiftId} was not a creation. Skipping.`);
+      return null;
+    }
+    
+    functions.logger.log(`Function triggered for new shift creation: ${shiftId}`);
+    const shiftDataAfter = change.after.data();
 
     const vapidKeys = getVapidKeys();
     if (!vapidKeys) {
-      return;
+      return null; // Error is logged in helper
     }
 
     webPush.setVapidDetails(
@@ -50,45 +59,16 @@ export const sendShiftNotification = functions
       vapidKeys.privateKey
     );
 
-    const shiftDataBefore = change.before.exists ? change.before.data() : null;
-    const shiftDataAfter = change.after.exists ? change.after.data() : null;
-
-    let userId: string | null = null;
-    let payload: object | null = null;
-
-    if (change.after.exists && !change.before.exists) {
-      // A new shift is created
-      userId = shiftDataAfter?.userId;
-      payload = {
+    const userId: string | null = shiftDataAfter?.userId;
+    const payload: object | null = {
         title: "New Shift Assigned",
         body: `You have a new shift: ${shiftDataAfter?.task} at ${shiftDataAfter?.address}.`,
         data: { url: `/` },
-      };
-    } else if (change.after.exists && change.before.exists) {
-      // A shift is updated - check if status changed
-      if(shiftDataBefore?.status !== shiftDataAfter?.status) {
-         userId = shiftDataAfter?.userId;
-         payload = {
-            title: `Shift Updated: ${shiftDataAfter?.status}`,
-            body: `Your shift for ${shiftDataAfter?.task} is now ${shiftDataAfter?.status}.`,
-            data: { url: `/` },
-         }
-      }
-    } else if (!change.after.exists && change.before.exists) {
-      // A shift is deleted
-      userId = shiftDataBefore?.userId;
-      payload = {
-        title: "Shift Cancelled",
-        body: `Your shift for ${shiftDataBefore?.task} at ${shiftDataBefore?.address} has been cancelled.`,
-        data: { url: `/` },
-      };
-    } else {
-      functions.logger.log(`Shift ${shiftId} was updated, no notification sent.`);
-    }
+    };
 
     if (!userId || !payload) {
-      functions.logger.log("No notification necessary for this event.", {shiftId});
-      return;
+      functions.logger.log("New shift was missing a userId, cannot send notification.", {shiftId});
+      return null;
     }
 
     functions.logger.log(`Preparing to send notification for userId: ${userId}`);
@@ -101,7 +81,7 @@ export const sendShiftNotification = functions
 
     if (subscriptionsSnapshot.empty) {
       functions.logger.warn(`User ${userId} has no push subscriptions. Cannot send notification.`);
-      return;
+      return null;
     }
 
     functions.logger.log(`Found ${subscriptionsSnapshot.size} subscriptions for user ${userId}.`);
@@ -120,4 +100,5 @@ export const sendShiftNotification = functions
 
     await Promise.all(sendPromises);
     functions.logger.log(`Finished sending notifications for shift ${shiftId}.`);
+    return null;
   });
