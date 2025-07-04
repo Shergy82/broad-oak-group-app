@@ -1,4 +1,138 @@
-// This component has been temporarily disabled to ensure a stable deployment.
+
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useToast } from '@/hooks/use-toast';
+import { db } from '@/lib/firebase';
+import { collection, onSnapshot, query, addDoc, Timestamp } from 'firebase/firestore';
+import type { UserProfile } from '@/types';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Spinner } from '../shared/spinner';
+import { Send } from 'lucide-react';
+import { Label } from '../ui/label';
+import { usePushNotifications } from '@/hooks/use-push-notifications';
+
 export function TestNotificationSender() {
-  return null;
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isFetchingUsers, setIsFetchingUsers] = useState(true);
+  const { toast } = useToast();
+  const { isSupported } = usePushNotifications();
+
+  useEffect(() => {
+    if (!db) {
+        setIsFetchingUsers(false);
+        return;
+    }
+    const usersQuery = query(collection(db, 'users'));
+    const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
+      const fetchedUsers: UserProfile[] = [];
+      snapshot.forEach((doc) => {
+        fetchedUsers.push({ uid: doc.id, ...doc.data() } as UserProfile);
+      });
+      setUsers(fetchedUsers.sort((a, b) => a.name.localeCompare(b.name)));
+      setIsFetchingUsers(false);
+    }, (error) => {
+      console.error("Error fetching users:", error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch users.' });
+      setIsFetchingUsers(false);
+    });
+    return () => unsubscribe();
+  }, [toast]);
+
+  const handleSendTest = async () => {
+    if (!selectedUserId) {
+      toast({ variant: 'destructive', title: 'No User Selected', description: 'Please select a user to send a notification to.' });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await addDoc(collection(db, 'shifts'), {
+        userId: selectedUserId,
+        date: Timestamp.now(),
+        type: 'all-day',
+        status: 'pending-confirmation',
+        address: 'Test Address',
+        task: 'This is a Test Notification Shift',
+      });
+      toast({ 
+        title: 'Test Shift Created',
+        description: 'The backend function has been triggered to send a notification.',
+      });
+    } catch (error: any) {
+      console.error('Error creating test shift:', error);
+      if (error.code === 'permission-denied') {
+        toast({
+          variant: 'destructive',
+          title: 'Permission Denied',
+          description: "Your database rules are blocking this. Please check your Firestore rules in the Firebase Console.",
+          duration: 10000,
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Action Failed',
+          description: `An unexpected error occurred: ${error.message || 'Unknown error'}`,
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  if (!isSupported) {
+      return null;
+  }
+  
+  if (isFetchingUsers) {
+      return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Send a Test Notification</CardTitle>
+                <CardDescription>This will create a new "Test Shift" in the database, which triggers the notification function.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="flex items-center justify-center h-24">
+                    <Spinner />
+                </div>
+            </CardContent>
+        </Card>
+      );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Send a Test Notification</CardTitle>
+        <CardDescription>
+          This creates a temporary "Test Shift" assigned to the selected user. The creation of this shift will trigger the push notification function.
+          The user must have already subscribed to notifications in their browser to receive it.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+            <Label htmlFor="user-select">Select User</Label>
+            <Select onValueChange={setSelectedUserId} value={selectedUserId}>
+              <SelectTrigger id="user-select" className="max-w-sm">
+                <SelectValue placeholder="Select a user to notify..." />
+              </SelectTrigger>
+              <SelectContent>
+                {users.map((user) => (
+                  <SelectItem key={user.uid} value={user.uid}>
+                    {user.name} ({user.email})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+        </div>
+        <Button onClick={handleSendTest} disabled={isLoading || !selectedUserId}>
+          {isLoading ? <Spinner /> : <><Send className="mr-2"/> Send Test Notification</>}
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }
