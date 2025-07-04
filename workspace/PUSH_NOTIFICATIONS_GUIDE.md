@@ -22,6 +22,7 @@ Once your function is deployed, you need to generate VAPID keys so your server c
 2.  **Generate Keys**: Find the card titled **Push Notification VAPID Keys** and click the **Generate Keys** button. This will reveal two setup steps.
 3.  **Step 2a: Configure the Server**:
     *   In the "Step 1" box on the admin page, click the **Copy** button to copy the entire `npx firebase functions:config:set ...` command.
+    *   **Important:** The keys must be lowercase and use underscores (e.g., `webpush_public_key`). The command you copy from the UI is already formatted correctly.
     *   Paste this command into your terminal and press Enter. This securely saves your keys on the Firebase server where your cloud function can access them. You only need to do this once.
 4.  **Step 2b: Configure the Client App**:
     *   In the "Step 2" box, click the **Copy** button for the environment variable (`NEXT_PUBLIC_VAPID_PUBLIC_KEY=...`).

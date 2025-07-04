@@ -50,7 +50,7 @@ export function VapidKeyGenerator() {
     });
   };
 
-  const cliCommand = keys ? `npx firebase functions:config:set webpush.public_key="${keys.publicKey}" webpush.private_key="${keys.privateKey}"` : '';
+  const cliCommand = keys ? `npx firebase functions:config:set webpush_public_key="${keys.publicKey}" webpush_private_key="${keys.privateKey}"` : '';
   const envContent = keys ? `NEXT_PUBLIC_VAPID_PUBLIC_KEY="${keys.publicKey}"` : '';
 
   return (
@@ -81,7 +81,7 @@ export function VapidKeyGenerator() {
             <div className="space-y-4 p-4 border rounded-lg">
                 <h3 className="font-semibold text-lg">Step 1: Set Server Keys</h3>
                 <p className="text-sm text-muted-foreground">
-                    Run this command in your terminal. This securely saves your keys on the Firebase server so your backend function can use them.
+                    Run this command in your terminal. This securely saves your keys on the Firebase server so your backend function can use them. The keys must be <code className="bg-muted px-1 py-0.5 rounded">lowercase_and_with_underscores</code>.
                 </p>
                 <div className="flex gap-2">
                     <Input id="cli-command" readOnly value={cliCommand} className="font-mono text-xs" />
