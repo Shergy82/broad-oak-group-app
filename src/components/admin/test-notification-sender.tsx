@@ -9,9 +9,9 @@ import type { UserProfile } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Spinner } from '../shared/spinner';
+import { Spinner } from '@/components/shared/spinner';
 import { Send } from 'lucide-react';
-import { Label } from '../ui/label';
+import { Label } from '@/components/ui/label';
 
 export function TestNotificationSender() {
   const [users, setUsers] = useState<UserProfile[]>([]);
