@@ -29,7 +29,7 @@ export function VapidKeyGenerator() {
         setPublicKey(result.data.publicKey);
         setError(null);
       } catch (err: any) {
-        if (err.code === 'failed-precondition') {
+        if (err.code === 'not-found') {
           setError("VAPID keys are not configured on the server. Follow the steps below.");
           setPublicKey(null);
         } else {
@@ -43,7 +43,7 @@ export function VapidKeyGenerator() {
     fetchKey();
   }, []);
 
-  const cliCommand = "firebase functions:config:set webpush.public_key='YOUR_PUBLIC_KEY' webpush.private_key='YOUR_PRIVATE_KEY'";
+  const cliCommand = "firebase functions:params:set webpush_public_key='YOUR_PUBLIC_KEY' webpush_private_key='YOUR_PRIVATE_KEY'";
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(cliCommand);
