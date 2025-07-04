@@ -6,6 +6,29 @@ import * as webPush from "web-push";
 admin.initializeApp();
 const db = admin.firestore();
 
+// Define a converter for the PushSubscription type.
+// This is the modern, correct way to handle typed data with Firestore.
+// It ensures that when we fetch data, it's already in the correct shape.
+const pushSubscriptionConverter = {
+    toFirestore(subscription: webPush.PushSubscription): admin.firestore.DocumentData {
+        return { endpoint: subscription.endpoint, keys: subscription.keys };
+    },
+    fromFirestore(snapshot: admin.firestore.QueryDocumentSnapshot): webPush.PushSubscription {
+        const data = snapshot.data();
+        if (!data.endpoint || !data.keys || !data.keys.p256dh || !data.keys.auth) {
+            throw new Error("Invalid PushSubscription data from Firestore.");
+        }
+        return {
+            endpoint: data.endpoint,
+            keys: {
+                p256dh: data.keys.p256dh,
+                auth: data.keys.auth
+            }
+        };
+    }
+};
+
+
 // This is the v1 SDK syntax for onCall functions
 export const getVapidPublicKey = functions.region("europe-west2").https.onCall((data, context) => {
     const publicKey = functions.config().webpush?.public_key;
@@ -74,6 +97,7 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
       .collection("users")
       .doc(userId)
       .collection("pushSubscriptions")
+      .withConverter(pushSubscriptionConverter) // Apply the converter here
       .get();
 
     if (subscriptionsSnapshot.empty) {
@@ -84,7 +108,8 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
     functions.logger.log(`Found ${subscriptionsSnapshot.size} subscriptions for user ${userId}.`);
 
     const sendPromises = subscriptionsSnapshot.docs.map((subDoc) => {
-      const subscription = subDoc.data();
+      // Thanks to the converter, subDoc.data() is now correctly typed as PushSubscription.
+      const subscription = subDoc.data(); 
       return webPush.sendNotification(subscription, JSON.stringify(payload)).catch((error: any) => {
         functions.logger.error(`Error sending notification to user ${userId}:`, error);
         if (error.statusCode === 410 || error.statusCode === 404) {
