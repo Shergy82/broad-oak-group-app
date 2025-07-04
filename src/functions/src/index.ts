@@ -84,7 +84,15 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
     functions.logger.log(`Found ${subscriptionsSnapshot.size} subscriptions for user ${userId}.`);
 
     const sendPromises = subscriptionsSnapshot.docs.map((subDoc) => {
-      const subscription = subDoc.data() as webPush.PushSubscription;
+      const subData = subDoc.data();
+      // Explicitly construct the PushSubscription object to satisfy TypeScript
+      const subscription: webPush.PushSubscription = {
+          endpoint: subData.endpoint,
+          keys: {
+              p256dh: subData.keys.p256dh,
+              auth: subData.keys.auth,
+          },
+      };
       return webPush.sendNotification(subscription, JSON.stringify(payload)).catch((error: any) => {
         functions.logger.error(`Error sending notification to user ${userId}:`, error);
         if (error.statusCode === 410 || error.statusCode === 404) {
