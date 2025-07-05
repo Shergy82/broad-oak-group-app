@@ -30,6 +30,8 @@ export interface Project {
   manager?: string;
   createdAt?: Timestamp;
   createdBy?: string;
+  creatorId?: string;
+  nextReviewDate?: Timestamp;
 }
 
 export interface ProjectFile {

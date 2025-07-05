@@ -146,3 +146,93 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
     await Promise.all(sendPromises);
     functions.logger.log(`Finished sending notifications for shift ${shiftId}.`);
   });
+
+export const projectReviewNotifier = functions
+  .region("europe-west2")
+  .pubsub.schedule("every 24 hours")
+  .onRun(async (context) => {
+    functions.logger.log("Running daily project review notifier.");
+
+    const config = functions.config();
+    const publicKey = config.webpush?.public_key;
+    const privateKey = config.webpush?.private_key;
+
+    if (!publicKey || !privateKey) {
+      functions.logger.error("CRITICAL: VAPID keys not configured. Cannot send project review notifications.");
+      return;
+    }
+
+    webPush.setVapidDetails(
+      "mailto:example@your-project.com",
+      publicKey,
+      privateKey
+    );
+
+    const now = admin.firestore.Timestamp.now();
+    const projectsToReviewQuery = db.collection("projects").where("nextReviewDate", "<=", now);
+    
+    try {
+        const querySnapshot = await projectsToReviewQuery.get();
+        if (querySnapshot.empty) {
+            functions.logger.log("No projects due for review today.");
+            return;
+        }
+
+        functions.logger.log(`Found ${querySnapshot.size} projects to review.`);
+
+        const batch = db.batch();
+
+        for (const projectDoc of querySnapshot.docs) {
+            const projectData = projectDoc.data();
+            const { creatorId, address } = projectData;
+
+            if (!creatorId) {
+                functions.logger.warn(`Project ${projectDoc.id} (${address}) is due for review but has no creatorId. Skipping.`);
+                continue;
+            }
+
+            const payload = JSON.stringify({
+                title: "Project Review Reminder",
+                body: `It's time to review the project at ${address}. Please check if it can be archived.`,
+                data: { url: "/projects" },
+            });
+
+            const subscriptionsSnapshot = await db
+                .collection("users")
+                .doc(creatorId)
+                .collection("pushSubscriptions")
+                .withConverter(pushSubscriptionConverter)
+                .get();
+            
+            if (subscriptionsSnapshot.empty) {
+                functions.logger.warn(`Creator ${creatorId} for project ${address} has no push subscriptions.`);
+            } else {
+                functions.logger.log(`Sending review notification for project ${address} to creator ${creatorId}.`);
+                const sendPromises = subscriptionsSnapshot.docs.map((subDoc) => {
+                    const subscription = subDoc.data();
+                    return webPush.sendNotification(subscription, payload).catch((error: any) => {
+                        functions.logger.error(`Error sending notification to user ${creatorId}:`, error);
+                        if (error.statusCode === 410 || error.statusCode === 404) {
+                            functions.logger.log(`Deleting invalid subscription for user ${creatorId}.`);
+                            return subDoc.ref.delete();
+                        }
+                        return null;
+                    });
+                });
+                await Promise.all(sendPromises);
+            }
+
+            // Update the next review date for this project
+            const newReviewDate = new Date();
+            newReviewDate.setDate(newReviewDate.getDate() + 28); // 4 weeks from now
+            batch.update(projectDoc.ref, { nextReviewDate: admin.firestore.Timestamp.fromDate(newReviewDate) });
+        }
+        
+        // Commit all the project updates at once.
+        await batch.commit();
+        functions.logger.log("Finished processing project reviews and updated next review dates.");
+
+    } catch (error) {
+        functions.logger.error("Error running project review notifier:", error);
+    }
+  });

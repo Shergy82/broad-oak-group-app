@@ -14,7 +14,8 @@ import {
   addDoc,
   deleteDoc,
   doc,
-  serverTimestamp
+  serverTimestamp,
+  Timestamp
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { format } from 'date-fns';
@@ -82,10 +83,15 @@ function CreateProjectDialog({ open, onOpenChange, userProfile }: CreateProjectD
   const handleCreateProject = async (values: z.infer<typeof projectSchema>) => {
     setIsLoading(true);
     try {
+      const reviewDate = new Date();
+      reviewDate.setDate(reviewDate.getDate() + 28); // 4 weeks
+
       await addDoc(collection(db, 'projects'), {
         ...values,
         createdBy: userProfile.name,
+        creatorId: userProfile.uid,
         createdAt: serverTimestamp(),
+        nextReviewDate: Timestamp.fromDate(reviewDate),
       });
       toast({ title: 'Success', description: 'Project created successfully.' });
       form.reset();
@@ -396,6 +402,7 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
               <TableHead>Manager</TableHead>
               <TableHead>Created At</TableHead>
               <TableHead>Created By</TableHead>
+              <TableHead>Next Review</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -403,12 +410,12 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell>
+                  <TableCell colSpan={7}><Skeleton className="h-8 w-full" /></TableCell>
                 </TableRow>
               ))
             ) : filteredProjects.length === 0 ? (
                 <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
+                    <TableCell colSpan={7} className="h-24 text-center">
                         No projects found.
                     </TableCell>
                 </TableRow>
@@ -420,6 +427,7 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
                   <TableCell>{project.manager}</TableCell>
                   <TableCell>{project.createdAt ? format(project.createdAt.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
                   <TableCell>{project.createdBy ?? 'N/A'}</TableCell>
+                  <TableCell>{project.nextReviewDate ? format(project.nextReviewDate.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="outline" size="sm" onClick={() => handleManageFiles(project)}>
                       <FolderOpen className="mr-2" />
