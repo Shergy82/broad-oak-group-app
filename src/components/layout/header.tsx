@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Logo } from '../shared/logo';
 import { Button } from '@/components/ui/button';
-import { Briefcase, Calendar, LogOut, Megaphone, Shield, User, Users } from 'lucide-react';
+import { Briefcase, Calendar, LogOut, Megaphone, Shield, User, UserCog, Users } from 'lucide-react';
 import { NotificationButton } from '../shared/notification-button';
 import {
   DropdownMenu,
@@ -67,12 +67,6 @@ export function Header() {
                   <Calendar className="mr-2" />
                   <span>Dashboard</span>
                 </DropdownMenuItem>
-                {isPrivilegedUser && (
-                  <DropdownMenuItem onClick={() => router.push('/schedule')} className="cursor-pointer">
-                    <Users className="mr-2" />
-                    <span>Schedule</span>
-                  </DropdownMenuItem>
-                )}
                 <DropdownMenuItem onClick={() => router.push('/announcements')} className="cursor-pointer">
                   <Megaphone className="mr-2" />
                   <span>Announcements</span>
@@ -81,12 +75,28 @@ export function Header() {
                   <Briefcase className="mr-2" />
                   <span>Projects</span>
                 </DropdownMenuItem>
+                
                 {isPrivilegedUser && (
-                  <DropdownMenuItem onClick={() => router.push('/admin')} className="cursor-pointer">
-                    <Shield className="mr-2" />
-                    <span>Admin</span>
-                  </DropdownMenuItem>
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Admin Area</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => router.push('/schedule')} className="cursor-pointer">
+                      <Users className="mr-2" />
+                      <span>Team Schedule</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => router.push('/admin')} className="cursor-pointer">
+                      <Shield className="mr-2" />
+                      <span>Admin Panel</span>
+                    </DropdownMenuItem>
+                    {userProfile.role === 'owner' && (
+                       <DropdownMenuItem onClick={() => router.push('/admin/users')} className="cursor-pointer">
+                         <UserCog className="mr-2" />
+                         <span>User Management</span>
+                       </DropdownMenuItem>
+                    )}
+                  </>
                 )}
+
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer">
                   <LogOut className="mr-2" />

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -24,6 +25,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { mockUsers } from '@/lib/mock-data';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Terminal } from 'lucide-react';
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -32,6 +35,15 @@ export default function UserManagementPage() {
   const { toast } = useToast();
 
   useEffect(() => {
+    // The parent admin layout already handles loading state, so we just wait for a profile.
+    if (!currentUserProfile) return;
+
+    // Only fetch users if the current user is an owner.
+    if (currentUserProfile.role !== 'owner') {
+      setLoading(false);
+      return;
+    }
+    
     if (!db) {
       setUsers(mockUsers);
       setLoading(false);
@@ -56,14 +68,14 @@ export default function UserManagementPage() {
       toast({
         variant: 'destructive',
         title: 'Permission Error',
-        description: "Could not fetch user list. Please open the `firestore.rules` file, copy its contents, and paste them into the 'Rules' tab of your Cloud Firestore database in the Firebase Console.",
+        description: "Could not fetch user list. Please check Firestore security rules.",
       });
       setUsers(mockUsers);
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [toast]);
+  }, [currentUserProfile, toast]);
 
   const handleRoleChange = async (userId: string, newRole: 'user' | 'admin' | 'owner') => {
     if (!db) return;
@@ -90,10 +102,24 @@ export default function UserManagementPage() {
     if (currentUserProfile.uid === targetUser.uid) return true;
     // The designated owner's role cannot be changed
     if (targetUser.role === 'owner') return true;
-    // Admins cannot change other admins' roles
+    // Admins cannot change other admins' roles (though only owners can see this page now)
     if (currentUserProfile.role === 'admin' && targetUser.role === 'admin') return true;
 
     return false;
+  }
+
+  // The AdminLayout handles initial loading, but we add our role check here.
+  // currentUserProfile is guaranteed to be loaded by the parent layout.
+  if (currentUserProfile && currentUserProfile.role !== 'owner') {
+      return (
+          <Alert variant="destructive">
+              <Terminal className="h-4 w-4" />
+              <AlertTitle>Access Denied</AlertTitle>
+              <AlertDescription>
+                  You do not have the required permissions to view this page. Access is restricted to the account owner.
+              </AlertDescription>
+          </Alert>
+      );
   }
 
   return (
@@ -106,7 +132,7 @@ export default function UserManagementPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Date</TableHead>
+              <TableHead>Date Joined</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Phone Number</TableHead>
               <TableHead>Role</TableHead>
@@ -141,7 +167,7 @@ export default function UserManagementPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="admin" disabled={currentUserProfile?.role !== 'owner'}>Admin</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
                       </SelectContent>
                     </Select>
                   </TableCell>
