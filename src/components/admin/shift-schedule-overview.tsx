@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -146,6 +147,12 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     return { todayShifts, thisWeekShifts, nextWeekShifts };
   }, [shifts]);
 
+  const userNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    users.forEach(user => map.set(user.uid, user.name));
+    return map;
+  }, [users]);
+
   const handleAddShift = () => {
     setSelectedShift(null);
     setIsFormOpen(true);
@@ -249,27 +256,16 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     doc.save(`team_schedule_${format(generationDate, 'yyyy-MM-dd')}.pdf`);
   };
 
-
-  const renderWeekSchedule = (weekShifts: Shift[], usersForView: UserProfile[]) => {
+  const renderWeekSchedule = (weekShifts: Shift[]) => {
     if (loading) {
       return (
-        <div className="space-y-8 mt-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i}>
-              <Skeleton className="h-7 w-48 mb-4" />
-              <div className="border rounded-lg overflow-hidden">
-                <Skeleton className="h-48 w-full" />
-              </div>
-            </div>
-          ))}
+        <div className="border rounded-lg overflow-hidden mt-4">
+            <Skeleton className="h-48 w-full" />
         </div>
       );
     }
-    
-    const activeUserIdsThisWeek = new Set(weekShifts.map(s => s.userId));
-    const activeUsers = usersForView.filter(u => activeUserIdsThisWeek.has(u.uid));
 
-    if (activeUsers.length === 0) {
+    if (weekShifts.length === 0) {
       return (
         <div className="h-24 text-center flex items-center justify-center text-muted-foreground mt-4 border border-dashed rounded-lg">
           No shifts scheduled for this period.
@@ -277,122 +273,108 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
       );
     }
     
-    const shiftsByUser = new Map<string, Shift[]>();
-    weekShifts.forEach(shift => {
-        if (!shiftsByUser.has(shift.userId)) {
-            shiftsByUser.set(shift.userId, []);
-        }
-        shiftsByUser.get(shift.userId)!.push(shift);
-    });
+    const sortedShifts = [...weekShifts].sort((a, b) => {
+        const dateA = getCorrectedLocalDate(a.date).getTime();
+        const dateB = getCorrectedLocalDate(b.date).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+        
+        const nameA = userNameMap.get(a.userId) || '';
+        const nameB = userNameMap.get(b.userId) || '';
+        if (nameA !== nameB) return nameA.localeCompare(nameB);
 
-    shiftsByUser.forEach(userShifts => {
         const typeOrder = { 'am': 1, 'pm': 2, 'all-day': 3 };
-        userShifts.sort((a, b) => {
-            const dateA = getCorrectedLocalDate(a.date).getTime();
-            const dateB = getCorrectedLocalDate(b.date).getTime();
-            if (dateA !== dateB) {
-                return dateA - dateB;
-            }
-            return typeOrder[a.type] - typeOrder[b.type];
-        });
+        return typeOrder[a.type] - typeOrder[b.type];
     });
 
     return (
-      <div className="space-y-8 mt-4">
-        {activeUsers.map(user => {
-            const userShifts = shiftsByUser.get(user.uid) || [];
-            if (userShifts.length === 0) return null;
-
-            return (
-                <div key={user.uid}>
-                    <h3 className="text-lg md:text-xl font-semibold mb-3">{user.name}</h3>
-
-                    {/* Desktop Table View */}
-                    <Card className="hidden md:block">
-                        <CardContent className="p-0">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="w-[180px]">Date</TableHead>
-                                        <TableHead>Task</TableHead>
-                                        <TableHead>Address</TableHead>
-                                        <TableHead className="text-right w-[110px]">Type</TableHead>
-                                        <TableHead className="text-right w-[160px]">Status</TableHead>
-                                        {isOwner && <TableHead className="text-right w-[140px]">Actions</TableHead>}
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {userShifts.map(shift => (
-                                        <TableRow key={shift.id}>
-                                            <TableCell className="font-medium">{format(getCorrectedLocalDate(shift.date), 'eeee, MMM d')}</TableCell>
-                                            <TableCell>{shift.task}</TableCell>
-                                            <TableCell className="text-muted-foreground">{shift.address}</TableCell>
-                                            <TableCell className="text-right">
-                                                <Badge
-                                                    variant={shift.type === 'am' ? 'default' : shift.type === 'pm' ? 'secondary' : 'outline'}
-                                                    className="capitalize text-xs"
-                                                >
-                                                    {shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase()}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                {getStatusBadge(shift)}
-                                            </TableCell>
-                                            {isOwner && (
-                                                <TableCell className="text-right">
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditShift(shift)}>
-                                                        <Edit className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10" onClick={() => setShiftToDelete(shift)}>
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </TableCell>
-                                            )}
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
-
-                    {/* Mobile Card View */}
-                    <div className="space-y-4 md:hidden">
-                        {userShifts.map(shift => (
-                           <Card key={shift.id}>
-                                <CardHeader>
-                                    <div className="flex justify-between items-start gap-2">
-                                        <div>
-                                            <CardTitle className="text-base">{shift.task}</CardTitle>
-                                            <CardDescription>{shift.address}</CardDescription>
-                                        </div>
-                                        <Badge variant={shift.type === 'am' ? 'default' : shift.type === 'pm' ? 'secondary' : 'outline'} className="capitalize text-xs whitespace-nowrap">
+        <>
+            {/* Desktop Table View */}
+            <Card className="hidden md:block mt-4">
+                <CardContent className="p-0">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-[180px]">Date</TableHead>
+                                <TableHead className="w-[180px]">Operative</TableHead>
+                                <TableHead>Task &amp; Address</TableHead>
+                                <TableHead className="text-right w-[110px]">Type</TableHead>
+                                <TableHead className="text-right w-[160px]">Status</TableHead>
+                                {isOwner && <TableHead className="text-right w-[140px]">Actions</TableHead>}
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {sortedShifts.map(shift => (
+                                <TableRow key={shift.id}>
+                                    <TableCell className="font-medium">{format(getCorrectedLocalDate(shift.date), 'eeee, MMM d')}</TableCell>
+                                    <TableCell>{userNameMap.get(shift.userId) || 'Unknown'}</TableCell>
+                                    <TableCell>
+                                        <div>{shift.task}</div>
+                                        <div className="text-xs text-muted-foreground">{shift.address}</div>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <Badge
+                                            variant={shift.type === 'am' ? 'default' : shift.type === 'pm' ? 'secondary' : 'outline'}
+                                            className="capitalize text-xs"
+                                        >
                                             {shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase()}
                                         </Badge>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="text-sm text-muted-foreground">
-                                    {format(getCorrectedLocalDate(shift.date), 'eeee, MMM d')}
-                                </CardContent>
-                                <CardFooter className="p-2 bg-muted/30 flex justify-between items-center">
-                                    {getStatusBadge(shift)}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        {getStatusBadge(shift)}
+                                    </TableCell>
                                     {isOwner && (
-                                        <div className="flex items-center">
+                                        <TableCell className="text-right">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditShift(shift)}>
                                                 <Edit className="h-4 w-4" />
                                             </Button>
                                             <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10" onClick={() => setShiftToDelete(shift)}>
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
-                                        </div>
+                                        </TableCell>
                                     )}
-                                </CardFooter>
-                           </Card>
-                        ))}
-                    </div>
-                </div>
-            )
-        })}
-      </div>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+
+            {/* Mobile Card View */}
+            <div className="space-y-4 md:hidden mt-4">
+                {sortedShifts.map(shift => (
+                   <Card key={shift.id}>
+                        <CardHeader>
+                            <div className="flex justify-between items-start gap-2">
+                                <div>
+                                    <CardTitle className="text-base">{shift.task}</CardTitle>
+                                    <CardDescription>{shift.address}</CardDescription>
+                                </div>
+                                <Badge variant={shift.type === 'am' ? 'default' : shift.type === 'pm' ? 'secondary' : 'outline'} className="capitalize text-xs whitespace-nowrap">
+                                    {shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase()}
+                                </Badge>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="text-sm text-muted-foreground space-y-1">
+                            <div><strong>Operative:</strong> {userNameMap.get(shift.userId) || 'Unknown'}</div>
+                            <div><strong>Date:</strong> {format(getCorrectedLocalDate(shift.date), 'eeee, MMM d')}</div>
+                        </CardContent>
+                        <CardFooter className="p-2 bg-muted/30 flex justify-between items-center">
+                            {getStatusBadge(shift)}
+                            {isOwner && (
+                                <div className="flex items-center">
+                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditShift(shift)}>
+                                        <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10" onClick={() => setShiftToDelete(shift)}>
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            )}
+                        </CardFooter>
+                   </Card>
+                ))}
+            </div>
+        </>
     );
   };
   
@@ -410,12 +392,12 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     <>
         <Card>
         <CardHeader>
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                     <CardTitle>Team Schedule Overview</CardTitle>
                     <CardDescription>A list of all upcoming shifts for the team, grouped by operative. The schedule updates in real-time.</CardDescription>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                     {isOwner && (
                         <Button onClick={handleAddShift}>
                             <PlusCircle className="mr-2 h-4 w-4" />
@@ -424,7 +406,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                     )}
                     <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={loading}>
                         <Download className="mr-2 h-4 w-4" />
-                        Download PDF
+                        PDF
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => setRefreshKey(prev => prev + 1)}>
                         <RefreshCw className="mr-2 h-4 w-4" />
@@ -441,13 +423,13 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                 <TabsTrigger value="next-week">Next Week</TabsTrigger>
             </TabsList>
             <TabsContent value="today" className="mt-0">
-                {renderWeekSchedule(todayShifts, users)}
+                {renderWeekSchedule(todayShifts)}
             </TabsContent>
             <TabsContent value="this-week" className="mt-0">
-                {renderWeekSchedule(thisWeekShifts, users)}
+                {renderWeekSchedule(thisWeekShifts)}
             </TabsContent>
             <TabsContent value="next-week" className="mt-0">
-                {renderWeekSchedule(nextWeekShifts, users)}
+                {renderWeekSchedule(nextWeekShifts)}
             </TabsContent>
             </Tabs>
         </CardContent>
