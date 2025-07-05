@@ -10,9 +10,11 @@ service cloud.firestore {
     }
 
     // Checks if the authenticated user has the 'admin' or 'owner' role.
-    // This requires that the user can read their own profile document.
+    // This function is now robust, checking for document existence before access.
     function isPrivilegedUser() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
     }
 
     // Users Collection
