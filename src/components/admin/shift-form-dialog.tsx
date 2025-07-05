@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -164,7 +165,11 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
                             </Button>
                           </FormControl>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
+                        <PopoverContent 
+                          className="w-auto p-0" 
+                          align="start"
+                          onPointerDownOutside={(e) => e.preventDefault()}
+                        >
                           <Calendar
                             mode="single"
                             selected={field.value}
