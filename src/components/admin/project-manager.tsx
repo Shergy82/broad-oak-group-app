@@ -56,6 +56,7 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 
 
 const projectSchema = z.object({
@@ -395,53 +396,78 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
         />
       </div>
 
-      <div className="border rounded-lg">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Address</TableHead>
-              <TableHead>B Number</TableHead>
-              <TableHead>Manager</TableHead>
-              <TableHead>Created At</TableHead>
-              <TableHead>Created By</TableHead>
-              <TableHead>Next Review</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              Array.from({ length: 3 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell colSpan={7}><Skeleton className="h-8 w-full" /></TableCell>
-                </TableRow>
-              ))
-            ) : filteredProjects.length === 0 ? (
-                <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center">
-                        No projects found.
-                    </TableCell>
-                </TableRow>
-            ) : (
-              filteredProjects.map(project => (
-                <TableRow key={project.id}>
-                  <TableCell className="font-medium">{project.address}</TableCell>
-                  <TableCell>{project.bNumber}</TableCell>
-                  <TableCell>{project.manager}</TableCell>
-                  <TableCell>{project.createdAt ? format(project.createdAt.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
-                  <TableCell>{project.createdBy ?? 'N/A'}</TableCell>
-                  <TableCell>{project.nextReviewDate ? format(project.nextReviewDate.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="outline" size="sm" onClick={() => handleManageFiles(project)}>
-                      <FolderOpen className="mr-2" />
-                      Manage Files
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {loading ? (
+        <Skeleton className="h-64 w-full" />
+      ) : filteredProjects.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
+            <FolderOpen className="mx-auto h-12 w-12 text-muted-foreground" />
+            <h3 className="mt-4 text-lg font-semibold">No Projects Found</h3>
+            <p className="mb-4 mt-2 text-sm text-muted-foreground">
+                Create a new project to get started.
+            </p>
+        </div>
+      ) : (
+        <>
+            {/* Desktop Table View */}
+            <div className="border rounded-lg hidden md:block">
+                <Table>
+                <TableHeader>
+                    <TableRow>
+                    <TableHead>Address</TableHead>
+                    <TableHead>B Number</TableHead>
+                    <TableHead>Manager</TableHead>
+                    <TableHead>Created At</TableHead>
+                    <TableHead>Created By</TableHead>
+                    <TableHead>Next Review</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {filteredProjects.map(project => (
+                        <TableRow key={project.id}>
+                        <TableCell className="font-medium">{project.address}</TableCell>
+                        <TableCell>{project.bNumber}</TableCell>
+                        <TableCell>{project.manager}</TableCell>
+                        <TableCell>{project.createdAt ? format(project.createdAt.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                        <TableCell>{project.createdBy ?? 'N/A'}</TableCell>
+                        <TableCell>{project.nextReviewDate ? format(project.nextReviewDate.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                        <TableCell className="text-right">
+                            <Button variant="outline" size="sm" onClick={() => handleManageFiles(project)}>
+                            <FolderOpen className="mr-2 h-4 w-4" />
+                            Manage Files
+                            </Button>
+                        </TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+                </Table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="grid gap-4 md:hidden">
+                {filteredProjects.map(project => (
+                    <Card key={project.id}>
+                        <CardHeader>
+                            <CardTitle>{project.address}</CardTitle>
+                            <CardDescription>B-Number: {project.bNumber || 'N/A'}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="text-sm space-y-2">
+                             <div><strong>Manager:</strong> {project.manager || 'N/A'}</div>
+                             <div><strong>Created:</strong> {project.createdAt ? format(project.createdAt.toDate(), 'dd/MM/yyyy') : 'N/A'} by {project.createdBy || 'N/A'}</div>
+                             <div><strong>Next Review:</strong> {project.nextReviewDate ? format(project.nextReviewDate.toDate(), 'dd/MM/yyyy') : 'N/A'}</div>
+                        </CardContent>
+                        <CardFooter>
+                            <Button variant="outline" className="w-full" onClick={() => handleManageFiles(project)}>
+                                <FolderOpen className="mr-2 h-4 w-4" />
+                                Manage Files
+                            </Button>
+                        </CardFooter>
+                    </Card>
+                ))}
+            </div>
+        </>
+      )}
+
       {selectedProject && <FileManagerDialog project={selectedProject} open={isFileManagerOpen} onOpenChange={setFileManagerOpen} userProfile={userProfile} />}
     </div>
   );

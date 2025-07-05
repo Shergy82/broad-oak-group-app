@@ -145,7 +145,7 @@ export function ShiftCard({ shift }: ShiftCardProps) {
             </Button>
           )}
           {shift.status === 'confirmed' && (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                  <Button onClick={() => handleUpdateStatus('completed')} className="w-full bg-green-500 text-white hover:bg-green-600" disabled={isLoading}>
                     {isLoading ? <Spinner /> : <><CheckCircle2 className="mr-2 h-4 w-4" /> Complete</>}
                 </Button>

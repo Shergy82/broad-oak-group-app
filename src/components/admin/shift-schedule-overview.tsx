@@ -6,7 +6,7 @@ import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shift, UserProfile } from '@/types';
 import { addDays, format, isSameWeek, isToday } from 'date-fns';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -132,9 +132,7 @@ export function ShiftScheduleOverview() {
             <div key={i}>
               <Skeleton className="h-7 w-48 mb-4" />
               <div className="border rounded-lg overflow-hidden">
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-16 w-full border-t" />
-                <Skeleton className="h-16 w-full border-t" />
+                <Skeleton className="h-48 w-full" />
               </div>
             </div>
           ))}
@@ -182,7 +180,9 @@ export function ShiftScheduleOverview() {
             return (
                 <div key={user.uid}>
                     <h3 className="text-lg md:text-xl font-semibold mb-3">{user.name}</h3>
-                    <Card>
+
+                    {/* Desktop Table View */}
+                    <Card className="hidden md:block">
                         <CardContent className="p-0">
                             <Table>
                                 <TableHeader>
@@ -217,6 +217,31 @@ export function ShiftScheduleOverview() {
                             </Table>
                         </CardContent>
                     </Card>
+
+                    {/* Mobile Card View */}
+                    <div className="space-y-4 md:hidden">
+                        {userShifts.map(shift => (
+                           <Card key={shift.id}>
+                                <CardHeader>
+                                    <div className="flex justify-between items-start gap-2">
+                                        <div>
+                                            <CardTitle className="text-base">{shift.task}</CardTitle>
+                                            <CardDescription>{shift.address}</CardDescription>
+                                        </div>
+                                        <Badge variant={shift.type === 'am' ? 'default' : shift.type === 'pm' ? 'secondary' : 'outline'} className="capitalize text-xs whitespace-nowrap">
+                                            {shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase()}
+                                        </Badge>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="text-sm text-muted-foreground">
+                                    {format(getCorrectedLocalDate(shift.date), 'eeee, MMM d')}
+                                </CardContent>
+                                <CardFooter className="p-4 bg-muted/30 flex justify-end">
+                                    {getStatusBadge(shift)}
+                                </CardFooter>
+                           </Card>
+                        ))}
+                    </div>
                 </div>
             )
         })}
