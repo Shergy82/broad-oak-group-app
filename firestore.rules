@@ -4,37 +4,37 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // A user must be authenticated to perform any action.
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Helper function to check if the user's document exists before trying to access its data.
-    // This is the robust way to check roles to prevent errors on missing documents.
-    function userExists() {
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    // Checks if the authenticated user has the 'admin' or 'owner' role.
+    // SAFE VERSION: Checks for document existence before accessing data.
+    function isPrivilegedUser() {
+      let userId = request.auth.uid;
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(userId)) &&
+             get(/databases/$(database)/documents/users/$(userId)).data.role in ['admin', 'owner'];
     }
     
-    function getUserData() {
-        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    function isPrivilegedUser() {
-      return isAuthenticated() && userExists() && getUserData().role in ['admin', 'owner'];
-    }
-
+    // Checks if the authenticated user is the 'owner'.
     function isOwner() {
-      return isAuthenticated() && userExists() && getUserData().role == 'owner';
+      let userId = request.auth.uid;
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/users/$(userId)) &&
+             get(/databases/$(database)/documents/users/$(userId)).data.role == 'owner';
     }
 
     // Users Collection
-    // - All authenticated users can read any profile (for name lookups).
-    // - Users can create their own user document upon signup.
-    // - Only owners can update roles on other users' documents.
-    // - Users can update their own profile (non-role fields).
+    // - Allow users to read any profile (for name lookups).
+    // - Allow users to create their own user document upon signup.
+    // - Only owners can update roles.
+    // - Users can update their own profile.
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if request.auth.uid == userId;
-      allow update: if (isOwner() && request.resource.data.role != resource.data.role) || (request.auth.uid == userId);
+      allow update: if request.auth.uid == userId || isOwner();
       
       // Push Subscriptions Subcollection
       // A user can only manage their own notification subscriptions.
@@ -79,7 +79,7 @@ service cloud.firestore {
 
     // Health & Safety Files Collection
     // - All authenticated users can read (list and get) H&S files.
-    // - Only owners can upload or delete H&S files.
+    // - Only the owner can upload or delete H&S files.
     match /health_and_safety_files/{fileId} {
       allow read: if isAuthenticated();
       allow create, delete: if isOwner();

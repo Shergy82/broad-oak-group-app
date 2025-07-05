@@ -3,27 +3,42 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-
-    // Helper function to check if the user is the owner by reading their role from Firestore.
-    // This function is robust against non-existent user documents.
+    
+    // Helper function to check if the user is the 'owner'.
+    // Must be a safe read: check existence before accessing data from Firestore.
     function isOwner() {
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
-             && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+      let userId = request.auth.uid;
+      return request.auth != null && 
+             exists(/databases/$(database)/documents/users/$(userId)) &&
+             get(/databases/$(database)/documents/users/$(userId)).data.role == 'owner';
     }
     
-    // Project Files
-    // Any authenticated user can upload and read project files.
-    match /project_files/{projectId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+    // Helper function to check if the user is an 'admin' or 'owner'.
+    function isPrivilegedUser() {
+        let userId = request.auth.uid;
+        return request.auth != null && 
+             exists(/databases/$(database)/documents/users/$(userId)) &&
+             get(/databases/$(database)/documents/users/$(userId)).data.role in ['admin', 'owner'];
     }
 
-    // Health & Safety Files
-    // - Any authenticated user can read (download) files.
-    // - Only the owner can write (upload, update, delete) files.
+    // Health & Safety Files: Only owner can write, any authenticated user can read.
     match /health_and_safety_files/{allPaths=**} {
       allow read: if request.auth != null;
-      allow write: if isOwner();
+      allow write: if isOwner(); // write covers create, update, delete
+    }
+
+    // Project Files: Any authenticated user can upload. Only the uploader or a privileged user can delete.
+    match /project_files/{projectId}/{fileId} {
+      allow read: if request.auth != null;
+      // Allow create/update for any logged in user
+      allow create, update: if request.auth != null;
+      // Allow uploader or privileged user to delete
+      allow delete: if request.auth != null && (request.auth.uid == resource.metadata.uploaderId || isPrivilegedUser());
+    }
+
+    // Default deny all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }
