@@ -76,16 +76,13 @@ export function ProjectFiles({ project, userProfile }: ProjectFilesProps) {
 
   const handleFileUpload = (selectedFiles: FileList | null) => {
     if (!selectedFiles || selectedFiles.length === 0) return;
-
-    // This allows the user to select the same file again if an upload fails or they want to re-upload.
-    const fileInput = document.getElementById(`file-upload-user-${project.id}`) as HTMLInputElement;
-    if (fileInput) {
-        fileInput.value = "";
-    }
     
     setIsUploading(true);
 
-    const uploadPromises = Array.from(selectedFiles).map(file => {
+    // Make a copy of the files to process, as the original FileList can be cleared.
+    const filesToUpload = Array.from(selectedFiles);
+
+    const uploadPromises = filesToUpload.map(file => {
       const storagePath = `project_files/${project.id}/${Date.now()}-${file.name}`;
       const storageRef = ref(storage, storagePath);
       const uploadTask = uploadBytesResumable(storageRef, file);
@@ -122,9 +119,16 @@ export function ProjectFiles({ project, userProfile }: ProjectFilesProps) {
     });
 
     Promise.all(uploadPromises)
-      .then(() => toast({ title: 'Success', description: `${selectedFiles.length} file(s) uploaded successfully.` }))
+      .then(() => toast({ title: 'Success', description: `${filesToUpload.length} file(s) uploaded successfully.` }))
       .catch(() => toast({ variant: 'destructive', title: 'Upload Failed', description: 'One or more files failed to upload. Please try again.' }))
-      .finally(() => setIsUploading(false));
+      .finally(() => {
+          setIsUploading(false);
+          // This allows the user to select the same file again if an upload fails or they want to re-upload.
+          const fileInput = document.getElementById(`file-upload-user-${project.id}`) as HTMLInputElement;
+          if (fileInput) {
+              fileInput.value = "";
+          }
+      });
   };
   
   const handleDeleteFile = async (file: ProjectFile) => {
