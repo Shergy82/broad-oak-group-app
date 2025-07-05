@@ -1,49 +1,58 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Helper function to get the role of the requesting user.
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    // Helper function to check for admin or owner roles.
+    function isPrivilegedUser() {
+      let role = getUserRole();
+      return role == 'admin' || role == 'owner';
+    }
+
+    // USERS collection
+    // - Users can create their own profile on signup.
+    // - Users can read their own profile.
+    // - The 'owner' can read and update any user's profile.
     match /users/{userId} {
-      // Users can read and update their own profile
-      allow read, update: if request.auth != null && request.auth.uid == userId;
-      // Admins and Owners can read any user profile
-      allow get, list: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-      // Anyone can create a user document during sign-up
       allow create: if request.auth.uid == userId;
-      
-      // Rule for push notification subscriptions
+      allow get: if request.auth.uid == userId || getUserRole() == 'owner';
+      allow list: if getUserRole() == 'owner';
+      allow update: if getUserRole() == 'owner';
+
+      // Push Subscriptions subcollection
+      // - Users can read and write their own push subscriptions.
       match /pushSubscriptions/{subscriptionId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if request.auth.uid == userId;
       }
     }
-    
-    // Shifts can be read by their assigned user, or by admins/owners
+
+    // SHIFTS collection
+    // - Users can read shifts assigned to them.
+    // - Users can update their own shifts (to change status).
+    // - Admins and Owners have full read/write access to all shifts.
     match /shifts/{shiftId} {
-      allow read: if request.auth != null && (
-        resource.data.userId == request.auth.uid ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner']
-      );
-      
-      // Only the assigned user can update their shift (e.g. to confirm/complete it)
-      // Admins can also create/delete shifts via the Excel importer.
-      allow write: if request.auth != null && (
-        request.auth.uid == resource.data.userId ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner']
-      );
-      
-      // Allow admins to create new shifts (for test notifications)
-      allow create: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+      allow read: if resource.data.userId == request.auth.uid || isPrivilegedUser();
+      allow create, delete: if isPrivilegedUser();
+      // Allow user to update their own shift, and admins/owners to update any.
+      allow update: if (resource.data.userId == request.auth.uid) || isPrivilegedUser();
     }
 
-    // Projects and their files can be read by any authenticated user
+    // PROJECTS collection
+    // - All authenticated users can read project details and file lists.
+    // - Only Admins and Owners can create, update, or delete projects and files.
     match /projects/{projectId} {
       allow read: if request.auth != null;
-      // Only admins/owners can create/delete projects and upload files
-      allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+      allow write: if isPrivilegedUser();
 
+      // Files subcollection
       match /files/{fileId} {
         allow read: if request.auth != null;
-        allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+        allow write: if isPrivilegedUser();
       }
     }
   }
