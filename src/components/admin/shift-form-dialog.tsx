@@ -32,6 +32,13 @@ const formSchema = z.object({
   bNumber: z.string().optional(),
 });
 
+interface ShiftFormDialogProps {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    users: UserProfile[];
+    shift: Shift | null;
+}
+
 export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormDialogProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -103,19 +110,8 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="sm:max-w-[480px]"
-        onInteractOutside={(e) => {
-          // This prevents the dialog from closing when an interaction occurs within the Calendar popover.
-          // The calendar is rendered in a Radix Popover, which is portaled to the document body.
-          // Therefore, from the dialog's perspective, a click inside the calendar is an "outside" interaction.
-          // We check if the event target is within a popover content and prevent the default behavior (closing the dialog) if so.
-          if ( (e.target as HTMLElement).closest('[data-radix-popover-content]') ) {
-            e.preventDefault();
-          }
-        }}
-      >
+    <Dialog open={open} onOpenChange={onOpenChange} modal={!isDatePickerOpen}>
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit' : 'Create'} Shift</DialogTitle>
           <DialogDescription>
