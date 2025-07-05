@@ -118,16 +118,8 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="sm:max-w-[480px]"
-        onPointerDownOutside={(e) => {
-          const target = e.target as HTMLElement;
-          if (target.closest('[data-radix-popper-content-wrapper]') || target.closest('.rdp')) {
-            e.preventDefault();
-          }
-        }}
-      >
+    <Dialog open={open} onOpenChange={onOpenChange} modal={!isDatePickerOpen}>
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit' : 'Create'} Shift</DialogTitle>
           <DialogDescription>
@@ -184,7 +176,6 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
                         <PopoverContent 
                           className="w-auto p-0" 
                           align="start"
-                          onOpenAutoFocus={(e) => e.preventDefault()}
                         >
                           <Calendar
                             mode="single"
@@ -194,7 +185,6 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
                                 setDatePickerOpen(false);
                             }}
                             disabled={(date) => date < new Date("1900-01-01")}
-                            initialFocus
                           />
                         </PopoverContent>
                       </Popover>
