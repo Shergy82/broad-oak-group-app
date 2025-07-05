@@ -8,30 +8,27 @@ import {
   collection,
   addDoc,
   serverTimestamp,
-  onSnapshot,
-  query,
-  orderBy
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/shared/spinner';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, HardHat } from 'lucide-react';
-import type { UserProfile, HealthAndSafetyFile } from '@/types';
+import type { UserProfile } from '@/types';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
+import { HealthAndSafetyFileList } from '@/components/health-and-safety/file-list';
 
-function FileUploader({ userProfile, onUploadComplete }: { userProfile: UserProfile, onUploadComplete: () => void }) {
+function FileUploader({ userProfile }: { userProfile: UserProfile }) {
   const [isUploading, setIsUploading] = useState(false);
   const { toast } = useToast();
 
   const handleFileUpload = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    if (!userProfile) {
-        toast({ variant: 'destructive', title: 'Error', description: 'You must be logged in to upload files.' });
+    if (userProfile.role !== 'owner') {
+        toast({ variant: 'destructive', title: 'Permission Denied', description: 'Only the owner can upload documents.' });
         return;
     }
     setIsUploading(true);
@@ -75,12 +72,13 @@ function FileUploader({ userProfile, onUploadComplete }: { userProfile: UserProf
     Promise.all(uploadPromises)
       .then(() => {
         toast({ title: 'Success', description: `${files.length} file(s) uploaded successfully.` });
-        onUploadComplete();
+        const fileInput = document.getElementById('hs-file-upload') as HTMLInputElement;
+        if (fileInput) fileInput.value = "";
       })
       .catch((err) => {
         let description = 'One or more files failed to upload. Please try again.';
         if (err?.code?.includes('permission-denied')) {
-            description = "Permission denied. Check storage & database rules.";
+            description = "Permission denied. Please check your user role and storage & database rules.";
         }
         toast({ variant: 'destructive', title: 'Upload Failed', description, duration: 8000 });
       })
@@ -117,7 +115,7 @@ export default function HealthAndSafetyPage() {
   const { userProfile, loading: isProfileLoading } = useUserProfile();
   const router = useRouter();
   
-  const isPrivilegedUser = userProfile && ['admin', 'owner'].includes(userProfile.role);
+  const isOwner = userProfile && userProfile.role === 'owner';
 
   useEffect(() => {
     if (!isAuthLoading && !user) {
@@ -125,7 +123,9 @@ export default function HealthAndSafetyPage() {
     }
   }, [user, isAuthLoading, router]);
 
-  if (isAuthLoading || isProfileLoading) {
+  const pageIsLoading = isAuthLoading || isProfileLoading;
+
+  if (pageIsLoading) {
     return (
       <div className="flex min-h-screen w-full flex-col items-center justify-center">
         <Spinner size="lg" />
@@ -133,10 +133,11 @@ export default function HealthAndSafetyPage() {
     );
   }
 
-  if (!user) {
+  if (!user || !userProfile) {
     // This state should be brief as the effect above will redirect.
     return (
         <div className="flex min-h-screen w-full flex-col items-center justify-center">
+            <p>Redirecting to login...</p>
             <Spinner size="lg" />
         </div>
     );
@@ -149,16 +150,15 @@ export default function HealthAndSafetyPage() {
         <Card>
             <CardHeader>
                 <CardTitle>Health &amp; Safety Documents</CardTitle>
-                <CardDescription>General Health &amp; Safety documents and resources. Admins can upload new files.</CardDescription>
+                <CardDescription>
+                  General Health &amp; Safety documents and resources. 
+                  {isOwner ? " As the owner, you can upload new files." : " Only the owner can upload new files."}
+                </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                {isPrivilegedUser && userProfile ? (
+                {isOwner ? (
                     <div className="max-w-md mx-auto">
-                        <h3 className="text-lg font-semibold text-center mb-4">Upload Documents</h3>
-                        <FileUploader userProfile={userProfile} onUploadComplete={() => {
-                            const fileInput = document.getElementById('hs-file-upload') as HTMLInputElement;
-                            if (fileInput) fileInput.value = "";
-                        }} />
+                        <FileUploader userProfile={userProfile} />
                     </div>
                 ) : (
                     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
@@ -167,10 +167,13 @@ export default function HealthAndSafetyPage() {
                         <p className="mb-4 mt-2 text-sm text-muted-foreground">
                             This area is for viewing Health &amp; Safety documents.
                             <br/>
-                            Uploading is restricted to admins and owners.
+                            Uploading is restricted to the owner.
                         </p>
                     </div>
                 )}
+                
+                <HealthAndSafetyFileList userProfile={userProfile} />
+
             </CardContent>
         </Card>
       </main>
