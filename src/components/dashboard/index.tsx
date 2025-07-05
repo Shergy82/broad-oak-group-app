@@ -15,8 +15,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Clock, Download, RefreshCw, Sunrise, Sunset, Terminal } from 'lucide-react';
 import { mockShifts } from '@/lib/mock-data';
 import { Button } from '@/components/ui/button';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 const getCorrectedLocalDate = (date: { toDate: () => Date }) => {
     const d = date.toDate();
@@ -128,7 +126,10 @@ export default function Dashboard() {
     };
   }, [shifts]);
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+
     const doc = new jsPDF();
     const userName = user?.displayName || 'User';
     const generationDate = new Date();
