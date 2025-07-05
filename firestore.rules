@@ -1,59 +1,74 @@
-rules_version = '2';
 
+rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper function to get the role of the requesting user.
-    function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    // Helper function to check user role
+    function isPrivilegedUser(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.role in ['admin', 'owner'];
+    }
+    
+    function isOwner(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.role == 'owner';
     }
 
-    // Helper function to check for admin or owner roles.
-    function isPrivilegedUser() {
-      let role = getUserRole();
-      return role == 'admin' || role == 'owner';
-    }
-
-    // USERS collection
-    // - Users can create their own profile on signup.
-    // - Users can read their own profile.
-    // - The 'owner' can read and update any user's profile.
+    // Rules for the 'users' collection
     match /users/{userId} {
-      allow create: if request.auth.uid == userId;
-      allow get: if request.auth.uid == userId || getUserRole() == 'owner';
-      allow list: if getUserRole() == 'owner';
-      allow update: if getUserRole() == 'owner';
+      // Any authenticated user can create their own user document during signup.
+      allow create: if request.auth != null && request.auth.uid == userId;
+      
+      // Users can read their own profile. Privileged users can read any profile.
+      allow read: if request.auth.uid == userId || isPrivilegedUser(request.auth.uid);
+      
+      // Users can update their own non-critical data. Owners can update roles.
+      allow update: if (request.auth.uid == userId && !('role' in request.resource.data)) ||
+                       (isOwner(request.auth.uid) && request.resource.data.role != 'owner');
+                       
+      // Nobody can delete users from the client. This should be done via the Admin SDK.
+      allow delete: if false;
 
-      // Push Subscriptions subcollection
-      // - Users can read and write their own push subscriptions.
+      // Rules for user-specific push subscriptions
       match /pushSubscriptions/{subscriptionId} {
-        allow read, write: if request.auth.uid == userId;
+        // A user can only manage their own subscriptions.
+        allow read, write, delete: if request.auth.uid == userId;
       }
     }
 
-    // SHIFTS collection
-    // - Users can read shifts assigned to them.
-    // - Users can update their own shifts (to change status).
-    // - Admins and Owners have full read/write access to all shifts.
+    // Rules for the 'shifts' collection
     match /shifts/{shiftId} {
-      allow read: if resource.data.userId == request.auth.uid || isPrivilegedUser();
-      allow create, delete: if isPrivilegedUser();
-      // Allow user to update their own shift, and admins/owners to update any.
-      allow update: if (resource.data.userId == request.auth.uid) || isPrivilegedUser();
+      // Only privileged users can create shifts (e.g., via Excel import)
+      allow create: if isPrivilegedUser(request.auth.uid);
+
+      // Users can read their own shifts. Privileged users can read all shifts.
+      allow read: if resource.data.userId == request.auth.uid || isPrivilegedUser(request.auth.uid);
+      
+      // A user can update their own shift's status. Privileged users can update any shift.
+      allow update: if (resource.data.userId == request.auth.uid && !isPrivilegedUser(request.auth.uid)) || isPrivilegedUser(request.auth.uid);
+      
+      // Only privileged users can delete shifts.
+      allow delete: if isPrivilegedUser(request.auth.uid);
+    }
+    
+    // Rules for 'announcements'
+    match /announcements/{announcementId} {
+        // Any authenticated user can read announcements
+        allow read: if request.auth != null;
+        // Only admins/owners can create, update, or delete them
+        allow write: if isPrivilegedUser(request.auth.uid);
     }
 
-    // PROJECTS collection
-    // - All authenticated users can read project details and file lists.
-    // - Only Admins and Owners can create, update, or delete projects and files.
+    // Rules for 'projects' and their files
     match /projects/{projectId} {
-      allow read: if request.auth != null;
-      allow write: if isPrivilegedUser();
-
-      // Files subcollection
-      match /files/{fileId} {
+        // Any authenticated user can read project details
         allow read: if request.auth != null;
-        allow write: if isPrivilegedUser();
-      }
+        // Only admins/owners can create, update, or delete project documents
+        allow write: if isPrivilegedUser(request.auth.uid);
+
+        match /files/{fileId} {
+            // Any authenticated user can read file details
+            allow read: if request.auth != null;
+            // Only admins/owners can add or delete files
+            allow write: if isPrivilegedUser(request.auth.uid);
+        }
     }
   }
 }
