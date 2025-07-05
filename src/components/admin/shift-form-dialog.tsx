@@ -119,15 +119,17 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent 
+      <DialogContent
         className="sm:max-w-[480px]"
-        onInteractOutside={(e) => {
+        onPointerDownOutside={(e) => {
           const target = e.target as HTMLElement;
-          if (target.closest('.rdp') || target.closest('[data-radix-popper-content-wrapper]')) {
+          // This is the key change. We check if the click was inside a popover.
+          // The Select dropdown and the Calendar are both popovers.
+          if (target.closest('[data-radix-popper-content-wrapper]')) {
             e.preventDefault();
           }
         }}
-        >
+      >
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit' : 'Create'} Shift</DialogTitle>
           <DialogDescription>
@@ -181,16 +183,13 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
                             </Button>
                           </FormControl>
                         </PopoverTrigger>
-                        <PopoverContent 
-                          className="w-auto p-0" 
-                          align="start"
-                        >
+                        <PopoverContent className="w-auto p-0" align="start">
                           <Calendar
                             mode="single"
                             selected={field.value}
                             onSelect={(date) => {
                                 field.onChange(date);
-                                setDatePickerOpen(false);
+                                setDatePickerOpen(false); // Close the calendar on selection
                             }}
                             initialFocus
                           />
