@@ -1,50 +1,52 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- User Management ---
+    function isOwner() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+    }
+    function isAdmin() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+    }
+    function isSelf(userId) {
+      return request.auth.uid == userId;
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
     match /users/{userId} {
-      // Any authenticated user can create a user document (sign up).
-      allow create: if request.auth != null;
-      // Users can read, update, or delete their own document.
-      allow read, update, delete: if request.auth != null && request.auth.uid == userId;
-      // An owner can update any user's document (for role changes).
-      allow update: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+      allow read: if isSignedIn();
+      allow create: if isSelf(userId);
+      allow update: if isSelf(userId) || isOwner();
+      allow delete: if isOwner();
+    }
+    
+    match /users/{userId}/pushSubscriptions/{subscriptionId} {
+      allow read, write: if isSelf(userId);
     }
 
-    // --- Announcements ---
     match /announcements/{announcementId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
-    // --- Shifts ---
-    match /shifts/{shiftId} {
-      allow read, update: if request.auth != null && (resource.data.userId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner']);
-      allow create, delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-    }
-    
-    // --- Projects ---
     match /projects/{projectId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
-    
-    // --- Project Files (Subcollection) ---
+
     match /projects/{projectId}/files/{fileId} {
-        // Any logged-in user can read the list of files for any project.
-        allow read: if request.auth != null;
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isSelf(request.resource.data.uploaderId);
+      allow delete: if isAdmin() || isSelf(resource.data.uploaderId);
+    }
 
-        // Any logged-in user can create a file document, but they must be the uploader.
-        allow create: if request.auth != null && request.resource.data.uploaderId == request.auth.uid;
-        
-        // A user can delete their own file, or an admin/owner can delete any file.
-        allow delete: if request.auth != null && (resource.data.uploaderId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner']);
-
-        // No updates allowed to file documents after creation.
-        allow update: if false;
+    match /shifts/{shiftId} {
+      allow read: if isSelf(resource.data.userId) || isAdmin();
+      allow create, delete: if isOwner();
+      allow update: if isOwner() || (isSelf(resource.data.userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'notes']));
     }
   }
 }

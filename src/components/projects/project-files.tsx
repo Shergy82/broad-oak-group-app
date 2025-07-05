@@ -88,7 +88,7 @@ export function ProjectFiles({ project, userProfile }: ProjectFilesProps) {
       return new Promise<void>((resolve, reject) => {
         uploadTask.on(
           'state_changed',
-          null, // We can add progress indicator logic here later if needed
+          null,
           (error) => {
             console.error(`Upload failed for ${file.name}:`, error);
             reject(error);
@@ -118,10 +118,9 @@ export function ProjectFiles({ project, userProfile }: ProjectFilesProps) {
 
     Promise.all(uploadPromises)
       .then(() => toast({ title: 'Success', description: `${filesToUpload.length} file(s) uploaded successfully.` }))
-      .catch(() => toast({ variant: 'destructive', title: 'Upload Failed', description: 'One or more files failed to upload. Please try again.' }))
+      .catch(() => toast({ variant: 'destructive', title: 'Upload Failed', description: 'One or more files failed to upload. Please check your project permissions and try again.' }))
       .finally(() => {
           setIsUploading(false);
-          // This allows the user to select the same file again if an upload fails or they want to re-upload.
           const fileInput = document.getElementById(`file-upload-user-${project.id}`) as HTMLInputElement;
           if (fileInput) {
               fileInput.value = "";
@@ -233,7 +232,7 @@ export function ProjectFiles({ project, userProfile }: ProjectFilesProps) {
               </>
             ) : (
               <>
-                <Upload /> Upload File
+                <Upload className="mr-2 h-4 w-4" /> Upload File
               </>
             )}
           </Label>
