@@ -1,49 +1,23 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { db, storage } from '@/lib/firebase';
 import {
   collection,
-  onSnapshot,
-  query,
-  orderBy,
   addDoc,
-  deleteDoc,
-  doc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
-import { format } from 'date-fns';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/shared/spinner';
 import { useToast } from '@/hooks/use-toast';
-import { Upload, File as FileIcon, Trash2, Download, HardHat, AlertCircle } from 'lucide-react';
-import type { HealthAndSafetyFile, UserProfile } from '@/types';
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Upload, HardHat } from 'lucide-react';
+import type { UserProfile } from '@/types';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle as AlertTitleUI } from '@/components/ui/alert';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 
@@ -53,6 +27,10 @@ function FileUploader({ userProfile, onUploadComplete }: { userProfile: UserProf
 
   const handleFileUpload = (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    if (!userProfile) {
+        toast({ variant: 'destructive', title: 'Error', description: 'You must be logged in to upload files.' });
+        return;
+    }
     setIsUploading(true);
 
     const uploadPromises = Array.from(files).map(file => {
@@ -96,7 +74,13 @@ function FileUploader({ userProfile, onUploadComplete }: { userProfile: UserProf
         toast({ title: 'Success', description: `${files.length} file(s) uploaded successfully.` });
         onUploadComplete();
       })
-      .catch(() => toast({ variant: 'destructive', title: 'Upload Failed', description: 'One or more files failed to upload. Please try again.' }))
+      .catch((err) => {
+        let description = 'One or more files failed to upload. Please try again.';
+        if (err?.code === 'permission-denied') {
+            description = "Permission denied. You must be an admin or owner to upload H&S documents.";
+        }
+        toast({ variant: 'destructive', title: 'Upload Failed', description, duration: 8000 });
+      })
       .finally(() => setIsUploading(false));
   };
   
@@ -129,84 +113,15 @@ export default function HealthAndSafetyPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const { userProfile, loading: isProfileLoading } = useUserProfile();
   const router = useRouter();
-
-  const [files, setFiles] = useState<HealthAndSafetyFile[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const { toast } = useToast();
-
+  
   const isPrivilegedUser = userProfile && ['admin', 'owner'].includes(userProfile.role);
 
   useEffect(() => {
-    // This effect exclusively handles redirection if the user is not authenticated.
     if (!isAuthLoading && !user) {
       router.push('/login');
     }
   }, [user, isAuthLoading, router]);
 
-  useEffect(() => {
-    // This effect handles data fetching and will only run when the `user` object is confirmed to exist.
-    if (!user) {
-      // If there's no user, we are either still loading or logged out.
-      // We set dataLoading to false because we are not attempting to fetch any data.
-      setDataLoading(false);
-      return;
-    }
-
-    // At this point, we have a confirmed user. It is now safe to query Firestore.
-    setDataLoading(true);
-    setError(null);
-    const q = query(collection(db, 'health_and_safety_files'), orderBy('uploadedAt', 'desc'));
-    
-    const unsubscribe = onSnapshot(q,
-      (snapshot) => {
-        setFiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HealthAndSafetyFile)));
-        setDataLoading(false);
-      },
-      (err: any) => {
-        console.error("Error fetching H&S files:", err);
-        const description = "You don't have permission to view these files. This is likely due to a misconfiguration in your project's `firestore.rules` file.";
-        setError(description);
-        toast({ variant: 'destructive', title: 'Permission Denied', description: err.message, duration: 10000 });
-        setDataLoading(false);
-      }
-    );
-
-    // Cleanup the Firestore subscription when the component unmounts or the user changes.
-    return () => unsubscribe();
-  }, [user, toast]);
-  
-  const handleDeleteFile = async (file: HealthAndSafetyFile) => {
-    try {
-        const fileRef = ref(storage, file.fullPath);
-        await deleteObject(fileRef);
-        await deleteDoc(doc(db, 'health_and_safety_files', file.id));
-        toast({ title: "File Deleted", description: `Successfully deleted ${file.name}.` });
-    } catch (error) {
-        console.error("Error deleting file:", error);
-        toast({ variant: 'destructive', title: "Error", description: "Could not delete file." });
-    }
-  };
-
-  const formatFileSize = (bytes?: number) => {
-    if (bytes === undefined || bytes === null) return 'N/A';
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const filteredFiles = useMemo(() => {
-    if (!files) return [];
-    return files.filter(file =>
-      file.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      file.uploaderName.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [files, searchTerm]);
-  
-  // This is the gatekeeper for the entire page. It waits for auth and profile checks to finish.
   if (isAuthLoading || isProfileLoading) {
     return (
       <div className="flex min-h-screen w-full flex-col items-center justify-center">
@@ -215,17 +130,15 @@ export default function HealthAndSafetyPage() {
     );
   }
 
-  // After loading, if there's still no user, they are not logged in.
-  // The redirection effect will handle this, so we render a spinner in the meantime.
   if (!user) {
+    // This state should be brief as the effect above will redirect.
     return (
-      <div className="flex min-h-screen w-full flex-col items-center justify-center">
-        <Spinner size="lg" />
-      </div>
+        <div className="flex min-h-screen w-full flex-col items-center justify-center">
+            <Spinner size="lg" />
+        </div>
     );
   }
-
-  // At this point, we can safely render the page content.
+  
   return (
     <div className="flex min-h-screen w-full flex-col">
       <Header />
@@ -236,106 +149,22 @@ export default function HealthAndSafetyPage() {
                 <CardDescription>General Health &amp; Safety documents and resources. Admins can upload new files.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div className="lg:col-span-2 space-y-4">
-                        <Input
-                            placeholder="Search files..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="max-w-sm"
-                        />
-                        <div className="border rounded-lg">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                    <TableHead>File Name</TableHead>
-                                    <TableHead>Uploaded By</TableHead>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {dataLoading ? (
-                                        <TableRow>
-                                            <TableCell colSpan={4}>
-                                                <div className="flex items-center justify-center p-6"><Spinner />Loading documents...</div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : error ? (
-                                        <TableRow>
-                                            <TableCell colSpan={4}>
-                                                <Alert variant="destructive" className="mt-4">
-                                                    <AlertCircle className="h-4 w-4" />
-                                                    <AlertTitleUI>Error Loading Documents</AlertTitleUI>
-                                                    <AlertDescription>{error}</AlertDescription>
-                                                </Alert>
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : filteredFiles.length === 0 ? (
-                                        <TableRow>
-                                            <TableCell colSpan={4} className="h-24 text-center">
-                                                No documents found.
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : filteredFiles.map(file => (
-                                        <TableRow key={file.id}>
-                                            <TableCell className="font-medium truncate max-w-[200px]" title={file.name}>
-                                                <a href={file.url} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center gap-2">
-                                                    <FileIcon className="h-4 w-4 text-muted-foreground" />
-                                                    {file.name}
-                                                </a>
-                                                <p className="text-xs text-muted-foreground pl-6">{formatFileSize(file.size)}</p>
-                                            </TableCell>
-                                            <TableCell>{file.uploaderName}</TableCell>
-                                            <TableCell>{file.uploadedAt ? format(file.uploadedAt.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
-                                            <TableCell className="text-right">
-                                                <a href={file.url} target="_blank" rel="noopener noreferrer" download={file.name}>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                        <Download className="h-4 w-4" />
-                                                    </Button>
-                                                </a>
-                                                {isPrivilegedUser && (
-                                                    <AlertDialog>
-                                                        <AlertDialogTrigger asChild>
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10">
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </Button>
-                                                        </AlertDialogTrigger>
-                                                        <AlertDialogContent>
-                                                            <AlertDialogHeader>
-                                                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                                                <AlertDialogDescription>This will permanently delete the file <span className="font-semibold">{file.name}</span>.</AlertDialogDescription>
-                                                            </AlertDialogHeader>
-                                                            <AlertDialogFooter>
-                                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                <AlertDialogAction onClick={() => handleDeleteFile(file)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
-                                                            </AlertDialogFooter>
-                                                        </AlertDialogContent>
-                                                    </AlertDialog>
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
+                {isPrivilegedUser && userProfile ? (
+                    <div className="max-w-md mx-auto">
+                        <h3 className="text-lg font-semibold text-center mb-4">Upload Documents</h3>
+                        <FileUploader userProfile={userProfile} onUploadComplete={() => {
+                            const fileInput = document.getElementById('hs-file-upload') as HTMLInputElement;
+                            if (fileInput) fileInput.value = "";
+                        }} />
                     </div>
-                    {isPrivilegedUser && userProfile && (
-                        <div className="space-y-4">
-                            <h3 className="text-lg font-semibold text-center md:text-left">Upload Documents</h3>
-                            <FileUploader userProfile={userProfile} onUploadComplete={() => {
-                                const fileInput = document.getElementById('hs-file-upload') as HTMLInputElement;
-                                if (fileInput) fileInput.value = "";
-                            }} />
-                        </div>
-                    )}
-                </div>
-                 {!dataLoading && !error && filteredFiles.length === 0 && !isPrivilegedUser && (
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center lg:col-span-3">
+                ) : (
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
                         <HardHat className="mx-auto h-12 w-12 text-muted-foreground" />
-                        <h3 className="mt-4 text-lg font-semibold">No Documents Available</h3>
+                        <h3 className="mt-4 text-lg font-semibold">Documents Area</h3>
                         <p className="mb-4 mt-2 text-sm text-muted-foreground">
-                            No Health &amp; Safety documents have been uploaded yet.
+                            This area is for viewing Health &amp; Safety documents.
+                            <br/>
+                            Uploading is restricted to admins and owners.
                         </p>
                     </div>
                 )}
