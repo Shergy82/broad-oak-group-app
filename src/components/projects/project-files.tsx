@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -179,7 +180,9 @@ export function ProjectFiles({ project, userProfile }: ProjectFilesProps) {
                 {files.map(file => (
                     <TableRow key={file.id}>
                         <TableCell className="font-medium truncate max-w-[150px]">
-                            <p>{file.name}</p>
+                            <a href={file.url} target="_blank" rel="noopener noreferrer" className="hover:underline" title={file.name}>
+                              {file.name}
+                            </a>
                             <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">{file.uploaderName}</TableCell>

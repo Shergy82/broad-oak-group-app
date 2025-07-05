@@ -42,7 +42,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/shared/spinner';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, UploadCloud, File as FileIcon, Trash2, FolderOpen } from 'lucide-react';
+import { PlusCircle, UploadCloud, File as FileIcon, Trash2, FolderOpen, Download } from 'lucide-react';
 import type { Project, ProjectFile, UserProfile } from '@/types';
 import { cn } from '@/lib/utils';
 import {
@@ -306,12 +306,28 @@ function FileManagerDialog({ project, open, onOpenChange, userProfile }: { proje
                         ) : (
                             <div className="border rounded-lg max-h-64 overflow-y-auto">
                                 <Table>
+                                  <TableHeader>
+                                    <TableRow>
+                                      <TableHead>File</TableHead>
+                                      <TableHead className="text-right">Size</TableHead>
+                                      <TableHead className="text-right w-[100px]">Actions</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
                                     <TableBody>
                                         {files.map(file => (
                                             <TableRow key={file.id}>
-                                                <TableCell className="font-medium truncate max-w-[200px]">{file.name}</TableCell>
+                                                <TableCell className="font-medium truncate max-w-[180px]">
+                                                  <a href={file.url} target="_blank" rel="noopener noreferrer" className="hover:underline" title={file.name}>
+                                                    {file.name}
+                                                  </a>
+                                                </TableCell>
                                                 <TableCell className="text-right text-xs text-muted-foreground">{formatFileSize(file.size)}</TableCell>
                                                 <TableCell className="text-right">
+                                                    <a href={file.url} target="_blank" rel="noopener noreferrer" download={file.name}>
+                                                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                                                          <Download className="h-4 w-4" />
+                                                      </Button>
+                                                    </a>
                                                     <AlertDialog>
                                                         <AlertDialogTrigger asChild>
                                                             <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10">
