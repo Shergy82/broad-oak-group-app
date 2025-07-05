@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useRouter } from 'next/navigation';
@@ -7,7 +8,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Logo } from '../shared/logo';
 import { Button } from '@/components/ui/button';
-import { Briefcase, LogOut, Shield, User } from 'lucide-react';
+import { Briefcase, Calendar, LogOut, Megaphone, Shield, User } from 'lucide-react';
 import { NotificationButton } from '../shared/notification-button';
 import {
   DropdownMenu,
@@ -62,6 +63,14 @@ export function Header() {
                 {userProfile?.name && <DropdownMenuLabel>{userProfile.name}</DropdownMenuLabel>}
                 {userProfile?.email && <DropdownMenuLabel className="font-normal text-muted-foreground -mt-2 pb-2">{userProfile.email}</DropdownMenuLabel>}
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push('/')} className="cursor-pointer">
+                  <Calendar className="mr-2" />
+                  <span>Schedule</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push('/announcements')} className="cursor-pointer">
+                  <Megaphone className="mr-2" />
+                  <span>Announcements</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push('/projects')} className="cursor-pointer">
                   <Briefcase className="mr-2" />
                   <span>Projects</span>
