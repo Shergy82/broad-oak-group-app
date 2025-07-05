@@ -42,7 +42,7 @@ export function Logo() {
         </svg>
       </div>
       <div>
-        <h1 className="text-xl font-bold whitespace-nowrap">
+        <h1 className="text-lg md:text-xl font-bold whitespace-nowrap">
           Broad Oak Build
         </h1>
         <span className="block text-sm font-light leading-tight italic">

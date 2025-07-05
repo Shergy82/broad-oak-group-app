@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
@@ -213,12 +214,12 @@ export default function Dashboard() {
   return (
     <div className="w-full">
       {user?.displayName && (
-        <h2 className="mb-4 text-2xl font-semibold tracking-tight">
+        <h2 className="mb-4 text-xl md:text-2xl font-semibold tracking-tight">
           Hi, {user.displayName.split(' ')[0]}
         </h2>
       )}
       <Tabs defaultValue="today" className="w-full">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
           <TabsList>
             <TabsTrigger value="today">Today</TabsTrigger>
             <TabsTrigger value="this-week">This Week</TabsTrigger>
@@ -242,13 +243,13 @@ export default function Dashboard() {
             <div className="space-y-6">
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   <div className="space-y-4">
-                      <h3 className="flex items-center text-xl font-semibold text-sky-600 dark:text-sky-400"><Sunrise className="mr-2 h-5 w-5" /> AM Shifts</h3>
+                      <h3 className="flex items-center text-lg md:text-xl font-semibold text-sky-600 dark:text-sky-400"><Sunrise className="mr-2 h-5 w-5" /> AM Shifts</h3>
                       {todayAmShifts.length > 0 
                           ? todayAmShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)
                           : <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No AM shifts scheduled.</p>}
                   </div>
                   <div className="space-y-4">
-                      <h3 className="flex items-center text-xl font-semibold text-orange-600 dark:text-orange-400"><Sunset className="mr-2 h-5 w-5" /> PM Shifts</h3>
+                      <h3 className="flex items-center text-lg md:text-xl font-semibold text-orange-600 dark:text-orange-400"><Sunset className="mr-2 h-5 w-5" /> PM Shifts</h3>
                       {todayPmShifts.length > 0
                           ? todayPmShifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)
                           : <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No PM shifts scheduled.</p>}

@@ -36,7 +36,7 @@ const getStatusBadge = (shift: Shift) => {
                                     <MessageSquareText className="h-4 w-4 text-muted-foreground" />
                                 </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-80">
+                            <PopoverContent className="w-64 sm:w-80">
                                 <div className="space-y-2">
                                     <h4 className="font-medium leading-none">Notes</h4>
                                     <p className="text-sm text-muted-foreground">{shift.notes}</p>
@@ -181,7 +181,7 @@ export function ShiftScheduleOverview() {
 
             return (
                 <div key={user.uid}>
-                    <h3 className="text-xl font-semibold mb-3">{user.name}</h3>
+                    <h3 className="text-lg md:text-xl font-semibold mb-3">{user.name}</h3>
                     <Card>
                         <CardContent className="p-0">
                             <Table>
