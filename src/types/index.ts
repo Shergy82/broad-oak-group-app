@@ -28,6 +28,8 @@ export interface Project {
   bNumber?: string;
   council?: string;
   manager?: string;
+  createdAt?: Timestamp;
+  createdBy?: string;
 }
 
 export interface ProjectFile {

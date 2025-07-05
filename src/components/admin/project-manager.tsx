@@ -17,6 +17,7 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -41,7 +42,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/shared/spinner';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, UploadCloud, File as FileIcon, Trash2, FolderOpen } from 'lucide-react';
-import type { Project, ProjectFile } from '@/types';
+import type { Project, ProjectFile, UserProfile } from '@/types';
 import { cn } from '@/lib/utils';
 import {
     AlertDialog,
@@ -63,7 +64,13 @@ const projectSchema = z.object({
   manager: z.string().min(1, 'Manager is required.'),
 });
 
-function CreateProjectDialog({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
+interface CreateProjectDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  userProfile: UserProfile;
+}
+
+function CreateProjectDialog({ open, onOpenChange, userProfile }: CreateProjectDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   
@@ -75,7 +82,11 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean, onOpenChan
   const handleCreateProject = async (values: z.infer<typeof projectSchema>) => {
     setIsLoading(true);
     try {
-      await addDoc(collection(db, 'projects'), values);
+      await addDoc(collection(db, 'projects'), {
+        ...values,
+        createdBy: userProfile.name,
+        createdAt: serverTimestamp(),
+      });
       toast({ title: 'Success', description: 'Project created successfully.' });
       form.reset();
       onOpenChange(false);
@@ -322,7 +333,11 @@ function FileManagerDialog({ project, open, onOpenChange }: { project: Project |
     );
 }
 
-export function ProjectManager() {
+interface ProjectManagerProps {
+  userProfile: UserProfile;
+}
+
+export function ProjectManager({ userProfile }: ProjectManagerProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -331,7 +346,7 @@ export function ProjectManager() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'projects'), orderBy('address'));
+    const q = query(collection(db, 'projects'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setProjects(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)));
       setLoading(false);
@@ -365,7 +380,11 @@ export function ProjectManager() {
           onChange={(e) => setSearchTerm(e.target.value)}
           className="max-w-sm"
         />
-        <CreateProjectDialog open={isCreateProjectDialogOpen} onOpenChange={setCreateProjectDialogOpen} />
+        <CreateProjectDialog 
+          open={isCreateProjectDialogOpen} 
+          onOpenChange={setCreateProjectDialogOpen} 
+          userProfile={userProfile} 
+        />
       </div>
 
       <div className="border rounded-lg">
@@ -374,8 +393,9 @@ export function ProjectManager() {
             <TableRow>
               <TableHead>Address</TableHead>
               <TableHead>B Number</TableHead>
-              <TableHead>Council</TableHead>
               <TableHead>Manager</TableHead>
+              <TableHead>Created At</TableHead>
+              <TableHead>Created By</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -383,12 +403,12 @@ export function ProjectManager() {
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={5}><Skeleton className="h-8 w-full" /></TableCell>
+                  <TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell>
                 </TableRow>
               ))
             ) : filteredProjects.length === 0 ? (
                 <TableRow>
-                    <TableCell colSpan={5} className="h-24 text-center">
+                    <TableCell colSpan={6} className="h-24 text-center">
                         No projects found.
                     </TableCell>
                 </TableRow>
@@ -397,8 +417,9 @@ export function ProjectManager() {
                 <TableRow key={project.id}>
                   <TableCell className="font-medium">{project.address}</TableCell>
                   <TableCell>{project.bNumber}</TableCell>
-                  <TableCell>{project.council}</TableCell>
                   <TableCell>{project.manager}</TableCell>
+                  <TableCell>{project.createdAt ? format(project.createdAt.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                  <TableCell>{project.createdBy ?? 'N/A'}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="outline" size="sm" onClick={() => handleManageFiles(project)}>
                       <FolderOpen className="mr-2" />

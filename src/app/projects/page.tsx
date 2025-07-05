@@ -86,14 +86,14 @@ export default function ProjectsPage() {
     <div className="flex min-h-screen w-full flex-col">
       <Header />
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
-        {isPrivilegedUser ? (
+        {isPrivilegedUser && userProfile ? (
             <Card>
                 <CardHeader>
                 <CardTitle>Project & File Management</CardTitle>
                 <CardDescription>Create new projects and upload or delete files associated with them. All users can view projects and files here.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <ProjectManager />
+                    <ProjectManager userProfile={userProfile} />
                 </CardContent>
             </Card>
         ) : (
