@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -122,7 +123,8 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
         className="sm:max-w-[480px]"
         onPointerDownOutside={(e) => {
           const target = e.target as HTMLElement;
-          if (target.closest('[data-radix-popper-content-wrapper]')) {
+          // Check if the click is inside the calendar popper or the select dropdown popper
+          if (target.closest('[data-radix-popper-content-wrapper]') || target.closest('[data-radix-select-content]')) {
             e.preventDefault();
           }
         }}
