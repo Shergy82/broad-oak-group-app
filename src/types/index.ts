@@ -10,6 +10,7 @@ export interface Shift {
   status: ShiftStatus;
   address: string;
   task: string;
+  bNumber?: string;
   notes?: string;
 }
 

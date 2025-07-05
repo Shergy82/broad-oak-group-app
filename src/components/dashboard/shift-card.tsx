@@ -128,9 +128,10 @@ export function ShiftCard({ shift }: ShiftCardProps) {
             {statusInfo.label}
           </Badge>
         </CardHeader>
-        <CardContent className="p-4 text-left grow flex flex-col justify-center">
+        <CardContent className="p-4 text-left grow flex flex-col justify-center space-y-1">
           <p className="font-semibold text-sm">{shift.task}</p>
-          <p className="text-xs text-muted-foreground pt-1">{shift.address}</p>
+          <p className="text-xs text-muted-foreground">{shift.address}</p>
+          {shift.bNumber && <p className="text-xs text-muted-foreground">B-Number: {shift.bNumber}</p>}
           {shift.status === 'incomplete' && shift.notes && (
             <div className="mt-3 p-3 bg-destructive/10 border-l-4 border-destructive rounded-r-md">
                 <p className="text-sm font-semibold text-destructive">Note:</p>

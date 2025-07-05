@@ -180,6 +180,7 @@ export function FileUploader() {
                             date: shiftDate,
                             address: currentProjectAddress,
                             task: parsedShift.task,
+                            bNumber: currentBNumber,
                         });
                     } else if (cellValue.includes('-')) {
                         const lastDelimiterIndex = cellValue.lastIndexOf('-');
@@ -229,11 +230,12 @@ export function FileUploader() {
             const existingShift = existingShiftsMap.get(key);
 
             if (existingShift) {
-                if (existingShift.task !== newShift.task || existingShift.address !== newShift.address) {
+                if (existingShift.task !== newShift.task || existingShift.address !== newShift.address || existingShift.bNumber !== newShift.bNumber) {
                     const shiftDocRef = doc(db, 'shifts', existingShift.id);
                     batch.update(shiftDocRef, {
                         task: newShift.task,
                         address: newShift.address,
+                        bNumber: newShift.bNumber,
                     });
                     shiftsUpdated++;
                 }
@@ -247,6 +249,7 @@ export function FileUploader() {
                     status: 'pending-confirmation',
                     address: newShift.address,
                     task: newShift.task,
+                    bNumber: newShift.bNumber,
                 });
                 shiftsAdded++;
             }

@@ -145,7 +145,7 @@ export default function Dashboard() {
     const generateTableForShifts = (title: string, shiftsForTable: Shift[]) => {
       if (shiftsForTable.length === 0) return;
 
-      const head = [['Date', 'Type', 'Task', 'Address', 'Status']];
+      const head = [['Date', 'Type', 'Task', 'Address', 'B Number', 'Status']];
       const body = shiftsForTable.map(shift => {
           const shiftDate = getCorrectedLocalDate(shift.date);
           const formattedStatus = shift.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -154,6 +154,7 @@ export default function Dashboard() {
               shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase(),
               shift.task,
               shift.address,
+              shift.bNumber || 'N/A',
               formattedStatus,
           ];
       });
