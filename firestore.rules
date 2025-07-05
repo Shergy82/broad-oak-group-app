@@ -2,66 +2,63 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Default-deny all writes.
-    match /{document=**} {
-      allow write: if false;
-    }
-
-    // Allow authenticated users to read any document.
-    // This is a simple, broad rule to ensure the app is functional.
-    // It can be tightened later if needed.
-    match /{document=**} {
-      allow read: if request.auth != null;
-    }
-
-    // SPECIFIC WRITE/UPDATE/DELETE RULES
     
-    // Users can create and update their own user document.
+    function isUser(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function isPrivilegedUser() {
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+    }
+
     match /users/{userId} {
-      allow create, update: if request.auth.uid == userId;
-      // Users can manage their own push subscriptions.
-      match /pushSubscriptions/{subId} {
-        allow write: if request.auth.uid == userId;
+      // A user can read their own document
+      allow read: if isUser(userId);
+      // A user can update their own document
+      allow update: if isUser(userId);
+      // Any authenticated user can create their own document (signup)
+      allow create: if isUser(userId);
+      
+      match /pushSubscriptions/{subscriptionId} {
+        allow read, write, delete: if isUser(userId);
+      }
+    }
+
+    match /shifts/{shiftId} {
+      // Privileged users can read/write any shift
+      allow read, write: if isPrivilegedUser();
+      // Users can only read/update their own shifts
+      allow read, update: if isUser(resource.data.userId);
+    }
+    
+    match /projects/{projectId} {
+      // Any authenticated user can read projects
+      allow read: if request.auth != null;
+      // Only privileged users can write to projects
+      allow write: if isPrivilegedUser();
+      
+      match /files/{fileId} {
+        // Any authenticated user can read project files
+        allow read: if request.auth != null;
+        // Any authenticated user can create project files
+        allow create: if request.auth != null;
+        // The uploader or a privileged user can delete/update
+        allow update, delete: if isUser(resource.data.uploaderId) || isPrivilegedUser();
       }
     }
     
-    // Users can update their own shifts.
-    match /shifts/{shiftId} {
-      allow update: if request.auth.uid == resource.data.userId;
-    }
-
-    // Project files can be created by any user, but only deleted by the uploader or an admin.
-    match /projects/{projectId}/files/{fileId} {
-        allow create: if request.auth != null;
-        allow delete: if request.auth.uid == resource.data.uploaderId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-    }
-
-    // ADMIN/OWNER-ONLY WRITE/UPDATE/DELETE RULES
-
-    // Privileged users can manage shifts.
-    match /shifts/{shiftId} {
-      allow create, delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-    }
-
-    // Privileged users can manage announcements.
-    match /announcements/{announcementId} {
-      allow write: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-    }
-    
-    // Privileged users can create projects.
-    match /projects/{projectId} {
-      allow create: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-    }
-    
-    // Privileged users can manage Health & Safety files.
     match /health_and_safety_files/{fileId} {
-      allow create, delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+      // Any authenticated user can read H&S files
+      allow read: if request.auth != null;
+      // Only privileged users can write H&S files
+      allow write: if isPrivilegedUser();
     }
-
-    // Owners can manage user roles.
-    match /users/{userId} {
-      allow update: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+    
+    match /announcements/{announcementId} {
+      // Any authenticated user can read announcements
+      allow read: if request.auth != null;
+      // Only privileged users can write announcements
+      allow write: if isPrivilegedUser();
     }
   }
 }

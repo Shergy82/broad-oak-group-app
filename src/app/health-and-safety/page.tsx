@@ -139,12 +139,17 @@ export default function HealthAndSafetyPage() {
   const isPrivilegedUser = userProfile && ['admin', 'owner'].includes(userProfile.role);
 
   useEffect(() => {
-    // This effect exclusively handles data fetching.
-    // It will only run when the `user` object is confirmed to exist.
+    // This effect exclusively handles redirection if the user is not authenticated.
+    if (!isAuthLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, isAuthLoading, router]);
+
+  useEffect(() => {
+    // This effect handles data fetching and will only run when the `user` object is confirmed to exist.
     if (!user) {
       // If there's no user, we are either still loading or logged out.
-      // The logic below handles both cases. We set dataLoading to false
-      // because we are not attempting to fetch any data without a user.
+      // We set dataLoading to false because we are not attempting to fetch any data.
       setDataLoading(false);
       return;
     }
@@ -210,10 +215,9 @@ export default function HealthAndSafetyPage() {
     );
   }
 
-  // After loading, if there's still no user, they are not logged in. Redirect them.
+  // After loading, if there's still no user, they are not logged in.
+  // The redirection effect will handle this, so we render a spinner in the meantime.
   if (!user) {
-    router.push('/login');
-    // Render a spinner during the brief moment of redirection.
     return (
       <div className="flex min-h-screen w-full flex-col items-center justify-center">
         <Spinner size="lg" />
@@ -341,5 +345,3 @@ export default function HealthAndSafetyPage() {
     </div>
   );
 }
-
-    
