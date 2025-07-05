@@ -3,61 +3,49 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId} {
-      // Users can read their own profile
-      allow read: if request.auth != null && request.auth.uid == userId;
-      // Users can update their own profile, but not change their role
-      allow update: if request.auth != null && request.auth.uid == userId && request.resource.data.role == resource.data.role;
-      // Only owners can change roles
-      allow update: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
-      // New users can create their own profile document
-      allow create: if request.auth != null && request.auth.uid == userId;
+
+    function isPrivilegedUser() {
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
     }
 
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth.uid == userId;
+      allow update: if request.auth.uid == userId || isPrivilegedUser();
+    }
+    
     match /users/{userId}/pushSubscriptions/{subscriptionId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if request.auth.uid == userId;
     }
 
     match /shifts/{shiftId} {
-      // Admins/Owners can read/write all shifts
-      allow read, write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-      // Users can only read shifts assigned to them
-      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-      // Users can update shifts assigned to them (e.g. status) but cannot change the user ID
-      allow update: if request.auth != null && resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId;
+      allow read: if request.auth.uid == resource.data.userId || isPrivilegedUser();
+      allow create: if isPrivilegedUser();
+      allow update: if request.auth.uid == resource.data.userId || isPrivilegedUser();
+      allow delete: if isPrivilegedUser();
     }
-
+    
     match /announcements/{announcementId} {
         allow read: if request.auth != null;
-        allow create, update, delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+        allow create, update, delete: if isPrivilegedUser();
     }
 
     match /projects/{projectId} {
         allow read: if request.auth != null;
-        allow create, update, delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-    }
-    
-    match /projects/{projectId}/files/{fileId} {
-      allow read: if request.auth != null;
-      // User who uploaded can delete. Admins/owners can also delete.
-      allow delete: if request.auth != null && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'] || resource.data.uploaderId == request.auth.uid);
-      // Anyone can upload files to a project
-      allow create: if request.auth != null;
+        allow create, update, delete: if isPrivilegedUser();
     }
 
-    // Rules for Health & Safety
-    match /health_and_safety_files {
-      // Allow any authenticated user to list the documents
-      allow list: if request.auth != null;
-      // Allow admins/owners to create new documents
-      allow create: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+    match /projects/{projectId}/files/{fileId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth.uid == request.resource.data.uploaderId;
+        allow delete: if isPrivilegedUser() || request.auth.uid == resource.data.uploaderId;
     }
-    
+
     match /health_and_safety_files/{fileId} {
-      // Allow any authenticated user to get a single document
-      allow get: if request.auth != null;
-      // Allow admins/owners to delete documents
-      allow delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+      // Explicitly allow list and get for any authenticated user.
+      allow list, get: if request.auth != null;
+      // Explicitly check role for create and delete operations.
+      allow create, delete: if isPrivilegedUser();
     }
   }
 }

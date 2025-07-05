@@ -137,44 +137,43 @@ export default function HealthAndSafetyPage() {
   const isPrivilegedUser = userProfile && ['admin', 'owner'].includes(userProfile.role);
 
   useEffect(() => {
-    // This effect handles redirection if the user is not logged in.
-    if (!isAuthLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, isAuthLoading, router]);
-  
-  useEffect(() => {
-    // This effect handles fetching the data. It will only run when the user's
-    // authentication state is known and they are logged in.
-    if (isAuthLoading || !user) {
-      // If auth is still loading, or there is no user, we do not proceed.
-      // If loading finishes and there's no user, the other effect will redirect.
-      // We set dataLoading to false only when we know for sure there is no user.
-      if (!isAuthLoading) {
-        setDataLoading(false);
-      }
+    // This combined effect handles all logic based on auth state.
+    if (isAuthLoading) {
+      // If auth is loading, do nothing yet. The component will show a spinner.
+      setDataLoading(true);
       return;
     }
-
-    // At this point, we have a confirmed authenticated user, so we can fetch data.
-    setDataLoading(true);
+  
+    if (!user) {
+      // If auth has finished and there is no user, redirect to login.
+      router.push('/login');
+      return;
+    }
+  
+    // At this point, auth has finished and we have a confirmed user.
+    // Proceed with fetching data.
     const q = query(collection(db, 'health_and_safety_files'), orderBy('uploadedAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setFiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HealthAndSafetyFile)));
-      setDataLoading(false);
-    }, (error: any) => {
-      console.error("Error fetching H&S files:", error);
-      let description = 'Could not fetch Health & Safety files.';
-      if (error.code === 'permission-denied') {
-        description = "You don't have permission to view these files. Please check the `firestore.rules` file.";
-      } else if (error.code === 'failed-precondition') {
-        description = 'A database index is required. Please check the `firestore.indexes.json` file.';
+    const unsubscribe = onSnapshot(q,
+      (snapshot) => {
+        setFiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HealthAndSafetyFile)));
+        setDataLoading(false);
+      },
+      (error: any) => {
+        console.error("Error fetching H&S files:", error);
+        let description = 'Could not fetch Health & Safety files.';
+        if (error.code === 'permission-denied') {
+          description = "You don't have permission to view these files. Please check the `firestore.rules` file.";
+        } else if (error.code === 'failed-precondition') {
+          description = 'A database index is required. Please check the `firestore.indexes.json` file.';
+        }
+        toast({ variant: 'destructive', title: 'Error', description, duration: 10000 });
+        setDataLoading(false);
       }
-      toast({ variant: 'destructive', title: 'Error', description, duration: 10000 });
-      setDataLoading(false);
-    });
+    );
+  
+    // Cleanup the subscription when the component unmounts or dependencies change.
     return () => unsubscribe();
-  }, [user, isAuthLoading, toast]); // Depend directly on the primary auth state.
+  }, [user, isAuthLoading, router, toast]);
   
   const handleDeleteFile = async (file: HealthAndSafetyFile) => {
     try {
