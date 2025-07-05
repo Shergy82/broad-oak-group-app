@@ -1,22 +1,16 @@
+
 rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-
-    // Allow public read access to all files.
-    // This is generally safe because file URLs contain a unique download token
-    // and are not guessable. Access is controlled via the Firestore document URL.
-    match /{allPaths=**} {
-      allow read;
-    }
-
-    // Only allow authenticated users who are admins or owners to upload and delete files.
-    // This rule assumes your UI already restricts upload/delete actions to admins.
-    // For even tighter security, you could use custom claims or a function to check
-    // the user's role in Firestore directly within these rules.
-    match /project_files/{projectId}/{fileId} {
-      allow write: if request.auth != null;
-      allow delete: if request.auth != null;
+    match /project_files/{projectId}/{fileName} {
+      // Allow anyone to read files, as the download URLs are shared.
+      allow read: if true;
+      
+      // Allow authenticated users to upload files up to 5MB.
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*|application/pdf|application/vnd.*');
     }
   }
 }
