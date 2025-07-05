@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useRouter } from 'next/navigation';
@@ -74,6 +73,10 @@ export function Header() {
                 <DropdownMenuItem onClick={() => router.push('/projects')} className="cursor-pointer">
                   <Briefcase className="mr-2" />
                   <span>Projects</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push('/health-and-safety')} className="cursor-pointer">
+                  <HardHat className="mr-2" />
+                  <span>Health & Safety</span>
                 </DropdownMenuItem>
                 
                 {isPrivilegedUser && (
