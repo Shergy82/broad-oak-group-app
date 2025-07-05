@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Logo } from '../shared/logo';
 import { Button } from '@/components/ui/button';
-import { Briefcase, Calendar, LogOut, Megaphone, Shield, User, UserCog, Users } from 'lucide-react';
+import { Briefcase, Calendar, HardHat, LogOut, Megaphone, Shield, User, UserCog, Users } from 'lucide-react';
 import { NotificationButton } from '../shared/notification-button';
 import {
   DropdownMenu,
@@ -74,6 +74,10 @@ export function Header() {
                 <DropdownMenuItem onClick={() => router.push('/projects')} className="cursor-pointer">
                   <Briefcase className="mr-2" />
                   <span>Projects</span>
+                </DropdownMenuItem>
+                 <DropdownMenuItem onClick={() => router.push('/health-and-safety')} className="cursor-pointer">
+                  <HardHat className="mr-2" />
+                  <span>H&S Documents</span>
                 </DropdownMenuItem>
                 
                 {isPrivilegedUser && (

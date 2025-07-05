@@ -47,6 +47,18 @@ export interface ProjectFile {
   uploaderName: string;
 }
 
+export interface HealthAndSafetyFile {
+  id: string;
+  name: string;
+  url: string;
+  fullPath: string; // Full path in Firebase Storage for deletion
+  size?: number; // Optional size in bytes
+  type?: string; // Optional MIME type
+  uploadedAt: Timestamp;
+  uploaderId: string;
+  uploaderName: string;
+}
+
 export interface Announcement {
   id: string;
   title: string;
