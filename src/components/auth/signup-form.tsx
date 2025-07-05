@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -24,10 +25,13 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Terminal } from "lucide-react"
 
 const formSchema = z.object({
-  name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
+  firstName: z.string().min(1, { message: 'First name is required.' })
+    .transform(name => name.trim().charAt(0).toUpperCase() + name.trim().slice(1)),
+  surname: z.string().min(1, { message: 'Surname is required.' })
+    .transform(name => name.trim().charAt(0).toUpperCase() + name.trim().slice(1)),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
   password: z.string().min(8, { message: 'Password must be at least 8 characters.' }),
-  phoneNumber: z.string().min(10, { message: 'Please enter a valid phone number.' }),
+  phoneNumber: z.string().min(1, { message: 'Phone number is required.' }),
 });
 
 export function SignUpForm() {
@@ -38,7 +42,8 @@ export function SignUpForm() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: '',
+      firstName: '',
+      surname: '',
       email: '',
       password: '',
       phoneNumber: '',
@@ -53,13 +58,15 @@ export function SignUpForm() {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
+      
+      const fullName = `${values.firstName} ${values.surname}`;
 
-      await updateProfile(user, { displayName: values.name });
+      await updateProfile(user, { displayName: fullName });
 
       const userRole = values.email.toLowerCase() === 'phil.s@broadoakgroup.com' ? 'owner' : 'user';
 
       await setDoc(doc(db, 'users', user.uid), {
-        name: values.name,
+        name: fullName,
         email: values.email,
         phoneNumber: values.phoneNumber,
         role: userRole,
@@ -110,19 +117,34 @@ export function SignUpForm() {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
         )}
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Name</FormLabel>
-              <FormControl>
-                <Input placeholder="John Doe" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="grid grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="firstName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>First Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="John" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="surname"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Surname</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Doe" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+        </div>
         <FormField
           control={form.control}
           name="email"
@@ -143,7 +165,7 @@ export function SignUpForm() {
             <FormItem>
               <FormLabel>Password</FormLabel>
               <FormControl>
-                <Input type="password" placeholder="••••••••" {...field} />
+                <Input type="password" placeholder="••••••••" />
               </FormControl>
               <FormMessage />
             </FormItem>
