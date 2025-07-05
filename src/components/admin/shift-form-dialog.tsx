@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -85,7 +86,7 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
     }
   }, [shift, open, form]);
 
-  const handleSubmit = async (values: z.infer<typeof formSchema>>) => {
+  const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     if (!db) return;
     setIsLoading(true);
 
@@ -122,8 +123,6 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
         className="sm:max-w-[480px]"
         onInteractOutside={(e) => {
           const target = e.target as HTMLElement;
-          // This prevents the dialog from closing when an interaction happens inside the
-          // calendar or select dropdowns, which are rendered in a portal.
           if (target.closest('.rdp') || target.closest('[data-radix-popper-content-wrapper]')) {
             e.preventDefault();
           }
