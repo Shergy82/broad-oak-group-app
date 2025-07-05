@@ -43,6 +43,7 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isDatePickerOpen, setDatePickerOpen] = useState(false);
+  const [isUserSelectOpen, setUserSelectOpen] = useState(false);
   const isEditing = !!shift;
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -118,17 +119,8 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="sm:max-w-[480px]"
-        onPointerDownOutside={(e) => {
-          const target = e.target as HTMLElement;
-          // Check if the click is inside the calendar popper or the select dropdown popper
-          if (target.closest('[data-radix-popper-content-wrapper]') || target.closest('[data-radix-select-content]')) {
-            e.preventDefault();
-          }
-        }}
-      >
+    <Dialog open={open} onOpenChange={onOpenChange} modal={!isDatePickerOpen && !isUserSelectOpen}>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit' : 'Create'} Shift</DialogTitle>
           <DialogDescription>
@@ -143,7 +135,7 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Operative</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} defaultValue={field.value} onOpenChange={setUserSelectOpen}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select an operative" />
