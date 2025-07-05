@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -120,10 +121,11 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
         className="sm:max-w-[480px]"
-        onPointerDownOutside={(e) => {
+        onInteractOutside={(e) => {
           const target = e.target as HTMLElement;
-          // This prevents the dialog from closing when clicking inside the calendar or the user selection dropdown.
-          if (target.closest('[data-radix-popper-content-wrapper]')) {
+          // This prevents the dialog from closing when an interaction happens inside the
+          // calendar or select dropdowns, which are rendered in a portal.
+          if (target.closest('.rdp') || target.closest('[data-radix-popper-content-wrapper]')) {
             e.preventDefault();
           }
         }}
