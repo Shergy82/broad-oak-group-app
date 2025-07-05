@@ -79,7 +79,6 @@ export function ProjectFiles({ project, userProfile }: ProjectFilesProps) {
     
     setIsUploading(true);
 
-    // Make a copy of the files to process, as the original FileList can be cleared.
     const filesToUpload = Array.from(selectedFiles);
 
     const uploadPromises = filesToUpload.map(file => {
