@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -123,8 +122,6 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
         className="sm:max-w-[480px]"
         onPointerDownOutside={(e) => {
           const target = e.target as HTMLElement;
-          // This is the key change. We check if the click was inside a popover.
-          // The Select dropdown and the Calendar are both popovers.
           if (target.closest('[data-radix-popper-content-wrapper]')) {
             e.preventDefault();
           }
@@ -189,7 +186,7 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift }: ShiftFormD
                             selected={field.value}
                             onSelect={(date) => {
                                 field.onChange(date);
-                                setDatePickerOpen(false); // Close the calendar on selection
+                                setDatePickerOpen(false);
                             }}
                             initialFocus
                           />
