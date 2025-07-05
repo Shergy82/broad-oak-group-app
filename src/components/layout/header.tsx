@@ -65,7 +65,7 @@ export function Header() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => router.push('/')} className="cursor-pointer">
                   <Calendar className="mr-2" />
-                  <span>Schedule</span>
+                  <span>Dashboard</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push('/announcements')} className="cursor-pointer">
                   <Megaphone className="mr-2" />
