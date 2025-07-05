@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { HardHat, ExternalLink } from 'lucide-react';
 
 export default function HealthAndSafetyPage() {
-  const googleDriveLink = "https://drive.google.com/drive/folders/1LEJbPApqimHUHuYBuYMbQY1anIHzj3J?usp=sharing";
+  const googleDriveLink = "https://drive.google.com/drive/folders/1LEJbPApqimHUHuYBuYMBtQY1anIHzj3J?usp=sharing";
 
   return (
     <div className="flex min-h-screen w-full flex-col">
