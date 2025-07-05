@@ -1,8 +1,7 @@
-
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shift, UserProfile } from '@/types';
 import { addDays, format, isSameWeek, isToday } from 'date-fns';
@@ -11,10 +10,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { RefreshCw, Terminal, MessageSquareText } from 'lucide-react';
+import { RefreshCw, Terminal, MessageSquareText, PlusCircle, Edit, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useToast } from '@/hooks/use-toast';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { ShiftFormDialog } from './shift-form-dialog';
+
 
 const getStatusBadge = (shift: Shift) => {
     const baseProps = { className: "capitalize" };
@@ -51,12 +63,22 @@ const getStatusBadge = (shift: Shift) => {
     }
 }
 
-export function ShiftScheduleOverview() {
+interface ShiftScheduleOverviewProps {
+  userProfile: UserProfile;
+}
+
+export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProps) {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
+  const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
+  const { toast } = useToast();
+  
+  const isOwner = userProfile.role === 'owner';
 
   useEffect(() => {
     if (!db) {
@@ -123,6 +145,30 @@ export function ShiftScheduleOverview() {
 
     return { todayShifts, thisWeekShifts, nextWeekShifts };
   }, [shifts]);
+
+  const handleAddShift = () => {
+    setSelectedShift(null);
+    setIsFormOpen(true);
+  };
+  
+  const handleEditShift = (shift: Shift) => {
+    setSelectedShift(shift);
+    setIsFormOpen(true);
+  };
+  
+  const handleDeleteShift = async () => {
+    if (!shiftToDelete || !db) return;
+    try {
+        await deleteDoc(doc(db, 'shifts', shiftToDelete.id));
+        toast({ title: 'Success', description: 'Shift has been deleted.' });
+    } catch (error) {
+        console.error("Error deleting shift:", error);
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not delete the shift.' });
+    } finally {
+        setShiftToDelete(null);
+    }
+  };
+
 
   const renderWeekSchedule = (weekShifts: Shift[], usersForView: UserProfile[]) => {
     if (loading) {
@@ -192,6 +238,7 @@ export function ShiftScheduleOverview() {
                                         <TableHead>Address</TableHead>
                                         <TableHead className="text-right w-[110px]">Type</TableHead>
                                         <TableHead className="text-right w-[160px]">Status</TableHead>
+                                        {isOwner && <TableHead className="text-right w-[140px]">Actions</TableHead>}
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -211,6 +258,16 @@ export function ShiftScheduleOverview() {
                                             <TableCell className="text-right">
                                                 {getStatusBadge(shift)}
                                             </TableCell>
+                                            {isOwner && (
+                                                <TableCell className="text-right">
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditShift(shift)}>
+                                                        <Edit className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10" onClick={() => setShiftToDelete(shift)}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </TableCell>
+                                            )}
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -236,8 +293,18 @@ export function ShiftScheduleOverview() {
                                 <CardContent className="text-sm text-muted-foreground">
                                     {format(getCorrectedLocalDate(shift.date), 'eeee, MMM d')}
                                 </CardContent>
-                                <CardFooter className="p-4 bg-muted/30 flex justify-end">
+                                <CardFooter className="p-2 bg-muted/30 flex justify-between items-center">
                                     {getStatusBadge(shift)}
+                                    {isOwner && (
+                                        <div className="flex items-center">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditShift(shift)}>
+                                                <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10" onClick={() => setShiftToDelete(shift)}>
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    )}
                                 </CardFooter>
                            </Card>
                         ))}
@@ -260,37 +327,75 @@ export function ShiftScheduleOverview() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-            <div>
-                <CardTitle>Team Schedule Overview</CardTitle>
-                <CardDescription>A list of all upcoming shifts for the team, grouped by operative. The schedule updates in real-time.</CardDescription>
+    <>
+        <Card>
+        <CardHeader>
+            <div className="flex items-center justify-between gap-4">
+                <div>
+                    <CardTitle>Team Schedule Overview</CardTitle>
+                    <CardDescription>A list of all upcoming shifts for the team, grouped by operative. The schedule updates in real-time.</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                    {isOwner && (
+                        <Button onClick={handleAddShift}>
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Add Shift
+                        </Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => setRefreshKey(prev => prev + 1)}>
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Refresh
+                    </Button>
+                </div>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setRefreshKey(prev => prev + 1)}>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Refresh
-            </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Tabs defaultValue="today">
-          <TabsList>
-            <TabsTrigger value="today">Today</TabsTrigger>
-            <TabsTrigger value="this-week">This Week</TabsTrigger>
-            <TabsTrigger value="next-week">Next Week</TabsTrigger>
-          </TabsList>
-          <TabsContent value="today" className="mt-0">
-            {renderWeekSchedule(todayShifts, users)}
-          </TabsContent>
-          <TabsContent value="this-week" className="mt-0">
-            {renderWeekSchedule(thisWeekShifts, users)}
-          </TabsContent>
-          <TabsContent value="next-week" className="mt-0">
-             {renderWeekSchedule(nextWeekShifts, users)}
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+        </CardHeader>
+        <CardContent>
+            <Tabs defaultValue="today">
+            <TabsList>
+                <TabsTrigger value="today">Today</TabsTrigger>
+                <TabsTrigger value="this-week">This Week</TabsTrigger>
+                <TabsTrigger value="next-week">Next Week</TabsTrigger>
+            </TabsList>
+            <TabsContent value="today" className="mt-0">
+                {renderWeekSchedule(todayShifts, users)}
+            </TabsContent>
+            <TabsContent value="this-week" className="mt-0">
+                {renderWeekSchedule(thisWeekShifts, users)}
+            </TabsContent>
+            <TabsContent value="next-week" className="mt-0">
+                {renderWeekSchedule(nextWeekShifts, users)}
+            </TabsContent>
+            </Tabs>
+        </CardContent>
+        </Card>
+        
+        {isOwner && (
+            <ShiftFormDialog 
+                open={isFormOpen} 
+                onOpenChange={setIsFormOpen} 
+                users={users} 
+                shift={selectedShift} 
+            />
+        )}
+        
+        <AlertDialog open={!!shiftToDelete} onOpenChange={() => setShiftToDelete(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete the shift for 
+                        <span className="font-semibold"> {shiftToDelete?.task}</span> at 
+                        <span className="font-semibold"> {shiftToDelete?.address}</span>.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteShift} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                        Delete
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+    </>
   );
 }

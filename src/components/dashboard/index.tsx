@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
@@ -145,17 +144,14 @@ export default function Dashboard() {
     const generateTableForShifts = (title: string, shiftsForTable: Shift[]) => {
       if (shiftsForTable.length === 0) return;
 
-      const head = [['Date', 'Type', 'Task', 'Address', 'B Number', 'Status']];
+      const head = [['Date', 'Type', 'Task', 'Address']];
       const body = shiftsForTable.map(shift => {
           const shiftDate = getCorrectedLocalDate(shift.date);
-          const formattedStatus = shift.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
           return [
               format(shiftDate, 'EEE, dd MMM'),
               shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase(),
               shift.task,
               shift.address,
-              shift.bNumber || 'N/A',
-              formattedStatus,
           ];
       });
 
