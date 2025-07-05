@@ -75,10 +75,6 @@ export function Header() {
                   <Briefcase className="mr-2" />
                   <span>Projects</span>
                 </DropdownMenuItem>
-                 <DropdownMenuItem onClick={() => router.push('/health-and-safety')} className="cursor-pointer">
-                  <HardHat className="mr-2" />
-                  <span>H&S Documents</span>
-                </DropdownMenuItem>
                 
                 {isPrivilegedUser && (
                   <>
