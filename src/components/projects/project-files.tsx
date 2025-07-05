@@ -2,22 +2,55 @@
 
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { db } from '@/lib/firebase';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db, storage } from '@/lib/firebase';
+import {
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  addDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, Download } from 'lucide-react';
-import type { Project, ProjectFile } from '@/types';
+import { Spinner } from '@/components/shared/spinner';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { FileText, Download, Trash2, Upload } from 'lucide-react';
+import type { Project, ProjectFile, UserProfile } from '@/types';
 
 interface ProjectFilesProps {
   project: Project;
+  userProfile: UserProfile;
 }
 
-export function ProjectFiles({ project }: ProjectFilesProps) {
+export function ProjectFiles({ project, userProfile }: ProjectFilesProps) {
   const { toast } = useToast();
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     if (!db || !project) return;
@@ -39,6 +72,66 @@ export function ProjectFiles({ project }: ProjectFilesProps) {
 
     return () => unsubscribe();
   }, [project, toast]);
+
+  const handleFileUpload = (selectedFiles: FileList | null) => {
+    if (!selectedFiles || selectedFiles.length === 0) return;
+    setIsUploading(true);
+
+    const uploadPromises = Array.from(selectedFiles).map(file => {
+      const storagePath = `project_files/${project.id}/${Date.now()}-${file.name}`;
+      const storageRef = ref(storage, storagePath);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      return new Promise<void>((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          null, // We can add progress indicator logic here later if needed
+          (error) => {
+            console.error(`Upload failed for ${file.name}:`, error);
+            reject(error);
+          },
+          async () => {
+            try {
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              await addDoc(collection(db, `projects/${project.id}/files`), {
+                name: file.name,
+                url: downloadURL,
+                fullPath: storagePath,
+                size: file.size,
+                type: file.type,
+                uploadedAt: serverTimestamp(),
+                uploaderId: userProfile.uid,
+                uploaderName: userProfile.name,
+              });
+              resolve();
+            } catch (dbError) {
+              console.error(`Failed to save file info for ${file.name} to Firestore:`, dbError);
+              reject(dbError);
+            }
+          }
+        );
+      });
+    });
+
+    Promise.all(uploadPromises)
+      .then(() => toast({ title: 'Success', description: `${selectedFiles.length} file(s) uploaded successfully.` }))
+      .catch(() => toast({ variant: 'destructive', title: 'Upload Failed', description: 'One or more files failed to upload. Please try again.' }))
+      .finally(() => setIsUploading(false));
+  };
+  
+  const handleDeleteFile = async (file: ProjectFile) => {
+    if (!project) return;
+    try {
+        const fileRef = ref(storage, file.fullPath);
+        await deleteObject(fileRef);
+        await deleteDoc(doc(db, `projects/${project.id}/files`, file.id));
+        toast({ title: "File Deleted", description: `Successfully deleted ${file.name}.` });
+    } catch (error) {
+        console.error("Error deleting file:", error);
+        toast({ variant: 'destructive', title: "Error", description: "Could not delete file. Check Firestore rules and Storage permissions." });
+    }
+  };
+
 
   const formatFileSize = (bytes?: number) => {
     if (bytes === undefined || bytes === null) return 'N/A';
@@ -64,26 +157,48 @@ export function ProjectFiles({ project }: ProjectFilesProps) {
           <p className="mt-2 text-sm">No files have been attached to this project yet.</p>
         </div>
       ) : (
-        <div className="border rounded-lg overflow-hidden">
+        <div className="border rounded-lg overflow-hidden max-h-60 overflow-y-auto">
             <Table>
                 <TableHeader>
                     <TableRow>
-                        <TableHead>File Name</TableHead>
-                        <TableHead className="w-[100px] text-right">Size</TableHead>
-                        <TableHead className="w-[80px] text-right">Action</TableHead>
+                        <TableHead>File</TableHead>
+                        <TableHead>Uploaded by</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                 {files.map(file => (
                     <TableRow key={file.id}>
-                        <TableCell className="font-medium truncate max-w-[200px]">{file.name}</TableCell>
-                        <TableCell className="text-right text-muted-foreground text-xs">{formatFileSize(file.size)}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="font-medium truncate max-w-[150px]">
+                            <p>{file.name}</p>
+                            <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{file.uploaderName}</TableCell>
+                        <TableCell className="text-right space-x-1">
                             <a href={file.url} target="_blank" rel="noopener noreferrer" download={file.name}>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
                                     <Download className="h-4 w-4" />
                                 </Button>
                             </a>
+                            {(userProfile.uid === file.uploaderId || ['admin', 'owner'].includes(userProfile.role)) && (
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10">
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                            <AlertDialogDescription>This will permanently delete "{file.name}".</AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction onClick={() => handleDeleteFile(file)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                            )}
                         </TableCell>
                     </TableRow>
                 ))}
@@ -91,6 +206,22 @@ export function ProjectFiles({ project }: ProjectFilesProps) {
             </Table>
         </div>
       )}
+       <div className="pt-2">
+            <Label htmlFor={`file-upload-user-${project.id}`} className="sr-only">Upload file</Label>
+            <div className="flex items-center gap-2">
+                <Input
+                    id={`file-upload-user-${project.id}`}
+                    type="file"
+                    multiple
+                    className="flex-grow text-xs h-9 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                    onChange={(e) => handleFileUpload(e.target.files)}
+                    disabled={isUploading}
+                />
+                 <Button size="sm" onClick={() => document.getElementById(`file-upload-user-${project.id}`)?.click()} disabled={isUploading}>
+                    {isUploading ? <Spinner /> : <Upload className="h-4 w-4" />}
+                </Button>
+            </div>
+        </div>
     </div>
   );
 }

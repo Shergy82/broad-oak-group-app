@@ -34,7 +34,7 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     // The admin ProjectManager component fetches its own data.
-    // This effect should only run for regular users.
+    // This effect should only run for regular users if they don't have a privileged role.
     if (isPrivilegedUser) {
       setLoading(false);
       return;
@@ -72,7 +72,7 @@ export default function ProjectsPage() {
     );
   }, [projects, searchTerm]);
   
-  const isLoadingPage = isAuthLoading || isProfileLoading || (user && isPrivilegedUser === undefined);
+  const isLoadingPage = isAuthLoading || isProfileLoading;
   
   if (isLoadingPage) {
     return (
@@ -100,7 +100,7 @@ export default function ProjectsPage() {
             <Card>
             <CardHeader>
                 <CardTitle>Projects</CardTitle>
-                <CardDescription>Search for projects by address to view details and attached files.</CardDescription>
+                <CardDescription>Search for projects and manage your uploaded files.</CardDescription>
                 <div className="pt-4">
                 <Input
                     placeholder="Search by address..."
@@ -130,10 +130,15 @@ export default function ProjectsPage() {
                     {filteredProjects.map((project) => (
                     <Card key={project.id}>
                         <CardHeader>
-                        <CardTitle className="text-lg">{project.address}</CardTitle>
+                            <CardTitle className="text-lg">{project.address}</CardTitle>
+                            <CardDescription className="text-xs pt-2 space-y-1">
+                                <div><strong>B-Number:</strong> {project.bNumber || 'N/A'}</div>
+                                <div><strong>Council:</strong> {project.council || 'N/A'}</div>
+                                <div><strong>Manager:</strong> {project.manager || 'N/A'}</div>
+                            </CardDescription>
                         </CardHeader>
                         <CardContent>
-                        <ProjectFiles project={project} />
+                          {userProfile && <ProjectFiles project={project} userProfile={userProfile} />}
                         </CardContent>
                     </Card>
                     ))}

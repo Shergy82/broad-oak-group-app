@@ -42,6 +42,8 @@ export interface ProjectFile {
   size?: number; // Optional size in bytes
   type?: string; // Optional MIME type
   uploadedAt: Timestamp;
+  uploaderId: string;
+  uploaderName: string;
 }
 
 export interface Announcement {

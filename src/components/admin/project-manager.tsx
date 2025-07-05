@@ -144,7 +144,7 @@ function CreateProjectDialog({ open, onOpenChange, userProfile }: CreateProjectD
   );
 }
 
-function FileUploader({ project }: { project: Project }) {
+function FileUploader({ project, userProfile }: { project: Project; userProfile: UserProfile }) {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const { toast } = useToast();
@@ -176,6 +176,8 @@ function FileUploader({ project }: { project: Project }) {
                 size: file.size,
                 type: file.type,
                 uploadedAt: serverTimestamp(),
+                uploaderId: userProfile.uid,
+                uploaderName: userProfile.name,
               });
               resolve();
             } catch (dbError) {
@@ -238,7 +240,7 @@ function FileUploader({ project }: { project: Project }) {
   );
 }
 
-function FileManagerDialog({ project, open, onOpenChange }: { project: Project | null, open: boolean, onOpenChange: (open: boolean) => void }) {
+function FileManagerDialog({ project, open, onOpenChange, userProfile }: { project: Project | null, open: boolean, onOpenChange: (open: boolean) => void, userProfile: UserProfile }) {
     const [files, setFiles] = useState<ProjectFile[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
@@ -290,7 +292,7 @@ function FileManagerDialog({ project, open, onOpenChange }: { project: Project |
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 py-4">
                     <div className="space-y-4">
                         <h4 className="font-semibold">Upload New Files</h4>
-                        <FileUploader project={project} />
+                        <FileUploader project={project} userProfile={userProfile} />
                     </div>
                     <div className="space-y-4">
                         <h4 className="font-semibold">Existing Files</h4>
@@ -440,7 +442,7 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
           </TableBody>
         </Table>
       </div>
-      <FileManagerDialog project={selectedProject} open={isFileManagerOpen} onOpenChange={setFileManagerOpen} />
+      {selectedProject && <FileManagerDialog project={selectedProject} open={isFileManagerOpen} onOpenChange={setFileManagerOpen} userProfile={userProfile} />}
     </div>
   );
 }
