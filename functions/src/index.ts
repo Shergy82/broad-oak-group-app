@@ -94,14 +94,35 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
       // Compare relevant fields.
       const taskChanged = before.task !== after.task;
       const addressChanged = before.address !== after.address;
-      const dateChanged = !before.date.isEqual(after.date);
+      
+      const beforeDate = before.date.toDate();
+      const afterDate = after.date.toDate();
+      // Compare the actual date part of the timestamp, ignoring time-of-day differences.
+      const dateChanged = 
+          beforeDate.getUTCFullYear() !== afterDate.getUTCFullYear() ||
+          beforeDate.getUTCMonth() !== afterDate.getUTCMonth() ||
+          beforeDate.getUTCDate() !== afterDate.getUTCDate();
+
       const typeChanged = before.type !== after.type;
 
       if (taskChanged || addressChanged || dateChanged || typeChanged) {
         userId = after.userId;
+
+        const changedFields = [];
+        if (taskChanged) changedFields.push('task');
+        if (addressChanged) changedFields.push('location');
+        if (dateChanged) changedFields.push('date');
+        if (typeChanged) changedFields.push('time (AM/PM)');
+        
+        let body = `Details for one of your shifts have changed. Please check the app.`;
+        if (changedFields.length > 0) {
+            const changes = changedFields.join(' & ');
+            body = `The ${changes} for one of your shifts has been updated.`;
+        }
+
         payload = {
           title: "Your Shift Has Been Updated",
-          body: `Details for one of your shifts have changed. Please check the app.`,
+          body: body,
           data: { url: `/dashboard` },
         };
       } else {
