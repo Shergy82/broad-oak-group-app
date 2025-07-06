@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,7 @@ import { useUserProfile } from '@/hooks/use-user-profile';
 export default function AdminPage() {
   const { userProfile } = useUserProfile();
   const isPrivilegedUser = userProfile && ['admin', 'owner'].includes(userProfile.role);
+  const isOwner = userProfile && userProfile.role === 'owner';
 
   return (
     <div className="space-y-8">
@@ -23,7 +25,7 @@ export default function AdminPage() {
                 Upload an .xlsx file to schedule all tasks for one or more projects for one week. This will also create project entries on the 'Projects' page if they don't already exist.
               </p>
               <p className="font-bold text-destructive/90">
-                Important: Uploading a file will delete all existing shifts for the dates found in that file and replace them with the new schedule.
+                Important: Shifts are reconciled on import. New shifts are added, changed shifts are updated, and shifts no longer present in the file are deleted. Notifications are only sent for new or changed shifts.
               </p>
               <ul className="list-disc pl-5 space-y-1">
                 <li>
@@ -66,11 +68,14 @@ export default function AdminPage() {
         </Card>
       )}
 
-      <VapidKeyGenerator />
+      {isOwner && (
+        <>
+          <VapidKeyGenerator />
+          <TestNotificationSender />
+          <ShiftScheduleOverview userProfile={userProfile} />
+        </>
+      )}
 
-      <TestNotificationSender />
-      
-      {userProfile && <ShiftScheduleOverview userProfile={userProfile} />}
     </div>
   );
 }
