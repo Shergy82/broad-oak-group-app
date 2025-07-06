@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.projectReviewNotifier = exports.sendShiftNotification = exports.getVapidPublicKey = void 0;
+exports.deleteProjectAndFiles = exports.projectReviewNotifier = exports.sendShiftNotification = exports.getVapidPublicKey = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const webPush = __importStar(require("web-push"));
@@ -106,34 +106,56 @@ exports.sendShiftNotification = functions.region("europe-west2").firestore.docum
         };
     }
     else if (change.after.exists && change.before.exists) {
-        // A shift is updated. Check for meaningful changes.
+        // A shift is updated. This is the definitive check for meaningful changes.
         const before = shiftDataBefore;
         const after = shiftDataAfter;
         if (!before || !after) {
             functions.logger.log("Shift update detected, but data is missing. No notification sent.");
             return;
         }
-        // Compare relevant fields.
-        const taskChanged = before.task !== after.task;
-        const addressChanged = before.address !== after.address;
-        const dateChanged = !before.date.isEqual(after.date);
-        const typeChanged = before.type !== after.type;
-        if (taskChanged || addressChanged || dateChanged || typeChanged) {
+        // --- Robust comparison logic ---
+        const changedFields = [];
+        // 1. Compare string values, tolerant of whitespace and null/undefined differences.
+        if ((before.task || "").trim() !== (after.task || "").trim()) {
+            changedFields.push('task');
+        }
+        if ((before.address || "").trim() !== (after.address || "").trim()) {
+            changedFields.push('location');
+        }
+        if ((before.bNumber || "").trim() !== (after.bNumber || "").trim()) {
+            changedFields.push('B Number');
+        }
+        if (before.type !== after.type) {
+            changedFields.push('time (AM/PM)');
+        }
+        // 2. Compare dates with day-level precision, ignoring time-of-day.
+        const beforeDate = before.date.toDate();
+        const afterDate = after.date.toDate();
+        if (beforeDate.getUTCFullYear() !== afterDate.getUTCFullYear() ||
+            beforeDate.getUTCMonth() !== afterDate.getUTCMonth() ||
+            beforeDate.getUTCDate() !== afterDate.getUTCDate()) {
+            changedFields.push('date');
+        }
+        // 3. Determine if any meaningful change occurred and build the notification.
+        if (changedFields.length > 0) {
             userId = after.userId;
+            const changes = changedFields.join(' & ');
+            const body = `The ${changes} for one of your shifts has been updated.`;
             payload = {
                 title: "Your Shift Has Been Updated",
-                body: `Details for one of your shifts have changed. Please check the app.`,
+                body: body,
                 data: { url: `/dashboard` },
             };
+            functions.logger.log(`Meaningful change detected for shift ${shiftId}. Changes: ${changes}. Sending notification.`);
         }
         else {
-            // No meaningful change, so no notification.
+            // This is the crucial part: No meaningful change was detected, so no notification will be sent.
             functions.logger.log(`Shift ${shiftId} was updated, but no significant fields changed. No notification sent.`);
             return;
         }
     }
     else {
-        functions.logger.log(`Shift ${shiftId} was updated, no notification sent.`);
+        functions.logger.log(`Shift ${shiftId} write event occurred, but it was not a create, update, or delete. No notification sent.`);
         return;
     }
     if (!userId || !payload) {
@@ -238,6 +260,49 @@ exports.projectReviewNotifier = functions
     }
     catch (error) {
         functions.logger.error("Error running project review notifier:", error);
+    }
+});
+exports.deleteProjectAndFiles = functions.region("europe-west2").https.onCall(async (data, context) => {
+    functions.logger.log("Received request to delete project:", data.projectId);
+    // 1. Authentication check
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in to delete a project.");
+    }
+    const uid = context.auth.uid;
+    const userDoc = await db.collection("users").doc(uid).get();
+    const userProfile = userDoc.data();
+    if (!userProfile || !['admin', 'owner'].includes(userProfile.role)) {
+        throw new functions.https.HttpsError("permission-denied", "You do not have permission to perform this action.");
+    }
+    const projectId = data.projectId;
+    if (!projectId || typeof projectId !== 'string') {
+        throw new functions.https.HttpsError("invalid-argument", "The function must be called with a 'projectId' string argument.");
+    }
+    try {
+        const bucket = admin.storage().bucket();
+        const prefix = `project_files/${projectId}/`;
+        // Step 1: Atomically delete all associated files from Cloud Storage using a prefix match.
+        // This is more robust than relying on file paths stored in Firestore.
+        await bucket.deleteFiles({ prefix });
+        functions.logger.log(`Successfully deleted all files with prefix "${prefix}" from Storage.`);
+        // Step 2: Delete all documents from the 'files' subcollection in Firestore.
+        const projectRef = db.collection('projects').doc(projectId);
+        const filesQuerySnapshot = await projectRef.collection('files').get();
+        const batch = db.batch();
+        filesQuerySnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        // Step 3: Delete the main project document itself.
+        batch.delete(projectRef);
+        // Step 4: Commit all Firestore deletions in a single atomic operation.
+        await batch.commit();
+        functions.logger.log(`Successfully deleted project ${projectId} and its subcollections from Firestore.`);
+        return { success: true, message: `Project ${projectId} and all associated files deleted successfully.` };
+    }
+    catch (error) {
+        functions.logger.error(`Error deleting project ${projectId}:`, error);
+        // Avoid leaking detailed internal error messages to the client.
+        throw new functions.https.HttpsError("internal", "An unexpected error occurred while deleting the project. Please check the function logs.");
     }
 });
 //# sourceMappingURL=index.js.map

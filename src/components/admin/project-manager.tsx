@@ -263,17 +263,18 @@ function FileManagerDialog({ project, open, onOpenChange, userProfile }: { proje
     }, [project]);
 
     const handleDeleteFile = async (file: ProjectFile) => {
-        if (!project) return;
+        if (!project || !functions) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Required services are not available.' });
+            return;
+        }
+        
         try {
-            // Delete from Storage FIRST
-            const fileRef = ref(storage, file.fullPath);
-            await deleteObject(fileRef);
-            // Then delete from Firestore
-            await deleteDoc(doc(db, `projects/${project.id}/files`, file.id));
+            const deleteProjectFileFn = httpsCallable(functions, 'deleteProjectFile');
+            await deleteProjectFileFn({ projectId: project.id, fileId: file.id });
             toast({ title: "File Deleted", description: `Successfully deleted ${file.name}.` });
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error deleting file:", error);
-            toast({ variant: 'destructive', title: "Error", description: "Could not delete file. Check Firestore rules and Storage permissions." });
+            toast({ variant: 'destructive', title: "Error", description: error.message || "Could not delete file." });
         }
     };
 

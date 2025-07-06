@@ -322,3 +322,60 @@ export const deleteProjectAndFiles = functions.region("europe-west2").https.onCa
         throw new functions.https.HttpsError("internal", "An unexpected error occurred while deleting the project. Please check the function logs.");
     }
 });
+
+
+export const deleteProjectFile = functions.region("europe-west2").https.onCall(async (data, context) => {
+    functions.logger.log("Received request to delete file:", data);
+
+    // 1. Auth check
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in to delete a file.");
+    }
+    const uid = context.auth.uid;
+    const { projectId, fileId } = data;
+
+    if (!projectId || typeof projectId !== 'string' || !fileId || typeof fileId !== 'string') {
+        throw new functions.https.HttpsError("invalid-argument", "The function requires 'projectId' and 'fileId' arguments.");
+    }
+
+    try {
+        const fileRef = db.collection('projects').doc(projectId).collection('files').doc(fileId);
+        const fileDoc = await fileRef.get();
+
+        if (!fileDoc.exists) {
+            throw new functions.https.HttpsError("not-found", "The specified file does not exist.");
+        }
+
+        const fileData = fileDoc.data()!;
+        const uploaderId = fileData.uploaderId;
+
+        // 2. Permission check: Is the user the uploader, or an admin/owner?
+        const userDoc = await db.collection("users").doc(uid).get();
+        const userProfile = userDoc.data();
+        const isOwnerOrAdmin = userProfile && ['admin', 'owner'].includes(userProfile.role);
+        const isUploader = uid === uploaderId;
+
+        if (!isOwnerOrAdmin && !isUploader) {
+            throw new functions.https.HttpsError("permission-denied", "You do not have permission to delete this file.");
+        }
+
+        // 3. Deletion Logic
+        // Delete from Storage first, using the full path stored in the document.
+        const storageFileRef = admin.storage().bucket().file(fileData.fullPath);
+        await storageFileRef.delete();
+        functions.logger.log(`Successfully deleted file from Storage: ${fileData.fullPath}`);
+
+        // Then delete the file record from Firestore.
+        await fileRef.delete();
+        functions.logger.log(`Successfully deleted file record from Firestore: ${fileId}`);
+        
+        return { success: true, message: `File ${fileId} deleted successfully.` };
+
+    } catch (error: any) {
+        functions.logger.error(`Error deleting file ${fileId} from project ${projectId}:`, error);
+        if (error instanceof functions.https.HttpsError) {
+            throw error; // Re-throw HttpsError so client gets the specific message
+        }
+        throw new functions.https.HttpsError("internal", "An unexpected error occurred while deleting the file.");
+    }
+});
