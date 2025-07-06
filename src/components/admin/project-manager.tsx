@@ -18,7 +18,7 @@ import {
   writeBatch,
   getDocs
 } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import {
@@ -265,8 +265,10 @@ function FileManagerDialog({ project, open, onOpenChange, userProfile }: { proje
     const handleDeleteFile = async (file: ProjectFile) => {
         if (!project) return;
         try {
+            // Delete from Storage FIRST
             const fileRef = ref(storage, file.fullPath);
             await deleteObject(fileRef);
+            // Then delete from Firestore
             await deleteDoc(doc(db, `projects/${project.id}/files`, file.id));
             toast({ title: "File Deleted", description: `Successfully deleted ${file.name}.` });
         } catch (error) {
@@ -329,7 +331,7 @@ function FileManagerDialog({ project, open, onOpenChange, userProfile }: { proje
                                                           <Download className="h-4 w-4" />
                                                       </Button>
                                                     </a>
-                                                     {['admin', 'owner'].includes(userProfile.role) && (
+                                                     {(userProfile.uid === file.uploaderId || ['admin', 'owner'].includes(userProfile.role)) && (
                                                         <AlertDialog>
                                                             <AlertDialogTrigger asChild>
                                                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10">
@@ -411,20 +413,29 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
     try {
         const batch = writeBatch(db);
 
-        // Delete files subcollection
+        // 1. Get all file documents to get their storage paths
         const filesQuery = query(collection(db, `projects/${project.id}/files`));
         const filesSnapshot = await getDocs(filesQuery);
-        filesSnapshot.forEach(doc => batch.delete(doc.ref));
+        
+        // 2. Create promises to delete each file from storage FIRST
+        const storageDeletePromises: Promise<void>[] = [];
+        filesSnapshot.forEach(fileDoc => {
+            const fileData = fileDoc.data() as ProjectFile;
+            if (fileData.fullPath) {
+                const fileRef = ref(storage, fileData.fullPath);
+                storageDeletePromises.push(deleteObject(fileRef));
+            }
+        });
+        
+        // Wait for all storage deletions to complete
+        await Promise.all(storageDeletePromises);
 
-        // Delete main project doc
+        // 3. Now that storage is clear, delete the firestore documents
+        filesSnapshot.forEach(fileDoc => {
+            batch.delete(fileDoc.ref);
+        });
         batch.delete(doc(db, 'projects', project.id));
-
         await batch.commit();
-
-        // Delete files from storage
-        const storageFolderRef = ref(storage, `project_files/${project.id}`);
-        const allFiles = await listAll(storageFolderRef);
-        await Promise.all(allFiles.items.map(fileRef => deleteObject(fileRef)));
 
         toast({ title: 'Success', description: 'Project and all its files have been deleted.' });
     } catch (error) {
