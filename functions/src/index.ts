@@ -94,7 +94,8 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
       // Compare relevant fields.
       const taskChanged = before.task !== after.task;
       const addressChanged = before.address !== after.address;
-      
+      const bNumberChanged = (before.bNumber || '') !== (after.bNumber || '');
+
       const beforeDate = before.date.toDate();
       const afterDate = after.date.toDate();
       // Compare the actual date part of the timestamp, ignoring time-of-day differences.
@@ -105,7 +106,7 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
 
       const typeChanged = before.type !== after.type;
 
-      if (taskChanged || addressChanged || dateChanged || typeChanged) {
+      if (taskChanged || addressChanged || dateChanged || typeChanged || bNumberChanged) {
         userId = after.userId;
 
         const changedFields = [];
@@ -113,6 +114,8 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
         if (addressChanged) changedFields.push('location');
         if (dateChanged) changedFields.push('date');
         if (typeChanged) changedFields.push('time (AM/PM)');
+        if (bNumberChanged) changedFields.push('B Number');
+
         
         let body = `Details for one of your shifts have changed. Please check the app.`;
         if (changedFields.length > 0) {

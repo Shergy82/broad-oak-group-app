@@ -134,7 +134,7 @@ export function FileUploader() {
                 const addressCandidate = (rowData[0] || '').toString().trim();
                 if (addressCandidate) {
                     currentProjectAddress = addressCandidate;
-                    currentBNumber = (rowData[1] || 'N/A').toString().trim();
+                    currentBNumber = (rowData[1] || '').toString().trim();
                     
                     if (currentProjectAddress && !existingAddresses.has(currentProjectAddress.toLowerCase()) && !projectsToCreate.has(currentProjectAddress.toLowerCase())) {
                         projectsToCreate.set(currentProjectAddress.toLowerCase(), { address: currentProjectAddress, bNumber: currentBNumber });
@@ -230,7 +230,8 @@ export function FileUploader() {
             const existingShift = existingShiftsMap.get(key);
 
             if (existingShift) {
-                if (existingShift.task !== newShift.task || existingShift.address !== newShift.address || existingShift.bNumber !== newShift.bNumber) {
+                const bNumberChanged = (existingShift.bNumber || '') !== (newShift.bNumber || '');
+                if (existingShift.task !== newShift.task || existingShift.address !== newShift.address || bNumberChanged) {
                     const shiftDocRef = doc(db, 'shifts', existingShift.id);
                     batch.update(shiftDocRef, {
                         task: newShift.task,
