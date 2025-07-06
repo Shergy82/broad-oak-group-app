@@ -261,15 +261,15 @@ export function FileUploader() {
         }
         
         let descriptionParts = [];
-        if (shiftsCreated > 0) descriptionParts.push(`created ${shiftsCreated} new`);
-        if (shiftsUpdated > 0) descriptionParts.push(`updated ${shiftsUpdated}`);
-        if (shiftsDeleted > 0) descriptionParts.push(`deleted ${shiftsDeleted}`);
+        if (shiftsCreated > 0) descriptionParts.push(`created ${shiftsCreated} new shift(s)`);
+        if (shiftsUpdated > 0) descriptionParts.push(`updated ${shiftsUpdated} shift(s)`);
+        if (shiftsDeleted > 0) descriptionParts.push(`deleted ${shiftsDeleted} shift(s)`);
         if (projectsAdded > 0) descriptionParts.push(`created ${projectsAdded} new project(s)`);
 
         if (descriptionParts.length > 0) {
             toast({
-                title: 'Schedule Updated Successfully',
-                description: `Successfully ${descriptionParts.join(', ')}.`,
+                title: 'Import Complete',
+                description: `Successfully processed the file: ${descriptionParts.join(', ')}.`,
             });
         } else if (allUnknownOperatives.size === 0) {
             toast({
