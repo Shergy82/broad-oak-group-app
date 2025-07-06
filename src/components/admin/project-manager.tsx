@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { db, storage } from '@/lib/firebase';
+import { db, storage, functions, httpsCallable } from '@/lib/firebase';
 import {
   collection,
   onSnapshot,
@@ -408,39 +408,24 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
         toast({ variant: 'destructive', title: 'Permission Denied', description: 'You do not have permission to delete projects.' });
         return;
     }
+     if (!functions) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Firebase Functions service is not available.' });
+        return;
+    }
 
-    toast({ title: 'Deleting Project...', description: 'This may take a moment.' });
+    toast({ title: 'Deleting Project...', description: 'This may take a moment. The page will update automatically.' });
     try {
-        const batch = writeBatch(db);
-
-        // 1. Get all file documents to get their storage paths
-        const filesQuery = query(collection(db, `projects/${project.id}/files`));
-        const filesSnapshot = await getDocs(filesQuery);
+        const deleteProjectAndFilesFn = httpsCallable(functions, 'deleteProjectAndFiles');
+        await deleteProjectAndFilesFn({ projectId: project.id });
         
-        // 2. Create promises to delete each file from storage FIRST
-        const storageDeletePromises: Promise<void>[] = [];
-        filesSnapshot.forEach(fileDoc => {
-            const fileData = fileDoc.data() as ProjectFile;
-            if (fileData.fullPath) {
-                const fileRef = ref(storage, fileData.fullPath);
-                storageDeletePromises.push(deleteObject(fileRef));
-            }
-        });
-        
-        // Wait for all storage deletions to complete
-        await Promise.all(storageDeletePromises);
-
-        // 3. Now that storage is clear, delete the firestore documents
-        filesSnapshot.forEach(fileDoc => {
-            batch.delete(fileDoc.ref);
-        });
-        batch.delete(doc(db, 'projects', project.id));
-        await batch.commit();
-
         toast({ title: 'Success', description: 'Project and all its files have been deleted.' });
-    } catch (error) {
-        console.error("Error deleting project:", error);
-        toast({ variant: 'destructive', title: 'Error', description: 'Could not delete project. See console for details.' });
+    } catch (error: any) {
+        console.error("Error calling deleteProjectAndFiles function:", error);
+        toast({ 
+            variant: 'destructive', 
+            title: 'Deletion Failed', 
+            description: error.message || 'An unknown error occurred. Please check the function logs in the Firebase Console.' 
+        });
     }
   };
 

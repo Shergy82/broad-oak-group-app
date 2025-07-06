@@ -267,3 +267,65 @@ export const projectReviewNotifier = functions
         functions.logger.error("Error running project review notifier:", error);
     }
   });
+
+export const deleteProjectAndFiles = functions.region("europe-west2").https.onCall(async (data, context) => {
+    functions.logger.log("Received request to delete project:", data.projectId);
+
+    // 1. Authentication check
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in to delete a project.");
+    }
+    const uid = context.auth.uid;
+    const userDoc = await db.collection("users").doc(uid).get();
+    const userProfile = userDoc.data();
+
+    if (!userProfile || !['admin', 'owner'].includes(userProfile.role)) {
+        throw new functions.https.HttpsError("permission-denied", "You do not have permission to perform this action.");
+    }
+    
+    const projectId = data.projectId;
+    if (!projectId || typeof projectId !== 'string') {
+        throw new functions.https.HttpsError("invalid-argument", "The function must be called with a 'projectId' string argument.");
+    }
+
+    try {
+        const projectRef = db.collection('projects').doc(projectId);
+        const filesRef = projectRef.collection('files');
+        const filesSnapshot = await filesRef.get();
+
+        // 2. Delete files from Cloud Storage
+        const bucket = admin.storage().bucket(); // Default bucket
+        const deleteStoragePromises: Promise<any>[] = [];
+
+        filesSnapshot.forEach(doc => {
+            const fileData = doc.data();
+            if (fileData.fullPath) {
+                functions.logger.log(`Deleting from storage: ${fileData.fullPath}`);
+                deleteStoragePromises.push(bucket.file(fileData.fullPath).delete().catch(err => {
+                    // Log error but don't fail the whole process if a file is already gone
+                    functions.logger.error(`Failed to delete ${fileData.fullPath} from storage:`, err);
+                }));
+            }
+        });
+        await Promise.all(deleteStoragePromises);
+        functions.logger.log(`Finished deleting ${deleteStoragePromises.length} files from storage for project ${projectId}.`);
+
+        // 3. Delete documents from Firestore subcollection using a batch
+        const batch = db.batch();
+        filesSnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
+        // 4. Delete main project document
+        batch.delete(projectRef);
+
+        await batch.commit();
+        functions.logger.log(`Successfully deleted project ${projectId} and its subcollections from Firestore.`);
+
+        return { success: true, message: `Project ${projectId} deleted successfully.` };
+
+    } catch (error: any) {
+        functions.logger.error(`Error deleting project ${projectId}:`, error);
+        throw new functions.https.HttpsError("internal", "An unexpected error occurred while deleting the project.", error.message);
+    }
+});
