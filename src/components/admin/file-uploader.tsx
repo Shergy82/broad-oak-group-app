@@ -69,14 +69,6 @@ export function FileUploader() {
         });
         userNames.sort((a, b) => b.length - a.length);
 
-        // Fetch existing projects to validate against
-        const existingProjectsSnapshot = await getDocs(collection(db, 'projects'));
-        const existingAddresses = new Set<string>();
-        existingProjectsSnapshot.forEach(doc => {
-            const data = doc.data();
-            if(data.address) existingAddresses.add(data.address.toLowerCase().trim());
-        });
-
         const parseDate = (dateValue: any): Date | null => {
             if (!dateValue) return null;
             if (dateValue instanceof Date) {
@@ -117,7 +109,6 @@ export function FileUploader() {
 
         const shiftsFromExcel: ParsedShift[] = [];
         const unknownOperativesCount = new Map<string, number>();
-        const unknownProjects = new Set<string>();
         const allDatesFound: Date[] = [];
 
         for (const sheetName of workbook.SheetNames) {
@@ -154,12 +145,6 @@ export function FileUploader() {
                 }
 
                 if (!currentProjectAddress) continue;
-
-                // If project does not exist, add to unknown list and skip shifts for it.
-                if (!existingAddresses.has(currentProjectAddress.toLowerCase().trim())) {
-                    unknownProjects.add(currentProjectAddress);
-                    continue; 
-                }
 
                 for (let c = 2; c < rowData.length; c++) {
                     const cellValue = (rowData[c] || '').toString().trim().replace(/[\u2012\u2013\u2014\u2015]/g, '-');
@@ -283,7 +268,7 @@ export function FileUploader() {
                 title: 'Import Complete',
                 description: `Successfully processed the file: ${descriptionParts.join(', ')}.`,
             });
-        } else if (unknownOperativesCount.size === 0 && unknownProjects.size === 0) {
+        } else if (unknownOperativesCount.size === 0) {
             toast({
                 title: 'No Changes Detected',
                 description: "The schedule was up-to-date. No changes were made.",
@@ -299,16 +284,6 @@ export function FileUploader() {
                 variant: 'destructive',
                 title: 'Unrecognized Operatives',
                 description: `Shifts for the following were skipped: ${unknownOperativesSummary}. Please check spelling or add them as users.`,
-                duration: 10000,
-            });
-        }
-
-        if (unknownProjects.size > 0) {
-            const unknownProjectsSummary = Array.from(unknownProjects).join('; ');
-            toast({
-                variant: 'destructive',
-                title: 'Unrecognized Projects',
-                description: `Shifts for the following projects were skipped because they do not exist: ${unknownProjectsSummary}. Please create them on the 'Projects' page first.`,
                 duration: 10000,
             });
         }

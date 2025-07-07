@@ -22,7 +22,7 @@ export default function AdminPage() {
             <CardTitle>Import Weekly Shifts from Excel</CardTitle>
             <div className="text-sm text-muted-foreground space-y-2 pt-1">
               <p>
-                Upload an .xlsx file to schedule all tasks for one or more projects for one week. Shifts will only be imported for projects that already exist in the database.
+                Upload an .xlsx file to schedule all tasks for one or more projects for one week. This importer will add and update shifts based on the file, but it will not create new project entries on the 'Projects' page.
               </p>
               <p className="font-bold text-destructive/90">
                 Important: Shifts are reconciled on import. New shifts are added, changed shifts are updated, and shifts no longer present in the file are deleted. Notifications are only sent for new or changed shifts.
