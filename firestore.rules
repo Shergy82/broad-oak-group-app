@@ -1,85 +1,72 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Returns true if the user is authenticated.
-    function isAuthenticated() {
-      return request.auth != null;
+    // Helper function to check if a user is an admin or owner
+    function isOwnerOrAdmin() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
     }
 
-    // Returns true if the user exists and has a role of 'admin' or 'owner'.
-    // Crucially, it checks for the document's existence before trying to access its data.
-    function isPrivilegedUser() {
-      return isAuthenticated() &&
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-    }
-
-    // Returns true if the user is the designated owner of the application.
+    // Helper function to check if a user is the owner of the app
     function isOwner() {
-        return isAuthenticated() &&
-               exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
     }
 
-    // Users Collection:
-    // - Authenticated users can read other user profiles (for name lookups).
-    // - A user can create their own profile upon signup.
-    // - A user can update their own profile.
-    // - Only the owner can update other users' roles.
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      // Allow user to read their own profile, or if the requester is an admin/owner
+      allow read: if request.auth.uid == userId || isOwnerOrAdmin();
+      // Allow user to create their own profile on signup
       allow create: if request.auth.uid == userId;
-      allow update: if request.auth.uid == userId || isOwner();
-
-      // Push Subscriptions: A user can only manage their own subscriptions.
-      match /pushSubscriptions/{subscriptionId} {
-        allow read, write, delete: if isAuthenticated() && request.auth.uid == userId;
-      }
+      // Allow user to update their own profile (except role)
+      allow update: if request.auth.uid == userId && request.resource.data.role == resource.data.role;
+      // Only owners can change roles
+      allow update: if isOwner() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role']);
     }
 
-    // Shifts Collection:
-    // - Authenticated users can read all shifts (for team schedules).
-    // - A user can update a shift assigned to them (to change status).
-    // - Only privileged users can create or delete any shift.
     match /shifts/{shiftId} {
-      allow read: if isAuthenticated();
-      allow create, delete: if isPrivilegedUser();
-      allow update: if isPrivilegedUser() || (isAuthenticated() && request.auth.uid == resource.data.userId);
+      // Admins/owners can do anything
+      allow read, write: if isOwnerOrAdmin();
+      
+      // Users can read shifts assigned to them
+      allow read: if request.auth.uid == resource.data.userId;
+
+      // Users can update the status and notes of their own shifts
+      allow update: if request.auth.uid == resource.data.userId
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'notes']);
     }
 
-    // Announcements Collection:
-    // - All authenticated users can read announcements.
-    // - Only privileged users can create, update, or delete them.
-    match /announcements/{announcementId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isPrivilegedUser();
-    }
-
-    // Projects Collection:
-    // - All authenticated users can read project details.
-    // - Only privileged users can create, update, or delete projects.
     match /projects/{projectId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isPrivilegedUser();
+        // Admins/owners can do anything with project documents
+        allow write: if isOwnerOrAdmin();
+        // Any authenticated user can read project details
+        allow read: if request.auth != null;
 
-      // Project Files Subcollection:
-      // - Any authenticated user can read and upload files.
-      // - Only the uploader or a privileged user can delete a file.
-      match /files/{fileId} {
-        allow read, create: if isAuthenticated();
-        allow delete: if (isAuthenticated() && request.auth.uid == resource.data.uploaderId) || isPrivilegedUser();
-      }
+        // Rules for the 'files' subcollection within a project
+        match /files/{fileId} {
+            // Admins/owners can do anything with file documents
+            allow write: if isOwnerOrAdmin();
+            // Any authenticated user can read file details
+            allow read: if request.auth != null;
+            // Any authenticated user can upload (create) a file record
+            allow create: if request.auth != null;
+            // The user who uploaded the file can delete it.
+            // Admin/owner deletes are handled by a secure Cloud Function.
+            allow delete: if request.auth.uid == resource.data.uploaderId;
+        }
     }
 
-    // Health & Safety Files Collection:
-    // - Any authenticated user can read (list/get) and create (upload) files.
-    // - Only the uploader or a privileged user can delete a file.
-    match /health_and_safety_files/{fileId} {
-      allow read, create: if isAuthenticated();
-      allow delete: if (isAuthenticated() && request.auth.uid == resource.data.uploaderId) || isPrivilegedUser();
+    match /announcements/{announcementId} {
+        // Admins/owners can create, update, delete
+        allow write: if isOwnerOrAdmin();
+        // Any authenticated user can read
+        allow read: if request.auth != null;
+    }
+    
+    // Push subscriptions are nested under the user
+    match /users/{userId}/pushSubscriptions/{subscriptionId} {
+      // Users can only manage their own subscriptions
+      allow read, write, delete: if request.auth.uid == userId;
     }
   }
 }

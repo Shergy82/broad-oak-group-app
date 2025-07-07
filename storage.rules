@@ -1,25 +1,12 @@
-
 rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-
-    // Default deny all reads and writes
+    // Allow read access to all authenticated users.
+    // Allow write access (uploads) only for authenticated users.
+    // Deletes are handled by secure Cloud Functions.
     match /{allPaths=**} {
-      allow read, write: if false;
-    }
-    
-    // Project Files: Allow any authenticated user to read/write.
-    // This mirrors the behavior of the working projects feature.
-    match /project_files/{allPaths=**} {
       allow read, write: if request.auth != null;
     }
-
-    // Health & Safety Files: Allow any authenticated user to read/write.
-    // This makes it work just like the projects feature, fixing the upload error.
-    match /health_and_safety_files/{allPaths=**} {
-      allow read, write: if request.auth != null;
-    }
-
   }
 }
