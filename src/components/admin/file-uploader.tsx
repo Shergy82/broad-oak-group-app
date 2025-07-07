@@ -69,6 +69,14 @@ export function FileUploader() {
         });
         userNames.sort((a, b) => b.length - a.length);
 
+        // Fetch existing projects to validate against
+        const existingProjectsSnapshot = await getDocs(collection(db, 'projects'));
+        const existingAddresses = new Set<string>();
+        existingProjectsSnapshot.forEach(doc => {
+            const data = doc.data();
+            if(data.address) existingAddresses.add(data.address.toLowerCase().trim());
+        });
+
         const parseDate = (dateValue: any): Date | null => {
             if (!dateValue) return null;
             if (dateValue instanceof Date) {
@@ -107,16 +115,9 @@ export function FileUploader() {
             return true;
         };
 
-        const projectsToCreate = new Map<string, { address: string; bNumber: string; council: string, manager: string }>();
-        const existingProjectsSnapshot = await getDocs(collection(db, 'projects'));
-        const existingAddresses = new Set<string>();
-        existingProjectsSnapshot.forEach(doc => {
-            const data = doc.data();
-            if(data.address) existingAddresses.add(data.address.toLowerCase());
-        });
-
         const shiftsFromExcel: ParsedShift[] = [];
         const unknownOperativesCount = new Map<string, number>();
+        const unknownProjects = new Set<string>();
         const allDatesFound: Date[] = [];
 
         for (const sheetName of workbook.SheetNames) {
@@ -150,12 +151,15 @@ export function FileUploader() {
                 if (isLikelyAddress(addressCandidate)) {
                     currentProjectAddress = addressCandidate;
                     currentBNumber = (rowData[1] || '').toString().trim();
-                    if (currentProjectAddress && !existingAddresses.has(currentProjectAddress.toLowerCase()) && !projectsToCreate.has(currentProjectAddress.toLowerCase())) {
-                        projectsToCreate.set(currentProjectAddress.toLowerCase(), { address: currentProjectAddress, bNumber: currentBNumber, council: '', manager: '' });
-                    }
                 }
 
                 if (!currentProjectAddress) continue;
+
+                // If project does not exist, add to unknown list and skip shifts for it.
+                if (!existingAddresses.has(currentProjectAddress.toLowerCase().trim())) {
+                    unknownProjects.add(currentProjectAddress);
+                    continue; 
+                }
 
                 for (let c = 2; c < rowData.length; c++) {
                     const cellValue = (rowData[c] || '').toString().trim().replace(/[\u2012\u2013\u2014\u2015]/g, '-');
@@ -265,19 +269,7 @@ export function FileUploader() {
             }
         }
         
-        let projectsAdded = 0;
-        projectsToCreate.forEach(project => {
-            projectsAdded++;
-            const reviewDate = new Date();
-            reviewDate.setDate(reviewDate.getDate() + 28);
-            batch.set(doc(collection(db, 'projects')), { 
-                ...project,
-                createdAt: Timestamp.now(),
-                nextReviewDate: Timestamp.fromDate(reviewDate)
-            });
-        });
-
-        if (shiftsCreated > 0 || shiftsUpdated > 0 || shiftsDeleted > 0 || projectsAdded > 0) {
+        if (shiftsCreated > 0 || shiftsUpdated > 0 || shiftsDeleted > 0) {
             await batch.commit();
         }
         
@@ -285,14 +277,13 @@ export function FileUploader() {
         if (shiftsCreated > 0) descriptionParts.push(`created ${shiftsCreated} new shift(s)`);
         if (shiftsUpdated > 0) descriptionParts.push(`updated ${shiftsUpdated} shift(s)`);
         if (shiftsDeleted > 0) descriptionParts.push(`deleted ${shiftsDeleted} shift(s)`);
-        if (projectsAdded > 0) descriptionParts.push(`created ${projectsAdded} new project(s)`);
 
         if (descriptionParts.length > 0) {
             toast({
                 title: 'Import Complete',
                 description: `Successfully processed the file: ${descriptionParts.join(', ')}.`,
             });
-        } else if (unknownOperativesCount.size === 0) {
+        } else if (unknownOperativesCount.size === 0 && unknownProjects.size === 0) {
             toast({
                 title: 'No Changes Detected',
                 description: "The schedule was up-to-date. No changes were made.",
@@ -308,6 +299,16 @@ export function FileUploader() {
                 variant: 'destructive',
                 title: 'Unrecognized Operatives',
                 description: `Shifts for the following were skipped: ${unknownOperativesSummary}. Please check spelling or add them as users.`,
+                duration: 10000,
+            });
+        }
+
+        if (unknownProjects.size > 0) {
+            const unknownProjectsSummary = Array.from(unknownProjects).join('; ');
+            toast({
+                variant: 'destructive',
+                title: 'Unrecognized Projects',
+                description: `Shifts for the following projects were skipped because they do not exist: ${unknownProjectsSummary}. Please create them on the 'Projects' page first.`,
                 duration: 10000,
             });
         }
