@@ -220,7 +220,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
         doc.text(user.name, 14, finalY);
         finalY += 7;
 
-        const head = [['Date', 'Type', 'Task', 'Address', 'Status']];
+        const head = [['Date', 'Type', 'Task', 'Address']];
         const body = userShifts.map(shift => {
           const shiftDate = getCorrectedLocalDate(shift.date);
           return [
@@ -228,7 +228,6 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
             shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase(),
             shift.task,
             shift.address,
-            shift.status.replace('-confirmation', ''),
           ];
         });
 
@@ -247,11 +246,10 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
       finalY += 5; // Extra space between periods
     };
 
-    generateTablesForPeriod("Today's Shifts", todayShifts);
     generateTablesForPeriod("This Week's Shifts", thisWeekShifts);
     generateTablesForPeriod("Next Week's Shifts", nextWeekShifts);
 
-    if (todayShifts.length === 0 && thisWeekShifts.length === 0 && nextWeekShifts.length === 0) {
+    if (thisWeekShifts.length === 0 && nextWeekShifts.length === 0) {
       doc.text("No shifts scheduled for these periods.", 14, finalY);
     }
 
@@ -328,9 +326,29 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditShift(shift)}>
                                                 <Edit className="h-4 w-4" />
                                             </Button>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10" onClick={() => setShiftToDelete(shift)}>
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10">
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent>
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                                        <AlertDialogDescription>
+                                                            This action cannot be undone. This will permanently delete the shift for 
+                                                            <span className="font-semibold"> {shift.task}</span> at 
+                                                            <span className="font-semibold"> {shift.address}</span>.
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={() => handleDeleteShift(shift)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                                            Delete
+                                                        </AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
                                         </TableCell>
                                     )}
                                 </TableRow>
@@ -366,9 +384,29 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditShift(shift)}>
                                         <Edit className="h-4 w-4" />
                                     </Button>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10" onClick={() => setShiftToDelete(shift)}>
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
+                                    <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10">
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                                <AlertDialogDescription>
+                                                    This action cannot be undone. This will permanently delete the shift for 
+                                                    <span className="font-semibold"> {shift.task}</span> at 
+                                                    <span className="font-semibold"> {shift.address}</span>.
+                                                </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                <AlertDialogAction onClick={() => handleDeleteShift(shift)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                                    Delete
+                                                </AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
                                 </div>
                             )}
                         </CardFooter>
@@ -538,7 +576,10 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeleteShift} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    <AlertDialogAction onClick={() => {
+                        if (shiftToDelete) handleDeleteShift(shiftToDelete);
+                        setShiftToDelete(null);
+                    }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                         Delete
                     </AlertDialogAction>
                 </AlertDialogFooter>

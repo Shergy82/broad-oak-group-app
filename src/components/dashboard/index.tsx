@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
@@ -78,7 +79,6 @@ export default function Dashboard() {
     thisWeekShifts, 
     nextWeekShifts,
     historicalShifts,
-    allTodayShifts,
     allThisWeekShifts,
     allNextWeekShifts,
   } = useMemo(() => {
@@ -117,7 +117,6 @@ export default function Dashboard() {
     });
 
     // 3. Group all shifts for PDF using the original `shifts` array
-    const allTodayShiftsData = shifts.filter(s => isToday(getCorrectedLocalDate(s.date)));
     const allThisWeekShiftsData = shifts.filter(s => isSameWeek(getCorrectedLocalDate(s.date), today, { weekStartsOn: 1 }));
     const allNextWeekShiftsData = shifts.filter(s => {
         const shiftDate = getCorrectedLocalDate(s.date);
@@ -132,7 +131,6 @@ export default function Dashboard() {
       thisWeekShifts: groupShiftsByDay(activeThisWeekShifts),
       nextWeekShifts: groupShiftsByDay(activeNextWeekShifts),
       historicalShifts,
-      allTodayShifts: allTodayShiftsData,
       allThisWeekShifts: allThisWeekShiftsData,
       allNextWeekShifts: allNextWeekShiftsData,
     };
@@ -156,6 +154,10 @@ export default function Dashboard() {
 
     const generateTableForShifts = (title: string, shiftsForTable: Shift[]) => {
       if (shiftsForTable.length === 0) return;
+      
+      doc.setFontSize(16);
+      doc.text(title, 14, finalY);
+      finalY += 10;
 
       const head = [['Date', 'Type', 'Task', 'Address']];
       const body = shiftsForTable.map(shift => {
@@ -184,11 +186,10 @@ export default function Dashboard() {
       finalY = (doc as any).lastAutoTable.finalY + 15;
     };
     
-    if (allTodayShifts.length > 0) generateTableForShifts("Today's Shifts", allTodayShifts);
-    if (allThisWeekShifts.length > 0) generateTableForShifts("This Week's Shifts", allThisWeekShifts);
-    if (allNextWeekShifts.length > 0) generateTableForShifts("Next Week's Shifts", allNextWeekShifts);
+    generateTableForShifts("This Week's Shifts", allThisWeekShifts);
+    generateTableForShifts("Next Week's Shifts", allNextWeekShifts);
 
-    if (allTodayShifts.length === 0 && allThisWeekShifts.length === 0 && allNextWeekShifts.length === 0) {
+    if (allThisWeekShifts.length === 0 && allNextWeekShifts.length === 0) {
       doc.text("No shifts scheduled.", 14, finalY);
     }
     
