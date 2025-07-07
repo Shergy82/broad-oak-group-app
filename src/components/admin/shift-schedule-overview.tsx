@@ -1,9 +1,8 @@
-
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot, query, doc, deleteDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, functions, httpsCallable } from '@/lib/firebase';
 import type { Shift, UserProfile } from '@/types';
 import { addDays, format, isSameWeek, isToday } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { RefreshCw, Terminal, MessageSquareText, PlusCircle, Edit, Trash2, Download, History } from 'lucide-react';
+import { RefreshCw, Terminal, MessageSquareText, PlusCircle, Edit, Trash2, Download, History, Trash } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -77,6 +76,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
   const { toast } = useToast();
   
   const isOwner = userProfile.role === 'owner';
@@ -254,6 +254,30 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     }
 
     doc.save(`team_schedule_${format(generationDate, 'yyyy-MM-dd')}.pdf`);
+  };
+
+  const handleDeleteAllShifts = async () => {
+    if (!functions) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Firebase Functions service not available.' });
+        return;
+    }
+    setIsDeletingAll(true);
+    toast({ title: 'Deleting All Shifts...', description: 'This may take a moment.' });
+    
+    try {
+        const deleteAllShiftsFn = httpsCallable(functions, 'deleteAllShifts');
+        const result = await deleteAllShiftsFn();
+        toast({ title: 'Success', description: (result.data as any).message });
+    } catch (error: any) {
+        console.error("Error deleting all shifts:", error);
+        toast({
+            variant: 'destructive',
+            title: 'Deletion Failed',
+            description: error.message || 'An unknown error occurred.',
+        });
+    } finally {
+        setIsDeletingAll(false);
+    }
   };
 
   const renderShiftList = (shiftsToRender: Shift[]) => {
@@ -444,6 +468,30 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                         <RefreshCw className="mr-2 h-4 w-4" />
                         Refresh
                     </Button>
+                    {isOwner && (
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive" size="sm" disabled={isDeletingAll || shifts.length === 0}>
+                                    <Trash className="mr-2 h-4 w-4" />
+                                    {isDeletingAll ? 'Deleting...' : 'Delete All'}
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This action cannot be undone. This will permanently delete ALL shifts for EVERY user from the database.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleDeleteAllShifts} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                        Yes, Delete Everything
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    )}
                 </div>
             </div>
         </CardHeader>

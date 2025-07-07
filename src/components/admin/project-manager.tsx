@@ -43,7 +43,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/shared/spinner';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, UploadCloud, File as FileIcon, Trash2, FolderOpen, Download } from 'lucide-react';
+import { PlusCircle, UploadCloud, File as FileIcon, Trash2, FolderOpen, Download, Trash } from 'lucide-react';
 import type { Project, ProjectFile, UserProfile } from '@/types';
 import { cn } from '@/lib/utils';
 import {
@@ -376,6 +376,7 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
   const [isCreateProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);
   const [isFileManagerOpen, setFileManagerOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -430,6 +431,30 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
     }
   };
 
+  const handleDeleteAllProjects = async () => {
+    if (!functions) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Firebase Functions service not available.' });
+        return;
+    }
+    setIsDeletingAll(true);
+    toast({ title: 'Deleting All Projects...', description: 'This may take a moment. The page will update automatically.' });
+
+    try {
+        const deleteAllProjectsFn = httpsCallable(functions, 'deleteAllProjects');
+        const result = await deleteAllProjectsFn();
+        toast({ title: 'Success', description: (result.data as any).message });
+    } catch (error: any) {
+        console.error("Error deleting all projects:", error);
+        toast({
+            variant: 'destructive',
+            title: 'Deletion Failed',
+            description: error.message || 'An unknown error occurred.',
+        });
+    } finally {
+        setIsDeletingAll(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-4 justify-between">
@@ -439,11 +464,37 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
           onChange={(e) => setSearchTerm(e.target.value)}
           className="max-w-sm"
         />
-        <CreateProjectDialog 
-          open={isCreateProjectDialogOpen} 
-          onOpenChange={setCreateProjectDialogOpen} 
-          userProfile={userProfile} 
-        />
+        <div className="flex items-center gap-2">
+            <CreateProjectDialog 
+            open={isCreateProjectDialogOpen} 
+            onOpenChange={setCreateProjectDialogOpen} 
+            userProfile={userProfile} 
+            />
+            {userProfile.role === 'owner' && (
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                        <Button variant="destructive" disabled={isDeletingAll || projects.length === 0}>
+                            <Trash className="mr-2" />
+                            {isDeletingAll ? 'Deleting...' : 'Delete All'}
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete ALL projects and ALL associated files from the database and storage.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDeleteAllProjects} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                Yes, Delete Everything
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            )}
+        </div>
       </div>
 
       {loading ? (
