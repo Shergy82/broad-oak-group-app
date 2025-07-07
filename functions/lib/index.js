@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteProjectFile = exports.deleteProjectAndFiles = exports.projectReviewNotifier = exports.sendShiftNotification = exports.getVapidPublicKey = void 0;
+exports.deleteAllProjects = exports.deleteAllShifts = exports.deleteProjectFile = exports.deleteProjectAndFiles = exports.projectReviewNotifier = exports.sendShiftNotification = exports.getVapidPublicKey = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const webPush = __importStar(require("web-push"));
@@ -323,6 +323,13 @@ exports.deleteProjectFile = functions.region("europe-west2").https.onCall(async 
             throw new functions.https.HttpsError("not-found", "The specified file does not exist.");
         }
         const fileData = fileDoc.data();
+        // Robustly check for corrupt or incomplete data
+        if (!fileData || !fileData.fullPath || !fileData.uploaderId) {
+            functions.logger.error(`File document ${fileId} in project ${projectId} is missing required data ('fullPath' or 'uploaderId'). Deleting Firestore record.`, { fileData });
+            // Attempt to clean up the bad Firestore record
+            await fileRef.delete();
+            throw new functions.https.HttpsError("internal", "The file's database record was corrupt and has been removed. The file may still exist in storage.");
+        }
         const uploaderId = fileData.uploaderId;
         // 2. Permission check: Is the user the uploader, or an admin/owner?
         const userDoc = await db.collection("users").doc(uid).get();
@@ -347,7 +354,93 @@ exports.deleteProjectFile = functions.region("europe-west2").https.onCall(async 
         if (error instanceof functions.https.HttpsError) {
             throw error; // Re-throw HttpsError so client gets the specific message
         }
-        throw new functions.https.HttpsError("internal", "An unexpected error occurred while deleting the file.");
+        throw new functions.https.HttpsError("internal", "An unexpected error occurred while deleting the file. Please check the function logs.");
+    }
+});
+exports.deleteAllShifts = functions.region("europe-west2").https.onCall(async (data, context) => {
+    // 1. Authentication check
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
+    }
+    const uid = context.auth.uid;
+    const userDoc = await db.collection("users").doc(uid).get();
+    const userProfile = userDoc.data();
+    if (!userProfile || userProfile.role !== 'owner') {
+        throw new functions.https.HttpsError("permission-denied", "Only the account owner can perform this action.");
+    }
+    functions.logger.log(`Owner ${uid} initiated deletion of all shifts.`);
+    try {
+        const shiftsCollection = db.collection('shifts');
+        const snapshot = await shiftsCollection.get();
+        if (snapshot.empty) {
+            return { success: true, message: "No shifts to delete." };
+        }
+        const batchSize = 500;
+        const batches = [];
+        for (let i = 0; i < snapshot.docs.length; i += batchSize) {
+            const batch = db.batch();
+            const chunk = snapshot.docs.slice(i, i + batchSize);
+            chunk.forEach(doc => batch.delete(doc.ref));
+            batches.push(batch.commit());
+        }
+        await Promise.all(batches);
+        functions.logger.log(`Successfully deleted ${snapshot.size} shifts.`);
+        return { success: true, message: `Successfully deleted ${snapshot.size} shifts.` };
+    }
+    catch (error) {
+        functions.logger.error("Error deleting all shifts:", error);
+        throw new functions.https.HttpsError("internal", "An unexpected error occurred while deleting shifts.");
+    }
+});
+exports.deleteAllProjects = functions.region("europe-west2").https.onCall(async (data, context) => {
+    // 1. Authentication check
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
+    }
+    const uid = context.auth.uid;
+    const userDoc = await db.collection("users").doc(uid).get();
+    const userProfile = userDoc.data();
+    if (!userProfile || userProfile.role !== 'owner') {
+        throw new functions.https.HttpsError("permission-denied", "Only the account owner can perform this action.");
+    }
+    functions.logger.log(`Owner ${uid} initiated deletion of ALL projects and files.`);
+    try {
+        const projectsQuerySnapshot = await db.collection('projects').get();
+        if (projectsQuerySnapshot.empty) {
+            return { success: true, message: "No projects to delete." };
+        }
+        const bucket = admin.storage().bucket();
+        // Step 1: Delete all files from storage first.
+        const storagePromises = projectsQuerySnapshot.docs.map(projectDoc => {
+            const prefix = `project_files/${projectDoc.id}/`;
+            return bucket.deleteFiles({ prefix });
+        });
+        await Promise.all(storagePromises);
+        functions.logger.log("Successfully deleted all project files from Storage.");
+        // Step 2: Delete all Firestore data (projects and their file subcollections)
+        const firestoreDeletions = [];
+        for (const projectDoc of projectsQuerySnapshot.docs) {
+            const filesCollectionRef = projectDoc.ref.collection('files');
+            const filesSnapshot = await filesCollectionRef.get();
+            if (!filesSnapshot.empty) {
+                const batchSize = 500;
+                for (let i = 0; i < filesSnapshot.docs.length; i += batchSize) {
+                    const batch = db.batch();
+                    const chunk = filesSnapshot.docs.slice(i, i + batchSize);
+                    chunk.forEach(doc => batch.delete(doc.ref));
+                    firestoreDeletions.push(batch.commit());
+                }
+            }
+            // Delete the project doc itself in a separate operation
+            firestoreDeletions.push(projectDoc.ref.delete());
+        }
+        await Promise.all(firestoreDeletions);
+        functions.logger.log("Successfully deleted all projects and their subcollections from Firestore.");
+        return { success: true, message: `Successfully deleted ${projectsQuerySnapshot.size} projects and all associated files.` };
+    }
+    catch (error) {
+        functions.logger.error("Error deleting all projects:", error);
+        throw new functions.https.HttpsError("internal", "An error occurred while deleting all projects. Please check the function logs.");
     }
 });
 //# sourceMappingURL=index.js.map
