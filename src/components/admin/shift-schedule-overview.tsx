@@ -165,10 +165,14 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     setIsFormOpen(true);
   };
   
-  const handleDeleteShift = async () => {
-    if (!shiftToDelete || !db) return;
+  const handleDeleteShift = async (shift: Shift) => {
+    if (!db) return;
+    if (!shift) {
+        setShiftToDelete(null);
+        return;
+    };
     try {
-        await deleteDoc(doc(db, 'shifts', shiftToDelete.id));
+        await deleteDoc(doc(db, 'shifts', shift.id));
         toast({ title: 'Success', description: 'Shift has been deleted.' });
     } catch (error) {
         console.error("Error deleting shift:", error);
@@ -220,14 +224,21 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
         doc.text(user.name, 14, finalY);
         finalY += 7;
 
-        const head = [['Date', 'Type', 'Task', 'Address']];
+        const head = [['Date', 'Type', 'Task & Address', 'Status']];
         const body = userShifts.map(shift => {
           const shiftDate = getCorrectedLocalDate(shift.date);
+          let taskAndAddress = `${shift.task}\n${shift.address}`;
+          if (shift.status === 'incomplete' && shift.notes) {
+              taskAndAddress += `\n\nNote: ${shift.notes}`;
+          }
+
+          const statusText = shift.status.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
           return [
             format(shiftDate, 'EEE, dd MMM'),
             shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase(),
-            shift.task,
-            shift.address,
+            taskAndAddress,
+            statusText,
           ];
         });
 
@@ -576,10 +587,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => {
-                        if (shiftToDelete) handleDeleteShift(shiftToDelete);
-                        setShiftToDelete(null);
-                    }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    <AlertDialogAction onClick={() => handleDeleteShift(shiftToDelete!)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                         Delete
                     </AlertDialogAction>
                 </AlertDialogFooter>
