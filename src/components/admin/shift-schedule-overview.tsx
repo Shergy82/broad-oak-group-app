@@ -248,8 +248,11 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
         });
         
         doc.setFontSize(12);
-        const nameHeaderY = (doc as any).lastAutoTable.finalY ? (doc as any).lastAutoTable.finalY + 10 : finalY;
+        
+        // Use the last table's final Y position if available, otherwise use the running `finalY`
+        const nameHeaderY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 10 : finalY;
         doc.text(user.name, pageContentMargin, nameHeaderY);
+
         const tableStartY = nameHeaderY + 7;
         
         autoTable(doc, {
@@ -270,40 +273,32 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
              if (data.section === 'body' && data.column.dataKey === 2) { // Task & Address column
                 const rowData = body[data.row.index];
                 if (rowData.notes) {
-                    // Set style for drawing the highlight
                     doc.setFont(doc.getFont().fontName, 'italic');
                     doc.setFontSize(9);
                     const noteText = rowData.notes;
                     
-                    // Calculate text dimensions
-                    const noteDimensions = doc.getTextDimensions(noteText, { fontSize: 9 });
+                    const textLines = doc.splitTextToSize(rowData.task, data.cell.contentWidth);
+                    const textHeight = textLines.length * doc.getLineHeight();
+                    const noteY = data.cell.y + (textHeight / doc.internal.scaleFactor) - (doc.getFontSize() / doc.internal.scaleFactor) + 2.5;
 
-                    // We need to find the correct y position for the note
-                    const taskLines = doc.splitTextToSize(rowData.task, data.cell.contentWidth).length;
-                    const taskHeight = taskLines * doc.getFontSize() * 0.8 / doc.internal.scaleFactor;
-                    const noteY = data.cell.y + taskHeight + data.cell.padding('top') + 2;
-                    
-                    // Draw highlight rectangle behind the note
                     doc.setFillColor(255, 252, 204); // Light yellow
+                    
                     doc.rect(
-                        data.cell.x + data.cell.padding('left'),
-                        noteY - noteDimensions.h - 0.5, // Adjust Y to be behind text
-                        noteDimensions.w + 1, // Add padding
-                        noteDimensions.h + 1, // Add padding
+                        data.cell.x,
+                        noteY,
+                        data.cell.width,
+                        (data.cell.height - (textHeight / doc.internal.scaleFactor)),
                         'F'
                     );
-                    
-                    // Reset font for other cells
+
                     doc.setFont(doc.getFont().fontName, 'normal');
                     doc.setFontSize(10);
                 }
              }
           },
         });
-
-        finalY = (doc as any).lastAutoTable.finalY + 10;
       }
-      finalY += 5; 
+      finalY = (doc as any).lastAutoTable.finalY + 15;
     };
 
     generateTablesForPeriod("This Week's Shifts", thisWeekShifts);
