@@ -196,10 +196,16 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     doc.text(`Generated on: ${format(generationDate, 'PPP p')}`, 14, 28);
 
     let finalY = 35;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const pageMargin = 20;
 
     const generateTablesForPeriod = (title: string, shiftsForPeriod: Shift[]) => {
       if (shiftsForPeriod.length === 0) return;
 
+      if (finalY > pageHeight - 40) { // Check if title fits
+          doc.addPage();
+          finalY = 20;
+      }
       doc.setFontSize(16);
       doc.text(title, 14, finalY);
       finalY += 10;
@@ -220,10 +226,6 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
 
         userShifts.sort((a, b) => getCorrectedLocalDate(a.date).getTime() - getCorrectedLocalDate(b.date).getTime());
 
-        doc.setFontSize(12);
-        doc.text(user.name, 14, finalY);
-        finalY += 7;
-
         const head = [['Date', 'Type', 'Task & Address', 'Status']];
         const body = userShifts.map(shift => {
           const shiftDate = getCorrectedLocalDate(shift.date);
@@ -242,16 +244,39 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
           ];
         });
 
+        let userTableHeight = 0;
+        // Calculate table height in a "dry run"
+        autoTable(doc, {
+            head,
+            body,
+            startY: pageHeight + 100, // Draw off-page to calculate height
+            didDrawPage: () => {}, // Prevent adding pages during dry run
+            didParseCell: (data) => {
+              if (data.section === 'body' && data.row.index === body.length - 1) {
+                  userTableHeight = data.cursor?.y ?? 0;
+              }
+            }
+        });
+        userTableHeight -= (pageHeight + 100);
+        userTableHeight += 20; // Add some padding for user name and margins
+
+        if (finalY + userTableHeight > pageHeight - pageMargin) {
+            doc.addPage();
+            finalY = 20;
+        }
+
+        doc.setFontSize(12);
+        doc.text(user.name, 14, finalY);
+        finalY += 7;
+
         autoTable(doc, {
           head,
           body,
           startY: finalY,
           headStyles: { fillColor: [41, 128, 185], textColor: 255 },
           margin: { top: 10 },
-          didDrawPage: (data) => {
-            finalY = data.cursor?.y ?? finalY;
-          },
         });
+
         finalY = (doc as any).lastAutoTable.finalY + 10;
       }
       finalY += 5; // Extra space between periods
