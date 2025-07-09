@@ -25,9 +25,9 @@ import {
     AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
-    AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { ShiftFormDialog } from './shift-form-dialog';
+import { AlertDialogTrigger } from '@radix-ui/react-alert-dialog';
 
 
 const getStatusBadge = (shift: Shift) => {
@@ -188,12 +188,24 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
 
     const doc = new jsPDF();
     const generationDate = new Date();
+    const pageContentMargin = 14;
+    const pageHeight = doc.internal.pageSize.height;
+
+    const addPageNumbers = () => {
+        const pageCount = doc.internal.pages.length - 1;
+        for (let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFontSize(10);
+            doc.setTextColor(150);
+            doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.width - pageContentMargin, pageHeight - 10, { align: 'right' });
+        }
+    };
 
     doc.setFontSize(18);
-    doc.text(`Team Shift Schedule`, 14, 22);
+    doc.text(`Team Shift Schedule`, pageContentMargin, 22);
     doc.setFontSize(11);
     doc.setTextColor(100);
-    doc.text(`Generated on: ${format(generationDate, 'PPP p')}`, 14, 28);
+    doc.text(`Generated on: ${format(generationDate, 'PPP p')}`, pageContentMargin, 28);
 
     let finalY = 35;
 
@@ -201,7 +213,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
       if (shiftsForPeriod.length === 0) return;
 
       doc.setFontSize(16);
-      doc.text(title, 14, finalY);
+      doc.text(title, pageContentMargin, finalY);
       finalY += 10;
 
       const shiftsByUser = new Map<string, Shift[]>();
@@ -213,48 +225,103 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
       });
 
       const sortedUsers = [...users].sort((a, b) => a.name.localeCompare(b.name)).filter(u => shiftsByUser.has(u.uid));
-
+      
       for (const user of sortedUsers) {
         const userShifts = shiftsByUser.get(user.uid) || [];
         if (userShifts.length === 0) continue;
 
         userShifts.sort((a, b) => getCorrectedLocalDate(a.date).getTime() - getCorrectedLocalDate(b.date).getTime());
-
+        
         const head = [['Date', 'Type', 'Task & Address', 'Status']];
         const body = userShifts.map(shift => {
           const shiftDate = getCorrectedLocalDate(shift.date);
-          let taskAndAddress = `${shift.task}\n${shift.address}`;
-          if (shift.status === 'incomplete' && shift.notes) {
-              taskAndAddress += `\n\nNote: ${shift.notes}`;
-          }
-
           const statusText = shift.status.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          let taskAndAddress = `${shift.task}\n${shift.address}`;
 
-          return [
-            format(shiftDate, 'EEE, dd MMM'),
-            shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase(),
-            taskAndAddress,
-            statusText,
-          ];
+          return {
+            date: format(shiftDate, 'EEE, dd MMM'),
+            type: shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase(),
+            task: taskAndAddress,
+            status: statusText,
+            notes: (shift.status === 'incomplete' && shift.notes) ? `Note: ${shift.notes}` : null,
+          };
+        });
+        
+        // --- Calculate table height to prevent orphaned headers ---
+        let tableHeight = 0;
+        const userNameHeaderHeight = 7;
+        const spacing = 5;
+
+        // Temporarily apply styles to calculate height without drawing
+        autoTable(doc, {
+            head,
+            body: body.map(row => [row.date, row.type, row.task + (row.notes ? `\n\n${row.notes}` : ''), row.status]),
+            startY: finalY,
+            didParseCell: (data) => {
+                 if (data.section === 'body' && data.column.dataKey === 2 && (body[data.row.index] as any).notes) {
+                    if (data.cell.text && data.cell.text.length > 0) {
+                        const notes = (body[data.row.index] as any).notes;
+                        const taskText = data.cell.text[0];
+                        data.cell.text = [taskText, '', notes];
+                    }
+                }
+            },
+            // Use a hook that runs before drawing, but after layout calculation
+            willDrawPage: (data) => {
+                tableHeight = data.cursor.y - finalY;
+            },
+            // Setting a high startY off-page to prevent actual drawing during calculation
+            startY: pageHeight * 2,
         });
 
+        const totalBlockHeight = userNameHeaderHeight + tableHeight + spacing;
+
+        if (finalY + totalBlockHeight > pageHeight - 20) { // 20 for bottom margin
+            doc.addPage();
+            finalY = 20; // Reset Y for new page
+        }
+
+        // --- Now draw the actual content ---
         doc.setFontSize(12);
-        doc.text(user.name, 14, finalY);
+        doc.text(user.name, pageContentMargin, finalY);
         finalY += 7;
 
         autoTable(doc, {
           head,
-          body,
+          body: body.map(row => [row.date, row.type, row.task, row.status]),
           startY: finalY,
-          headStyles: { fillColor: [41, 128, 185], textColor: 255 },
-          margin: { top: 10 },
-          didDrawPage: (data) => {
-              if (data.pageNumber > 1 && data.pageNumber > doc.internal.pages.length - 1) {
-                  // Add continued header
-                  doc.setFontSize(12);
-                  doc.text(`${user.name} (Continued)`, 14, data.cursor?.y ? data.cursor.y - 10 : 20);
+          headStyles: { fillColor: [6, 95, 212] },
+          didParseCell: (data) => {
+            if (data.section === 'body' && data.column.dataKey === 2) {
+              const rowData = body[data.row.index];
+              if (rowData.notes) {
+                // Add note text with some vertical padding
+                data.cell.text = [rowData.task, '', rowData.notes];
               }
-          }
+            }
+          },
+          willDrawCell: (data) => {
+            if (data.section === 'body' && data.column.dataKey === 2) {
+              const rowData = body[data.row.index];
+              if (rowData.notes) {
+                  const cellHeight = data.cell.height;
+                  const textPos = data.cell.getTextPos();
+                  // Estimate note height based on font size and line breaks
+                  const noteLines = doc.splitTextToSize(rowData.notes, data.cell.width - data.cell.padding('horizontal')).length;
+                  const noteHeight = noteLines * (doc.getFontSize() * 1.15) / doc.internal.scaleFactor + data.cell.padding('vertical');
+                  
+                  // Draw yellow background behind the note
+                  doc.setFillColor(255, 252, 204); // Yellow
+                  doc.rect(
+                      data.cell.x,
+                      textPos.y - (noteHeight - data.cell.padding('bottom')*1.5),
+                      data.cell.width,
+                      noteHeight,
+                      'F'
+                  );
+              }
+            }
+          },
         });
 
         finalY = (doc as any).lastAutoTable.finalY + 10;
@@ -266,9 +333,10 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     generateTablesForPeriod("Next Week's Shifts", nextWeekShifts);
 
     if (thisWeekShifts.length === 0 && nextWeekShifts.length === 0) {
-      doc.text("No shifts scheduled for these periods.", 14, finalY);
+      doc.text("No shifts scheduled for these periods.", pageContentMargin, finalY);
     }
-
+    
+    addPageNumbers();
     doc.save(`team_schedule_${format(generationDate, 'yyyy-MM-dd')}.pdf`);
   };
 
