@@ -196,16 +196,10 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     doc.text(`Generated on: ${format(generationDate, 'PPP p')}`, 14, 28);
 
     let finalY = 35;
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const pageMargin = 20;
 
     const generateTablesForPeriod = (title: string, shiftsForPeriod: Shift[]) => {
       if (shiftsForPeriod.length === 0) return;
 
-      if (finalY > pageHeight - 40) { // Check if title fits
-          doc.addPage();
-          finalY = 20;
-      }
       doc.setFontSize(16);
       doc.text(title, 14, finalY);
       finalY += 10;
@@ -244,27 +238,6 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
           ];
         });
 
-        let userTableHeight = 0;
-        // Calculate table height in a "dry run"
-        autoTable(doc, {
-            head,
-            body,
-            startY: pageHeight + 100, // Draw off-page to calculate height
-            didDrawPage: () => {}, // Prevent adding pages during dry run
-            didParseCell: (data) => {
-              if (data.section === 'body' && data.row.index === body.length - 1) {
-                  userTableHeight = data.cursor?.y ?? 0;
-              }
-            }
-        });
-        userTableHeight -= (pageHeight + 100);
-        userTableHeight += 20; // Add some padding for user name and margins
-
-        if (finalY + userTableHeight > pageHeight - pageMargin) {
-            doc.addPage();
-            finalY = 20;
-        }
-
         doc.setFontSize(12);
         doc.text(user.name, 14, finalY);
         finalY += 7;
@@ -275,11 +248,18 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
           startY: finalY,
           headStyles: { fillColor: [41, 128, 185], textColor: 255 },
           margin: { top: 10 },
+          didDrawPage: (data) => {
+              if (data.pageNumber > 1 && data.pageNumber > doc.internal.pages.length - 1) {
+                  // Add continued header
+                  doc.setFontSize(12);
+                  doc.text(`${user.name} (Continued)`, 14, data.cursor?.y ? data.cursor.y - 10 : 20);
+              }
+          }
         });
 
         finalY = (doc as any).lastAutoTable.finalY + 10;
       }
-      finalY += 5; // Extra space between periods
+      finalY += 5; 
     };
 
     generateTablesForPeriod("This Week's Shifts", thisWeekShifts);
