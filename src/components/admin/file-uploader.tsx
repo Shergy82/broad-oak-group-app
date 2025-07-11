@@ -89,13 +89,16 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
             if (!dateValue) return null;
             if (dateValue instanceof Date) {
                 if (isNaN(dateValue.getTime())) return null;
+                // Standardize to UTC midnight to avoid timezone issues
                 return new Date(Date.UTC(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate()));
             }
             if (typeof dateValue === 'number' && dateValue > 1) {
+                // Excel date serial number
                 const jsDate = new Date(Math.round((dateValue - 25569) * 864e5));
                 return new Date(Date.UTC(jsDate.getUTCFullYear(), jsDate.getUTCMonth(), jsDate.getUTCDate()));
             }
             if (typeof dateValue === 'string') {
+                // Match DD/MM/YYYY or similar formats
                 const parts = dateValue.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
                 if (parts) {
                     const day = parseInt(parts[1], 10);
@@ -347,4 +350,5 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
   );
 }
 
+    
     
