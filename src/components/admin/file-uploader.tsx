@@ -14,6 +14,7 @@ import { Upload } from 'lucide-react';
 import type { Shift, UserProfile } from '@/types';
 
 type ParsedShift = Omit<Shift, 'id' | 'status' | 'date'> & { date: Date };
+type UserMapEntry = { uid: string; normalizedName: string };
 
 export function FileUploader() {
   const [file, setFile] = useState<File | null>(null);
@@ -57,17 +58,17 @@ export function FileUploader() {
         const workbook = XLSX.read(data, { type: 'array' });
         
         const usersSnapshot = await getDocs(collection(db, 'users'));
-        const nameToUidMap = new Map<string, string>();
-        const userNames: string[] = [];
+        const userMap: UserMapEntry[] = [];
         usersSnapshot.forEach(doc => {
             const user = doc.data() as UserProfile;
             if (user.name) {
-              const trimmedName = user.name.trim();
-              nameToUidMap.set(trimmedName.toLowerCase(), doc.id);
-              userNames.push(trimmedName);
+              userMap.push({
+                uid: doc.id,
+                normalizedName: user.name.trim().toLowerCase().replace(/[^a-z0-9]/g, ''),
+              });
             }
         });
-        userNames.sort((a, b) => b.length - a.length);
+        userMap.sort((a, b) => b.normalizedName.length - a.normalizedName.length);
 
         const parseDate = (dateValue: any): Date | null => {
             if (!dateValue) return null;
@@ -106,6 +107,8 @@ export function FileUploader() {
             if (str.split(' ').length < 2) return false;
             return true;
         };
+        
+        const normalizeText = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, '');
 
         const shiftsFromExcel: ParsedShift[] = [];
         const unknownOperativesCount = new Map<string, number>();
@@ -153,29 +156,25 @@ export function FileUploader() {
                     if (!cellValue || !shiftDate || cellValue.toLowerCase().includes('holiday') || cellValue.toLowerCase().includes('on hold')) continue;
                     
                     let parsedShift: { task: string; userId: string; type: 'am' | 'pm' | 'all-day' } | null = null;
+                    const parts = cellValue.split('-').map(p => p.trim());
+                    if (parts.length < 2) continue;
+
+                    const nameCandidate = parts.pop()!;
+                    let task = parts.join('-').trim();
+                    const normalizedNameCandidate = normalizeText(nameCandidate);
+
+                    const foundUser = userMap.find(u => u.normalizedName.includes(normalizedNameCandidate));
                     
-                    for (const name of userNames) {
-                        const escapedName = name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-                        const regex = new RegExp(`\\s*-\\s*${escapedName}$`, 'i');
-                        const match = cellValue.match(regex);
-
-                        if (match && match.index !== undefined) {
-                            let task = cellValue.substring(0, match.index).trim();
-                            const userId = nameToUidMap.get(name.toLowerCase());
-                            
-                            let type: 'am' | 'pm' | 'all-day' = 'all-day';
-                            const amPmMatch = task.match(/\b(AM|PM)\b/i);
-                            if (amPmMatch) {
-                                type = amPmMatch[0].toLowerCase() as 'am' | 'pm';
-                                task = task.replace(new RegExp(`\\s*\\b${amPmMatch[0]}\\b`, 'i'), '').trim();
-                            }
-
-                            if (task && userId) {
-                                parsedShift = { task, userId, type };
-                                break;
-                            }
+                    if (foundUser) {
+                        let type: 'am' | 'pm' | 'all-day' = 'all-day';
+                        const amPmMatch = task.match(/\b(AM|PM)\b/i);
+                        if (amPmMatch) {
+                            type = amPmMatch[0].toLowerCase() as 'am' | 'pm';
+                            task = task.replace(new RegExp(`\\s*\\b${amPmMatch[0]}\\b`, 'i'), '').trim();
                         }
+                        parsedShift = { task, userId: foundUser.uid, type };
                     }
+
 
                     if (parsedShift) {
                          shiftsFromExcel.push({ ...parsedShift, date: shiftDate, address: currentProjectAddress, task: parsedShift.task, bNumber: currentBNumber });
@@ -190,7 +189,7 @@ export function FileUploader() {
         }
 
         if (allDatesFound.length === 0) {
-            throw new Error("No valid dates found. Ensure dates are present and correctly formatted (e.g., DD/MM/YYYY) in at least one tab.");
+            throw new Error("No valid dates found. Ensure the file is an .xlsx spreadsheet (not a .url shortcut) and contains a row with dates in DD/MM/YYYY format.");
         }
         
         const minDate = new Date(Math.min(...allDatesFound.map(d => d.getTime())));
