@@ -47,6 +47,7 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
 
   const getShiftKey = (shift: { userId: string; date: Date | Timestamp; type: 'am' | 'pm' | 'all-day', task: string }): string => {
     const d = (shift.date as any).toDate ? (shift.date as Timestamp).toDate() : (shift.date as Date);
+    // Standardize to UTC midnight for consistent key generation
     const year = d.getUTCFullYear();
     const month = String(d.getUTCMonth() + 1).padStart(2, '0');
     const day = String(d.getUTCDate()).padStart(2, '0');
@@ -87,26 +88,28 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
 
         const parseDate = (dateValue: any): Date | null => {
             if (!dateValue) return null;
+            // Standardize to UTC midnight to avoid timezone issues.
             if (dateValue instanceof Date) {
+                 // Check if it's a valid date
                 if (isNaN(dateValue.getTime())) return null;
-                // Standardize to UTC midnight to avoid timezone issues
+                // It's a JS date, which might have timezone info. Force it to UTC midnight.
                 return new Date(Date.UTC(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate()));
             }
             if (typeof dateValue === 'number' && dateValue > 1) {
-                // Excel date serial number
+                // It's an Excel date serial number. This conversion correctly results in a UTC date.
                 const jsDate = new Date(Math.round((dateValue - 25569) * 864e5));
                 return new Date(Date.UTC(jsDate.getUTCFullYear(), jsDate.getUTCMonth(), jsDate.getUTCDate()));
             }
             if (typeof dateValue === 'string') {
-                // Match DD/MM/YYYY or similar formats
+                // Match DD/MM/YYYY or similar formats.
                 const parts = dateValue.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
                 if (parts) {
                     const day = parseInt(parts[1], 10);
-                    const month = parseInt(parts[2], 10) - 1;
+                    const month = parseInt(parts[2], 10) - 1; // JS months are 0-indexed
                     const year = parseInt(parts[3], 10);
                     if (year > 1900 && month >= 0 && month < 12 && day > 0 && day <= 31) {
                         const d = new Date(Date.UTC(year, month, day));
-                        if (!isNaN(d.getTime())) {
+                        if (!isNaN(d.getTime())) { // Final check for validity
                             return d;
                         }
                     }
@@ -184,26 +187,44 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
                         continue;
                     }
 
-                    const nameCandidate = parts.pop()!;
+                    const nameCandidatesString = parts.pop()!;
                     let task = parts.join('-').trim();
-                    const normalizedNameCandidate = normalizeText(nameCandidate);
-
-                    const foundUser = userMap.find(u => u.normalizedName.includes(normalizedNameCandidate));
                     
-                    if (foundUser) {
-                        let type: 'am' | 'pm' | 'all-day' = 'all-day';
-                        const amPmMatch = task.match(/\b(AM|PM)\b/i);
-                        if (amPmMatch) {
-                            type = amPmMatch[0].toLowerCase() as 'am' | 'pm';
-                            task = task.replace(new RegExp(`\\s*\\b${amPmMatch[0]}\\b`, 'i'), '').trim();
+                    // Split the name string by common separators to handle multiple operatives
+                    const nameCandidates = nameCandidatesString.split(/[/&+,,]/).map(name => name.trim()).filter(Boolean);
+                    let operativesFoundForCell = 0;
+
+                    for (const nameCandidate of nameCandidates) {
+                        const normalizedNameCandidate = normalizeText(nameCandidate);
+                        if (!normalizedNameCandidate) continue;
+
+                        const foundUser = userMap.find(u => u.normalizedName.includes(normalizedNameCandidate));
+                        
+                        if (foundUser) {
+                            operativesFoundForCell++;
+                            let type: 'am' | 'pm' | 'all-day' = 'all-day';
+                            const amPmMatch = task.match(/\b(AM|PM)\b/i);
+                            if (amPmMatch) {
+                                type = amPmMatch[0].toLowerCase() as 'am' | 'pm';
+                                task = task.replace(new RegExp(`\\s*\\b${amPmMatch[0]}\\b`, 'i'), '').trim();
+                            }
+                            shiftsFromExcel.push({ task, userId: foundUser.uid, type, date: shiftDate, address: currentProjectAddress, bNumber: currentBNumber });
+                        } else {
+                            failedShifts.push({
+                                date: shiftDate,
+                                projectAddress: currentProjectAddress,
+                                cellContent: cellValue,
+                                reason: `Unrecognized Operative: "${nameCandidate}".`
+                            });
                         }
-                        shiftsFromExcel.push({ task, userId: foundUser.uid, type, date: shiftDate, address: currentProjectAddress, bNumber: currentBNumber });
-                    } else {
+                    }
+                     if (nameCandidates.length > 1 && operativesFoundForCell === 0) {
+                        // If multiple names were listed but none were found, add a single failure entry for the whole cell
                         failedShifts.push({
                             date: shiftDate,
                             projectAddress: currentProjectAddress,
                             cellContent: cellValue,
-                            reason: `Unrecognized Operative: "${nameCandidate}".`
+                            reason: `None of the operatives listed were recognized.`
                         });
                     }
                 }
