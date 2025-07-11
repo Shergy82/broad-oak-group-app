@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { RefreshCw, Terminal, MessageSquareText, PlusCircle, Edit, Trash2, Download, History, Trash } from 'lucide-react';
+import { RefreshCw, Terminal, MessageSquareText, PlusCircle, Edit, Trash2, Download, History, Trash, Users2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -28,6 +28,7 @@ import {
     AlertDialogTrigger
 } from "@/components/ui/alert-dialog"
 import { ShiftFormDialog } from './shift-form-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
 const getStatusBadge = (shift: Shift) => {
@@ -79,6 +80,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
   const { toast } = useToast();
   
   const isOwner = userProfile.role === 'owner';
@@ -128,18 +130,25 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     const d = date.toDate();
     return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
   };
+  
+  const filteredShifts = useMemo(() => {
+    if (!selectedUserId) {
+      return shifts;
+    }
+    return shifts.filter(shift => shift.userId === selectedUserId);
+  }, [shifts, selectedUserId]);
 
   const { todayShifts, thisWeekShifts, nextWeekShifts } = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const todayShifts = shifts.filter(s => isToday(getCorrectedLocalDate(s.date)));
+    const todayShifts = filteredShifts.filter(s => isToday(getCorrectedLocalDate(s.date)));
     
-    const thisWeekShifts = shifts.filter(s => 
+    const thisWeekShifts = filteredShifts.filter(s => 
         isSameWeek(getCorrectedLocalDate(s.date), today, { weekStartsOn: 1 })
     );
 
-    const nextWeekShifts = shifts.filter(s => {
+    const nextWeekShifts = filteredShifts.filter(s => {
         const shiftDate = getCorrectedLocalDate(s.date);
         const startOfThisWeek = addDays(today, - (today.getDay() === 0 ? 6 : today.getDay() - 1));
         const startOfNextWeek = addDays(startOfThisWeek, 7);
@@ -147,7 +156,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     });
 
     return { todayShifts, thisWeekShifts, nextWeekShifts };
-  }, [shifts]);
+  }, [filteredShifts]);
 
   const userNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -190,6 +199,9 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     const generationDate = new Date();
     const pageContentMargin = 14;
     const pageHeight = doc.internal.pageSize.height;
+    
+    const selectedUser = users.find(u => u.uid === selectedUserId);
+    const title = selectedUser ? `Team Shift Schedule for ${selectedUser.name}` : 'Team Shift Schedule';
 
     const addPageNumbers = () => {
         const pageCount = doc.internal.pages.length - 1;
@@ -202,23 +214,23 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     };
 
     doc.setFontSize(18);
-    doc.text(`Team Shift Schedule`, pageContentMargin, 22);
+    doc.text(title, pageContentMargin, 22);
     doc.setFontSize(11);
     doc.setTextColor(100);
     doc.text(`Generated on: ${format(generationDate, 'PPP p')}`, pageContentMargin, 28);
 
     let finalY = 35;
 
-    const generateTablesForPeriod = (title: string, shiftsForPeriod: Shift[]) => {
+    const generateTablesForPeriod = (periodTitle: string, shiftsForPeriod: Shift[]) => {
       if (shiftsForPeriod.length === 0) return;
 
       if (finalY > 40) { // Add extra space between "This Week" and "Next Week"
         finalY += 8;
       }
       doc.setFontSize(16);
-      doc.text(title, pageContentMargin, finalY);
+      doc.text(periodTitle, pageContentMargin, finalY);
       finalY += 10;
-
+      
       const shiftsByUser = new Map<string, Shift[]>();
       shiftsForPeriod.forEach(shift => {
         if (!shiftsByUser.has(shift.userId)) {
@@ -227,9 +239,9 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
         shiftsByUser.get(shift.userId)!.push(shift);
       });
 
-      const sortedUsers = [...users].sort((a, b) => a.name.localeCompare(b.name)).filter(u => shiftsByUser.has(u.uid));
+      const usersToIterate = selectedUser ? [selectedUser] : [...users].sort((a, b) => a.name.localeCompare(b.name)).filter(u => shiftsByUser.has(u.uid));
       
-      for (const user of sortedUsers) {
+      for (const user of usersToIterate) {
         const userShifts = shiftsByUser.get(user.uid) || [];
         if (userShifts.length === 0) continue;
 
@@ -250,25 +262,25 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
           };
         });
         
-        // This calculates where the table should start
         let tableStartY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 10 : finalY;
         
-        // Check for page overflow before drawing user name and table
-        const estimatedHeight = 10 + (body.length + 1) * 10; // Simple height estimation
+        const estimatedHeight = 10 + (body.length + 1) * 10;
         if (tableStartY + estimatedHeight > pageHeight - 20) {
           doc.addPage();
           tableStartY = 20;
           finalY = 20;
         }
-
-        doc.setFontSize(12);
-        doc.setFont(doc.getFont().fontName, 'bold');
-        doc.text(user.name, pageContentMargin, tableStartY - 4);
+        
+        if (!selectedUser) {
+            doc.setFontSize(12);
+            doc.setFont(doc.getFont().fontName, 'bold');
+            doc.text(user.name, pageContentMargin, tableStartY - 4);
+        }
 
         autoTable(doc, {
           head,
           body: body.map(row => [row.date, row.type, row.task, row.status]),
-          startY: tableStartY,
+          startY: selectedUser ? tableStartY : tableStartY,
           headStyles: { fillColor: [6, 95, 212] },
           didDrawPage: (data) => {
             finalY = data.cursor?.y || 0;
@@ -277,32 +289,23 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
             if (data.section === 'body' && data.column.dataKey === 2) { // Task & Address column
               const rowData = body[data.row.index];
               if (rowData.notes) {
-                // Combine task and note into a single cell text array
                 data.cell.text = [rowData.task, rowData.notes];
               }
             }
           },
            willDrawCell: (data) => {
-             if (data.section === 'body' && data.column.dataKey === 2) { // Task & Address column
+             if (data.section === 'body' && data.column.dataKey === 2) {
                 const rowData = body[data.row.index];
                 if (rowData.notes) {
-                    // Split text to find where the notes begin
                     const textLines = doc.splitTextToSize(rowData.task, data.cell.contentWidth);
                     const textHeight = textLines.length * (doc.getLineHeight() / doc.internal.scaleFactor);
-                    const noteStartY = data.cell.y + textHeight + 1; // Add padding
+                    const noteStartY = data.cell.y + textHeight + 1;
                     
                     const noteLines = doc.splitTextToSize(rowData.notes, data.cell.contentWidth);
                     const noteHeight = noteLines.length * (doc.getLineHeight() / doc.internal.scaleFactor);
 
-                    doc.setFillColor(255, 252, 204); // Light yellow
-                    // Draw a rect behind the notes text
-                    doc.rect(
-                        data.cell.x,
-                        noteStartY - (doc.getLineHeight() / doc.internal.scaleFactor) * 0.75, // Adjust for better alignment
-                        data.cell.width,
-                        noteHeight + 2,
-                        'F'
-                    );
+                    doc.setFillColor(255, 252, 204);
+                    doc.rect( data.cell.x, noteStartY - (doc.getLineHeight() / doc.internal.scaleFactor) * 0.75, data.cell.width, noteHeight + 2, 'F');
                 }
              }
           },
@@ -311,10 +314,18 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
       }
     };
 
-    generateTablesForPeriod("This Week's Shifts", thisWeekShifts);
-    generateTablesForPeriod("Next Week's Shifts", nextWeekShifts);
+    const today = new Date();
+    const allThisWeekShifts = shifts.filter(s => isSameWeek(getCorrectedLocalDate(s.date), today, { weekStartsOn: 1 }) && (!selectedUserId || s.userId === selectedUserId));
+    const allNextWeekShifts = shifts.filter(s => {
+      const shiftDate = getCorrectedLocalDate(s.date);
+      const startOfNextWeek = addDays(today, 7);
+      return isSameWeek(shiftDate, startOfNextWeek, { weekStartsOn: 1 }) && (!selectedUserId || s.userId === selectedUserId);
+    });
 
-    if (thisWeekShifts.length === 0 && nextWeekShifts.length === 0) {
+    generateTablesForPeriod("This Week's Shifts", allThisWeekShifts);
+    generateTablesForPeriod("Next Week's Shifts", allNextWeekShifts);
+
+    if (allThisWeekShifts.length === 0 && allNextWeekShifts.length === 0) {
       doc.text("No shifts scheduled for these periods.", pageContentMargin, finalY);
     }
     
@@ -360,7 +371,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                         <TableHeader>
                             <TableRow>
                                 <TableHead className="w-[180px]">Date</TableHead>
-                                <TableHead className="w-[180px]">Operative</TableHead>
+                                { !selectedUserId && <TableHead className="w-[180px]">Operative</TableHead> }
                                 <TableHead>Task &amp; Address</TableHead>
                                 <TableHead className="text-right w-[110px]">Type</TableHead>
                                 <TableHead className="text-right w-[160px]">Status</TableHead>
@@ -371,7 +382,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                             {shiftsToRender.map(shift => (
                                 <TableRow key={shift.id}>
                                     <TableCell className="font-medium">{format(getCorrectedLocalDate(shift.date), 'eeee, MMM d')}</TableCell>
-                                    <TableCell>{userNameMap.get(shift.userId) || 'Unknown'}</TableCell>
+                                    { !selectedUserId && <TableCell>{userNameMap.get(shift.userId) || 'Unknown'}</TableCell> }
                                     <TableCell>
                                         <div>{shift.task}</div>
                                         <div className="text-xs text-muted-foreground">{shift.address}</div>
@@ -440,7 +451,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                             </div>
                         </CardHeader>
                         <CardContent className="text-sm text-muted-foreground space-y-1">
-                            <div><strong>Operative:</strong> {userNameMap.get(shift.userId) || 'Unknown'}</div>
+                            { !selectedUserId && <div><strong>Operative:</strong> {userNameMap.get(shift.userId) || 'Unknown'}</div> }
                             <div><strong>Date:</strong> {format(getCorrectedLocalDate(shift.date), 'eeee, MMM d')}</div>
                         </CardContent>
                         <CardFooter className="p-2 bg-muted/30 flex justify-between items-center">
@@ -557,11 +568,22 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                     <CardTitle>Team Schedule Overview</CardTitle>
-                    <CardDescription>A list of all upcoming shifts for the team, grouped by operative. The schedule updates in real-time.</CardDescription>
+                    <CardDescription>A list of all upcoming shifts for the team, which updates in real-time.</CardDescription>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap justify-start sm:justify-end">
+                    <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                        <SelectTrigger className="w-full sm:w-[200px]">
+                            <SelectValue placeholder="All Users" />
+                        </SelectTrigger>
+                        <SelectContent>
+                             <SelectItem value="">All Users</SelectItem>
+                            {users.map(user => (
+                                <SelectItem key={user.uid} value={user.uid}>{user.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                     {isOwner && (
-                        <Button onClick={handleAddShift}>
+                        <Button onClick={handleAddShift} className="w-full sm:w-auto">
                             <PlusCircle className="mr-2 h-4 w-4" />
                             Add Shift
                         </Button>
