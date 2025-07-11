@@ -28,11 +28,12 @@ export function usePushNotifications() {
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [vapidKey, setVapidKey] = useState<string | null>(null);
-  const [permission, setPermission] = useState<PermissionState>('prompt');
+  const [permission, setPermission] = useState<PermissionState | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
       setIsSupported(true);
+      // Defer setting permission until client-side mount to avoid hydration errors
       setPermission(Notification.permission as PermissionState);
     }
   }, []);
@@ -49,7 +50,7 @@ export function usePushNotifications() {
         let description = 'Could not connect to the push notification service.';
         
         if (error.code === 'not-found') {
-          description = 'The backend notification service is not yet deployed. See PUSH_NOTIFICATIONS_GUIDE.md.';
+          description = 'The backend notification service is not yet deployed or configured. Please check the admin panel for instructions.';
         }
         
         toast({
@@ -84,7 +85,13 @@ export function usePushNotifications() {
   }, [isSupported, user]);
 
   const subscribe = useCallback(async () => {
-    if (!isSupported || !user || !vapidKey || permission !== 'prompt') return;
+    if (!isSupported || !user || !vapidKey || permission !== 'prompt') {
+      if (permission === 'denied') {
+        // This case will be handled by the UI button opening a dialog
+        return;
+      }
+      return;
+    };
     
     setIsSubscribing(true);
 
@@ -116,12 +123,6 @@ export function usePushNotifications() {
         console.error('Error subscribing to push notifications:', error);
         // Update permission state in case of error (e.g., user denied)
         setPermission(Notification.permission as PermissionState);
-
-        if (error.name === 'NotAllowedError') {
-           // No need for a toast here, the UI will update to show the blocked state.
-        } else {
-             toast({ variant: 'destructive', title: 'Subscription Failed', description: 'Could not subscribe to notifications. Please try again.' });
-        }
         setIsSubscribed(false);
     } finally {
         setIsSubscribing(false);
@@ -144,6 +145,7 @@ export function usePushNotifications() {
         await deleteDoc(doc(db, `users/${user.uid}/pushSubscriptions`, endpointB64));
       }
       setIsSubscribed(false);
+      setPermission('prompt');
       toast({
         title: 'Unsubscribed',
         description: 'You will no longer receive notifications.',
