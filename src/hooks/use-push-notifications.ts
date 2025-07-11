@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { db, functions, httpsCallable, isFirebaseConfigured } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { collection, doc, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 // Function to convert VAPID public key
 function urlBase64ToUint8Array(base64String: string) {
@@ -19,6 +19,8 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+export type PermissionState = 'prompt' | 'granted' | 'denied';
+
 export function usePushNotifications() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -26,10 +28,12 @@ export function usePushNotifications() {
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [vapidKey, setVapidKey] = useState<string | null>(null);
+  const [permission, setPermission] = useState<PermissionState>('prompt');
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
       setIsSupported(true);
+      setPermission(Notification.permission as PermissionState);
     }
   }, []);
 
@@ -42,12 +46,10 @@ export function usePushNotifications() {
         setVapidKey(result.data.publicKey);
       } catch (error: any) {
         console.error('Could not get VAPID public key from server:', error);
-        let description = 'Could not connect to the push notification service. Please try again later.';
+        let description = 'Could not connect to the push notification service.';
         
-        // The Firebase SDK error code for a non-existent function is 'not-found'.
-        // This provides a much more helpful message to the user.
         if (error.code === 'not-found') {
-          description = 'The backend notification service has not been deployed yet. Please run `firebase deploy --only functions` and then refresh this page.';
+          description = 'The backend notification service is not yet deployed. See PUSH_NOTIFICATIONS_GUIDE.md.';
         }
         
         toast({
@@ -72,15 +74,18 @@ export function usePushNotifications() {
         setIsSubscribed(!!subscription);
       } catch (e) {
         console.error("Error getting subscription", e);
+        setIsSubscribed(false);
       }
     };
+
     if (isSupported) {
         checkSubscription();
     }
-  }, [isSupported]);
+  }, [isSupported, user]);
 
   const subscribe = useCallback(async () => {
-    if (!isSupported || !user || !vapidKey) return;
+    if (!isSupported || !user || !vapidKey || permission !== 'prompt') return;
+    
     setIsSubscribing(true);
 
     try {
@@ -90,6 +95,9 @@ export function usePushNotifications() {
         userVisibleOnly: true,
         applicationServerKey,
       });
+
+      // Update permission state after prompt
+      setPermission(Notification.permission as PermissionState);
       
       const subscriptionJson = subscription.toJSON();
       if (!subscriptionJson.endpoint) {
@@ -106,16 +114,19 @@ export function usePushNotifications() {
       });
     } catch (error: any) {
         console.error('Error subscribing to push notifications:', error);
-        let description = 'Could not subscribe to notifications. Please try again.';
+        // Update permission state in case of error (e.g., user denied)
+        setPermission(Notification.permission as PermissionState);
+
         if (error.name === 'NotAllowedError') {
-            description = 'Notification permission was denied. Please enable it in your browser settings.';
+           // No need for a toast here, the UI will update to show the blocked state.
+        } else {
+             toast({ variant: 'destructive', title: 'Subscription Failed', description: 'Could not subscribe to notifications. Please try again.' });
         }
-        toast({ variant: 'destructive', title: 'Subscription Failed', description });
         setIsSubscribed(false);
     } finally {
         setIsSubscribing(false);
     }
-  }, [isSupported, user, vapidKey, toast]);
+  }, [isSupported, user, vapidKey, toast, permission]);
 
   const unsubscribe = useCallback(async () => {
     if (!isSupported || !user) return;
@@ -129,7 +140,6 @@ export function usePushNotifications() {
         await subscription.unsubscribe();
         if (!db) throw new Error("Firestore is not initialized");
         
-        // Remove from firestore
         const endpointB64 = btoa(subscription.endpoint);
         await deleteDoc(doc(db, `users/${user.uid}/pushSubscriptions`, endpointB64));
       }
@@ -146,5 +156,5 @@ export function usePushNotifications() {
     }
   }, [isSupported, user, toast]);
 
-  return { isSupported, isSubscribed, isSubscribing, subscribe, unsubscribe };
+  return { isSupported, isSubscribed, isSubscribing, permission, subscribe, unsubscribe };
 }
