@@ -45,12 +45,13 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
     }
   };
 
-  const getShiftKey = (shift: { userId: string, date: Date | Timestamp, type: 'am' | 'pm' | 'all-day' }): string => {
+  const getShiftKey = (shift: { userId: string; date: Date | Timestamp; type: 'am' | 'pm' | 'all-day', task: string }): string => {
     const d = (shift.date as any).toDate ? (shift.date as Timestamp).toDate() : (shift.date as Date);
     const year = d.getUTCFullYear();
     const month = String(d.getUTCMonth() + 1).padStart(2, '0');
     const day = String(d.getUTCDate()).padStart(2, '0');
-    return `${shift.userId}-${year}-${month}-${day}-${shift.type}`;
+    const normalizedTask = (shift.task || '').trim().toLowerCase();
+    return `${shift.userId}-${year}-${month}-${day}-${shift.type}-${normalizedTask}`;
   };
 
   const handleImport = async () => {
@@ -240,19 +241,19 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
             const existingShift = existingShiftsMap.get(key);
 
             if (existingShift) {
-                const taskChanged = (existingShift.task || "").trim() !== (excelShift.task || "").trim();
+                // Address or B-number might be updated even if task is the same
                 const addressChanged = (existingShift.address || "").trim() !== (excelShift.address || "").trim();
                 const bNumberChanged = (existingShift.bNumber || "").trim() !== (excelShift.bNumber || "").trim();
                 
-                if (taskChanged || addressChanged || bNumberChanged) {
+                if (addressChanged || bNumberChanged) {
                     const updateData = {
-                        task: excelShift.task,
                         address: excelShift.address,
                         bNumber: excelShift.bNumber || '',
                     };
                     batch.update(doc(db, 'shifts', existingShift.id), updateData);
                     shiftsUpdated++;
                 }
+                 // No need to check for task change as it's part of the key now.
             } else {
                 const newShiftData = {
                     ...excelShift,
@@ -345,3 +346,5 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
     </div>
   );
 }
+
+    
