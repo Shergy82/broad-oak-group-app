@@ -16,7 +16,19 @@ import type { Shift, UserProfile } from '@/types';
 type ParsedShift = Omit<Shift, 'id' | 'status' | 'date'> & { date: Date };
 type UserMapEntry = { uid: string; normalizedName: string };
 
-export function FileUploader() {
+export interface FailedShift {
+    date: Date | null;
+    projectAddress: string;
+    cellContent: string;
+    reason: string;
+}
+
+interface FileUploaderProps {
+    onImportComplete: (failedShifts: FailedShift[]) => void;
+}
+
+
+export function FileUploader({ onImportComplete }: FileUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +40,7 @@ export function FileUploader() {
        if (selectedFile) {
         setFile(selectedFile);
         setError(null);
+        onImportComplete([]); // Clear previous report
        }
     }
   };
@@ -48,6 +61,7 @@ export function FileUploader() {
 
     setIsUploading(true);
     setError(null);
+    onImportComplete([]); // Clear previous report
 
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -111,7 +125,7 @@ export function FileUploader() {
         const normalizeText = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, '');
 
         const shiftsFromExcel: ParsedShift[] = [];
-        const unknownOperativesCount = new Map<string, number>();
+        const failedShifts: FailedShift[] = [];
         const allDatesFound: Date[] = [];
 
         for (const sheetName of workbook.SheetNames) {
@@ -155,9 +169,16 @@ export function FileUploader() {
 
                     if (!cellValue || !shiftDate || cellValue.toLowerCase().includes('holiday') || cellValue.toLowerCase().includes('on hold')) continue;
                     
-                    let parsedShift: { task: string; userId: string; type: 'am' | 'pm' | 'all-day' } | null = null;
                     const parts = cellValue.split('-').map(p => p.trim());
-                    if (parts.length < 2) continue;
+                    if (parts.length < 2) {
+                        failedShifts.push({
+                            date: shiftDate,
+                            projectAddress: currentProjectAddress,
+                            cellContent: cellValue,
+                            reason: "Invalid format. Expected 'Task - Operative Name'."
+                        });
+                        continue;
+                    }
 
                     const nameCandidate = parts.pop()!;
                     let task = parts.join('-').trim();
@@ -172,17 +193,14 @@ export function FileUploader() {
                             type = amPmMatch[0].toLowerCase() as 'am' | 'pm';
                             task = task.replace(new RegExp(`\\s*\\b${amPmMatch[0]}\\b`, 'i'), '').trim();
                         }
-                        parsedShift = { task, userId: foundUser.uid, type };
-                    }
-
-
-                    if (parsedShift) {
-                         shiftsFromExcel.push({ ...parsedShift, date: shiftDate, address: currentProjectAddress, task: parsedShift.task, bNumber: currentBNumber });
-                    } else if (cellValue.includes('-')) {
-                        const unknownName = cellValue.substring(cellValue.lastIndexOf('-') + 1).trim();
-                        if (unknownName) {
-                            unknownOperativesCount.set(unknownName, (unknownOperativesCount.get(unknownName) || 0) + 1);
-                        }
+                        shiftsFromExcel.push({ task, userId: foundUser.uid, type, date: shiftDate, address: currentProjectAddress, bNumber: currentBNumber });
+                    } else {
+                        failedShifts.push({
+                            date: shiftDate,
+                            projectAddress: currentProjectAddress,
+                            cellContent: cellValue,
+                            reason: `Unrecognized Operative: "${nameCandidate}".`
+                        });
                     }
                 }
             }
@@ -267,22 +285,19 @@ export function FileUploader() {
                 title: 'Import Complete',
                 description: `Successfully processed the file: ${descriptionParts.join(', ')}.`,
             });
-        } else if (unknownOperativesCount.size === 0) {
+        } else if (failedShifts.length === 0) {
             toast({
                 title: 'No Changes Detected',
                 description: "The schedule was up-to-date. No changes were made.",
             });
         }
         
-        if (unknownOperativesCount.size > 0) {
-            const unknownOperativesSummary = Array.from(unknownOperativesCount.entries())
-                .map(([name, count]) => `${name} (${count} shift${count > 1 ? 's' : ''})`)
-                .join(', ');
-
+        if (failedShifts.length > 0) {
+            onImportComplete(failedShifts);
             toast({
                 variant: 'destructive',
-                title: 'Unrecognized Operatives',
-                description: `Shifts for the following were skipped: ${unknownOperativesSummary}. Please check spelling or add them as users.`,
+                title: `${failedShifts.length} Shift(s) Failed to Import`,
+                description: `A report has been generated below with details on the failures.`,
                 duration: 10000,
             });
         }
