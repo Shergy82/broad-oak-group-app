@@ -45,10 +45,13 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
     }
   };
 
-  const getShiftKey = (shift: { userId: string; date: Date | Timestamp; type: 'am' | 'pm' | 'all-day' }): string => {
+  const getShiftKey = (shift: { userId: string; date: Date | Timestamp; type: 'am' | 'pm' | 'all-day'; task: string }): string => {
+    // Ensure date is a Date object before calling toISOString
     const d = (shift.date as any).toDate ? (shift.date as Timestamp).toDate() : (shift.date as Date);
-    return `${shift.userId}-${d.toISOString().slice(0, 10)}-${shift.type}`;
+    const normalizedDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    return `${shift.userId}-${normalizedDate.toISOString().slice(0, 10)}-${shift.type}-${shift.task.trim().toLowerCase()}`;
   };
+
 
   const handleImport = async () => {
     if (!file || !db) {
@@ -84,10 +87,14 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
         const parseDate = (dateValue: any): Date | null => {
             if (!dateValue) return null;
             if (dateValue instanceof Date) {
-                return !isNaN(dateValue.getTime()) ? dateValue : null;
+                 // Standardize to UTC midnight to avoid timezone issues
+                const d = dateValue;
+                return !isNaN(d.getTime()) ? new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())) : null;
             }
             if (typeof dateValue === 'number' && dateValue > 1) {
-                return new Date(Math.round((dateValue - 25569) * 864e5));
+                // Handle Excel's serial date number format
+                const d = new Date(Math.round((dateValue - 25569) * 864e5));
+                return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
             }
             if (typeof dateValue === 'string') {
                 const parts = dateValue.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
@@ -96,7 +103,7 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
                     const month = parseInt(parts[2], 10) - 1; // JS months are 0-indexed
                     const year = parseInt(parts[3], 10);
                     if (year > 1900 && month >= 0 && month < 12 && day > 0 && day <= 31) {
-                        return new Date(year, month, day);
+                        return new Date(Date.UTC(year, month, day));
                     }
                 }
             }
@@ -159,7 +166,9 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
                     const cellValue = (rowData[c] || '').toString().trim().replace(/[\u2012\u2013\u2014\u2015]/g, '-');
                     const shiftDate = dates[c];
 
-                    if (!cellValue || !shiftDate || cellValue.toLowerCase().includes('holiday') || cellValue.toLowerCase().includes('on hold')) continue;
+                    if (!cellValue || !shiftDate || cellValue.toLowerCase().includes('holiday') || cellValue.toLowerCase().includes('on hold') || cellValue.includes('(')) {
+                        continue;
+                    }
                     
                     const parts = cellValue.split('-').map(p => p.trim());
                     if (parts.length < 2) {
@@ -172,29 +181,35 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
                         continue;
                     }
 
-                    const nameCandidate = parts.pop()!;
+                    const namePart = parts.pop()!;
                     let task = parts.join('-').trim();
                     
-                    const normalizedNameCandidate = normalizeText(nameCandidate);
-                    if (!normalizedNameCandidate) continue;
+                    // Split names by common separators: / & + ,
+                    const nameCandidates = namePart.split(/[/&+|,]/).map(name => name.trim()).filter(Boolean);
 
-                    const foundUser = userMap.find(u => u.normalizedName.includes(normalizedNameCandidate));
-                    
-                    if (foundUser) {
-                        let type: 'am' | 'pm' | 'all-day' = 'all-day';
-                        const amPmMatch = task.match(/\b(AM|PM)\b/i);
-                        if (amPmMatch) {
-                            type = amPmMatch[0].toLowerCase() as 'am' | 'pm';
-                            task = task.replace(new RegExp(`\\s*\\b${amPmMatch[0]}\\b`, 'i'), '').trim();
+                    for (const nameCandidate of nameCandidates) {
+                        const normalizedNameCandidate = normalizeText(nameCandidate);
+                        if (!normalizedNameCandidate) continue;
+
+                        const foundUser = userMap.find(u => u.normalizedName.includes(normalizedNameCandidate));
+                        
+                        if (foundUser) {
+                            let type: 'am' | 'pm' | 'all-day' = 'all-day';
+                            let processedTask = task;
+                            const amPmMatch = task.match(/\b(AM|PM)\b/i);
+                            if (amPmMatch) {
+                                type = amPmMatch[0].toLowerCase() as 'am' | 'pm';
+                                processedTask = task.replace(new RegExp(`\\s*\\b${amPmMatch[0]}\\b`, 'i'), '').trim();
+                            }
+                            shiftsFromExcel.push({ task: processedTask, userId: foundUser.uid, type, date: shiftDate, address: currentProjectAddress, bNumber: currentBNumber });
+                        } else {
+                            failedShifts.push({
+                                date: shiftDate,
+                                projectAddress: currentProjectAddress,
+                                cellContent: cellValue,
+                                reason: `Unrecognized Operative: "${nameCandidate}".`
+                            });
                         }
-                        shiftsFromExcel.push({ task, userId: foundUser.uid, type, date: shiftDate, address: currentProjectAddress, bNumber: currentBNumber });
-                    } else {
-                        failedShifts.push({
-                            date: shiftDate,
-                            projectAddress: currentProjectAddress,
-                            cellContent: cellValue,
-                            reason: `Unrecognized Operative: "${nameCandidate}".`
-                        });
                     }
                 }
             }
