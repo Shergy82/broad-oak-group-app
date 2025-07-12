@@ -28,6 +28,105 @@ interface FileUploaderProps {
 }
 
 
+// --- Helper Functions ---
+// Moved outside the component to ensure they are always initialized.
+
+const levenshtein = (a: string, b: string): number => {
+    if (a.length === 0) return b.length;
+    if (b.length === 0) return a.length;
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) {
+        matrix[i] = [i];
+    }
+    for (let j = 0; j <= a.length; j++) {
+        matrix[0][j] = j;
+    }
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1
+                );
+            }
+        }
+    }
+    return matrix[b.length][a.length];
+};
+
+const normalizeText = (text: string) => (text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null => {
+    const normalizedName = normalizeText(name);
+    if (!normalizedName) return null;
+
+    // 1. Exact match on normalized name
+    const exactMatch = userMap.find(u => u.normalizedName === normalizedName);
+    if (exactMatch) return exactMatch;
+    
+    // 2. Fuzzy match for nicknames and typos
+    let bestMatch: UserMapEntry | null = null;
+    let minDistance = Infinity;
+
+    for (const user of userMap) {
+        const distance = levenshtein(normalizedName, user.normalizedName);
+        const nameParts = user.originalName.split(' ');
+        const firstNameNormalized = nameParts.length > 0 ? normalizeText(nameParts[0]) : '';
+        
+        // Case 1: Nickname match (e.g., "Dave" for "David")
+        if (user.normalizedName.includes(normalizedName) || (firstNameNormalized && firstNameNormalized.includes(normalizedName))) {
+            if (distance < minDistance) {
+                minDistance = distance;
+                bestMatch = user;
+            }
+        }
+        
+        // Case 2: Typo match
+        const threshold = Math.max(1, Math.floor(normalizedName.length / 4)); // Allow more typos for longer names
+        if (distance <= threshold && distance < minDistance) {
+            minDistance = distance;
+            bestMatch = user;
+        }
+    }
+    
+    // Only return a fuzzy match if it's a very confident one
+    if (bestMatch && minDistance < 3) {
+            return bestMatch;
+    }
+
+    return null;
+}
+
+const parseDate = (dateValue: any): Date | null => {
+    if (!dateValue) return null;
+    if (dateValue instanceof Date) {
+            // Standardize to UTC midnight to avoid timezone issues
+        const d = dateValue;
+        return !isNaN(d.getTime()) ? new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())) : null;
+    }
+    if (typeof dateValue === 'number' && dateValue > 1) {
+        // Handle Excel's serial date number format
+        const d = new Date(Math.round((dateValue - 25569) * 864e5));
+        return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    }
+    if (typeof dateValue === 'string') {
+        const parts = dateValue.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+        if (parts) {
+            const day = parseInt(parts[1], 10);
+            const month = parseInt(parts[2], 10) - 1; // JS months are 0-indexed
+            const year = parseInt(parts[3], 10);
+            if (year > 1900 && month >= 0 && month < 12 && day > 0 && day <= 31) {
+                return new Date(Date.UTC(year, month, day));
+            }
+        }
+    }
+    return null;
+};
+
+
 export function FileUploader({ onImportComplete }: FileUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -83,99 +182,6 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
               });
             }
         });
-        
-        const levenshtein = (a: string, b: string): number => {
-            if (a.length === 0) return b.length;
-            if (b.length === 0) return a.length;
-            const matrix = [];
-            for (let i = 0; i <= b.length; i++) {
-                matrix[i] = [i];
-            }
-            for (let j = 0; j <= a.length; j++) {
-                matrix[0][j] = j;
-            }
-            for (let i = 1; i <= b.length; i++) {
-                for (let j = 1; j <= a.length; j++) {
-                    if (b.charAt(i - 1) === a.charAt(j - 1)) {
-                        matrix[i][j] = matrix[i - 1][j - 1];
-                    } else {
-                        matrix[i][j] = Math.min(
-                            matrix[i - 1][j - 1] + 1,
-                            matrix[i][j - 1] + 1,
-                            matrix[i - 1][j] + 1
-                        );
-                    }
-                }
-            }
-            return matrix[b.length][a.length];
-        };
-        
-        const findUser = (name: string): UserMapEntry | null => {
-            const normalizedName = normalizeText(name);
-            if (!normalizedName) return null;
-
-            // 1. Exact match on normalized name
-            const exactMatch = userMap.find(u => u.normalizedName === normalizedName);
-            if (exactMatch) return exactMatch;
-            
-            // 2. Fuzzy match for nicknames and typos
-            let bestMatch: UserMapEntry | null = null;
-            let minDistance = Infinity;
-
-            for (const user of userMap) {
-                const distance = levenshtein(normalizedName, user.normalizedName);
-                const nameParts = user.originalName.split(' ');
-                const firstNameNormalized = nameParts.length > 0 ? normalizeText(nameParts[0]) : '';
-                
-                // Case 1: Nickname match (e.g., "Dave" for "David")
-                if (user.normalizedName.includes(normalizedName) || (firstNameNormalized && firstNameNormalized.includes(normalizedName))) {
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        bestMatch = user;
-                    }
-                }
-                
-                // Case 2: Typo match
-                const threshold = Math.max(1, Math.floor(normalizedName.length / 4)); // Allow more typos for longer names
-                if (distance <= threshold && distance < minDistance) {
-                    minDistance = distance;
-                    bestMatch = user;
-                }
-            }
-            
-            // Only return a fuzzy match if it's a very confident one
-            if (bestMatch && minDistance < 3) {
-                 return bestMatch;
-            }
-
-            return null;
-        }
-
-        const parseDate = (dateValue: any): Date | null => {
-            if (!dateValue) return null;
-            if (dateValue instanceof Date) {
-                 // Standardize to UTC midnight to avoid timezone issues
-                const d = dateValue;
-                return !isNaN(d.getTime()) ? new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())) : null;
-            }
-            if (typeof dateValue === 'number' && dateValue > 1) {
-                // Handle Excel's serial date number format
-                const d = new Date(Math.round((dateValue - 25569) * 864e5));
-                return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-            }
-            if (typeof dateValue === 'string') {
-                const parts = dateValue.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
-                if (parts) {
-                    const day = parseInt(parts[1], 10);
-                    const month = parseInt(parts[2], 10) - 1; // JS months are 0-indexed
-                    const year = parseInt(parts[3], 10);
-                    if (year > 1900 && month >= 0 && month < 12 && day > 0 && day <= 31) {
-                        return new Date(Date.UTC(year, month, day));
-                    }
-                }
-            }
-            return null;
-        };
 
         const isLikelyAddress = (str: string): boolean => {
             if (!str || str.length < 10) return false;
@@ -188,8 +194,6 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
             return true;
         };
         
-        const normalizeText = (text: string) => (text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-
         const shiftsFromExcel: ParsedShift[] = [];
         const failedShifts: FailedShift[] = [];
         const allDatesFound: Date[] = [];
@@ -258,7 +262,7 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
                     for (const nameCandidate of nameCandidates) {
                         if (!nameCandidate) continue;
 
-                        const foundUser = findUser(nameCandidate);
+                        const foundUser = findUser(nameCandidate, userMap);
                         
                         if (foundUser) {
                             let type: 'am' | 'pm' | 'all-day' = 'all-day';
