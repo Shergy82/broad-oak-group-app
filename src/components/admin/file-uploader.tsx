@@ -14,7 +14,7 @@ import { Upload } from 'lucide-react';
 import type { Shift, UserProfile } from '@/types';
 
 type ParsedShift = Omit<Shift, 'id' | 'status' | 'date'> & { date: Date };
-type UserMapEntry = { uid: string; normalizedName: string };
+type UserMapEntry = { uid: string; normalizedName: string; originalName: string; };
 
 export interface FailedShift {
     date: Date | null;
@@ -78,11 +78,78 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
             if (user.name) {
               userMap.push({
                 uid: doc.id,
-                normalizedName: user.name.trim().toLowerCase().replace(/[^a-z0-9]/g, ''),
+                normalizedName: normalizeText(user.name),
+                originalName: user.name,
               });
             }
         });
-        userMap.sort((a, b) => b.normalizedName.length - a.normalizedName.length);
+        
+        const levenshtein = (a: string, b: string): number => {
+            if (a.length === 0) return b.length;
+            if (b.length === 0) return a.length;
+            const matrix = [];
+            for (let i = 0; i <= b.length; i++) {
+                matrix[i] = [i];
+            }
+            for (let j = 0; j <= a.length; j++) {
+                matrix[0][j] = j;
+            }
+            for (let i = 1; i <= b.length; i++) {
+                for (let j = 1; j <= a.length; j++) {
+                    if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                        matrix[i][j] = matrix[i - 1][j - 1];
+                    } else {
+                        matrix[i][j] = Math.min(
+                            matrix[i - 1][j - 1] + 1,
+                            matrix[i][j - 1] + 1,
+                            matrix[i - 1][j] + 1
+                        );
+                    }
+                }
+            }
+            return matrix[b.length][a.length];
+        };
+        
+        const findUser = (name: string): UserMapEntry | null => {
+            const normalizedName = normalizeText(name);
+            if (!normalizedName) return null;
+
+            // 1. Exact match on normalized name
+            const exactMatch = userMap.find(u => u.normalizedName === normalizedName);
+            if (exactMatch) return exactMatch;
+            
+            // 2. Fuzzy match for nicknames and typos
+            let bestMatch: UserMapEntry | null = null;
+            let minDistance = Infinity;
+
+            for (const user of userMap) {
+                const distance = levenshtein(normalizedName, user.normalizedName);
+                const nameParts = user.originalName.split(' ');
+                const firstNameNormalized = nameParts.length > 0 ? normalizeText(nameParts[0]) : '';
+                
+                // Case 1: Nickname match (e.g., "Dave" for "David")
+                if (user.normalizedName.includes(normalizedName) || (firstNameNormalized && firstNameNormalized.includes(normalizedName))) {
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        bestMatch = user;
+                    }
+                }
+                
+                // Case 2: Typo match
+                const threshold = Math.max(1, Math.floor(normalizedName.length / 4)); // Allow more typos for longer names
+                if (distance <= threshold && distance < minDistance) {
+                    minDistance = distance;
+                    bestMatch = user;
+                }
+            }
+            
+            // Only return a fuzzy match if it's a very confident one
+            if (bestMatch && minDistance < 3) {
+                 return bestMatch;
+            }
+
+            return null;
+        }
 
         const parseDate = (dateValue: any): Date | null => {
             if (!dateValue) return null;
@@ -121,7 +188,7 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
             return true;
         };
         
-        const normalizeText = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const normalizeText = (text: string) => (text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
         const shiftsFromExcel: ParsedShift[] = [];
         const failedShifts: FailedShift[] = [];
@@ -164,11 +231,13 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
 
                 for (let c = 2; c < rowData.length; c++) {
                     const cellValue = (rowData[c] || '').toString().trim().replace(/[\u2012\u2013\u2014\u2015]/g, '-');
-                    const shiftDate = dates[c];
 
-                    if (!cellValue || !shiftDate || cellValue.toLowerCase().includes('holiday') || cellValue.toLowerCase().includes('on hold') || cellValue.includes('(')) {
+                    if (!cellValue || cellValue.toLowerCase().includes('holiday') || cellValue.toLowerCase().includes('on hold') || /\(.*\)/.test(cellValue)) {
                         continue;
                     }
+                    
+                    const shiftDate = dates[c];
+                    if (!shiftDate) continue;
                     
                     const parts = cellValue.split('-').map(p => p.trim());
                     if (parts.length < 2) {
@@ -184,14 +253,12 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
                     const namePart = parts.pop()!;
                     let task = parts.join('-').trim();
                     
-                    // Split names by common separators: / & + ,
                     const nameCandidates = namePart.split(/[/&+|,]/).map(name => name.trim()).filter(Boolean);
 
                     for (const nameCandidate of nameCandidates) {
-                        const normalizedNameCandidate = normalizeText(nameCandidate);
-                        if (!normalizedNameCandidate) continue;
+                        if (!nameCandidate) continue;
 
-                        const foundUser = userMap.find(u => u.normalizedName.includes(normalizedNameCandidate));
+                        const foundUser = findUser(nameCandidate);
                         
                         if (foundUser) {
                             let type: 'am' | 'pm' | 'all-day' = 'all-day';
