@@ -7,7 +7,7 @@ import { db } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -25,7 +25,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Terminal } from 'lucide-react';
+import { Terminal, ShieldCheck, ShieldX } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -36,6 +37,7 @@ export default function UserManagementPage() {
   useEffect(() => {
     if (!currentUserProfile) return;
 
+    // Allow both 'owner' and 'admin' to view this page
     if (!['owner', 'admin'].includes(currentUserProfile.role)) {
       setLoading(false);
       return;
@@ -72,6 +74,7 @@ export default function UserManagementPage() {
 
   const handleRoleChange = async (userId: string, newRole: 'user' | 'admin' | 'owner') => {
     if (!db) return;
+    // This check remains strict: only the owner can execute the change.
     if (currentUserProfile?.role !== 'owner') {
         toast({ variant: 'destructive', title: 'Permission Denied', description: 'Only the owner can change user roles.' });
         return;
@@ -105,6 +108,7 @@ export default function UserManagementPage() {
     return false;
   }
 
+  // Render a message for non-privileged users
   if (currentUserProfile && !['owner', 'admin'].includes(currentUserProfile.role)) {
       return (
           <Alert variant="destructive">
@@ -117,10 +121,57 @@ export default function UserManagementPage() {
       );
   }
 
+  const renderRoleCell = (user: UserProfile) => {
+    // Admins can see roles, but not edit them.
+    if (currentUserProfile?.role === 'admin') {
+      return (
+        <Badge variant={user.role === 'owner' || user.role === 'admin' ? 'default' : 'secondary'} className="capitalize">
+          {user.role}
+        </Badge>
+      );
+    }
+    
+    // The Owner sees the editable dropdown.
+    if (currentUserProfile?.role === 'owner') {
+       return (
+        <Select
+            defaultValue={user.role}
+            onValueChange={(newRole: 'user' | 'admin') => handleRoleChange(user.uid, newRole)}
+            disabled={isRoleChangeDisabled(user)}
+        >
+            <SelectTrigger className="w-[120px]">
+            <SelectValue placeholder="Select role" />
+            </SelectTrigger>
+            <SelectContent>
+            <SelectItem value="user">User</SelectItem>
+            <SelectItem value="admin">Admin</SelectItem>
+            </SelectContent>
+        </Select>
+       );
+    }
+    
+    return null;
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>User Management</CardTitle>
+        <CardDescription>
+            {currentUserProfile?.role === 'owner' 
+                ? 'As the owner, you can view and assign user roles.' 
+                : 'As an admin, you can view all users and their assigned roles.'
+            }
+        </CardDescription>
+        {currentUserProfile?.role === 'admin' && (
+            <Alert className="mt-4">
+                <ShieldX className="h-4 w-4" />
+                <AlertTitle>Read-Only Access</AlertTitle>
+                <AlertDescription>
+                   Only the account owner can modify user roles.
+                </AlertDescription>
+            </Alert>
+        )}
       </CardHeader>
       <CardContent>
         <Table>
@@ -152,19 +203,7 @@ export default function UserManagementPage() {
                   <TableCell>{user.email}</TableCell>
                   <TableCell>{user.phoneNumber}</TableCell>
                   <TableCell>
-                    <Select
-                      defaultValue={user.role}
-                      onValueChange={(newRole: 'user' | 'admin') => handleRoleChange(user.uid, newRole)}
-                      disabled={isRoleChangeDisabled(user)}
-                    >
-                      <SelectTrigger className="w-[120px]">
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {renderRoleCell(user)}
                   </TableCell>
                 </TableRow>
               ))
