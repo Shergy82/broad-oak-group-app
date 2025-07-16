@@ -37,7 +37,8 @@ export default function UserManagementPage() {
   useEffect(() => {
     if (!currentUserProfile) return;
 
-    // Allow both 'owner' and 'admin' to view this page
+    // The parent AdminLayout already protects this page.
+    // This check is a fallback.
     if (!['owner', 'admin'].includes(currentUserProfile.role)) {
       setLoading(false);
       return;
@@ -108,7 +109,7 @@ export default function UserManagementPage() {
     return false;
   }
 
-  // Render a message for non-privileged users
+  // Render a message for non-privileged users, though layout should prevent this.
   if (currentUserProfile && !['owner', 'admin'].includes(currentUserProfile.role)) {
       return (
           <Alert variant="destructive">
