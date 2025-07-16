@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect } from 'react';
@@ -30,6 +31,7 @@ export default function AdminLayout({
     );
   }
 
+  // This is the key guard. It must allow both 'admin' and 'owner'.
   if (!userProfile || !['admin', 'owner'].includes(userProfile.role)) {
     return (
       <div className="flex min-h-screen w-full flex-col">
@@ -39,7 +41,7 @@ export default function AdminLayout({
                 <Terminal className="h-4 w-4" />
                 <AlertTitle>Access Denied</AlertTitle>
                 <AlertDescription>
-                    You do not have permission to view this page.
+                    You do not have permission to view this page. Access is restricted to Admins and the Owner.
                 </AlertDescription>
             </Alert>
         </main>
@@ -47,6 +49,7 @@ export default function AdminLayout({
     );
   }
 
+  // If the user is an admin or owner, render the page content.
   return (
     <div className="flex min-h-screen w-full flex-col">
       <Header />

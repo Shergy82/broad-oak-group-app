@@ -35,20 +35,16 @@ export default function UserManagementPage() {
   const { toast } = useToast();
 
   useEffect(() => {
+    // The AdminLayout handles the main permission check.
+    // This effect can proceed assuming the user is an admin or owner.
     if (!currentUserProfile) return;
-
-    // The parent AdminLayout already protects this page.
-    // This check is a fallback.
-    if (!['owner', 'admin'].includes(currentUserProfile.role)) {
-      setLoading(false);
-      return;
-    }
     
     if (!db) {
       setUsers([]);
       setLoading(false);
       return;
     }
+
     const usersCollection = collection(db, 'users');
     const q = query(usersCollection);
 
@@ -109,31 +105,30 @@ export default function UserManagementPage() {
     return false;
   }
 
-  // Render a message for non-privileged users, though layout should prevent this.
-  if (currentUserProfile && !['owner', 'admin'].includes(currentUserProfile.role)) {
-      return (
-          <Alert variant="destructive">
-              <Terminal className="h-4 w-4" />
-              <AlertTitle>Access Denied</AlertTitle>
-              <AlertDescription>
-                  You do not have the required permissions to view this page. Access is restricted to admins and the account owner.
-              </AlertDescription>
-          </Alert>
-      );
-  }
+  // This component will only render if the user is an admin or owner due to the layout.
+  // The layout shows the "Access Denied" message if they are not.
 
   const renderRoleCell = (user: UserProfile) => {
-    // Admins can see roles, but not edit them.
+    const roleMap: {[key: string]: string} = {
+      'user': 'User',
+      'admin': 'Admin',
+      'owner': 'Owner'
+    };
+    
+    // Admins see a non-interactive badge.
     if (currentUserProfile?.role === 'admin') {
       return (
         <Badge variant={user.role === 'owner' || user.role === 'admin' ? 'default' : 'secondary'} className="capitalize">
-          {user.role}
+          {roleMap[user.role] || user.role}
         </Badge>
       );
     }
     
-    // The Owner sees the editable dropdown.
+    // The Owner sees the editable dropdown for non-owners.
     if (currentUserProfile?.role === 'owner') {
+       if (user.role === 'owner' || user.uid === currentUserProfile.uid) {
+         return <Badge className="capitalize">{roleMap[user.role]}</Badge>
+       }
        return (
         <Select
             defaultValue={user.role}
@@ -141,11 +136,11 @@ export default function UserManagementPage() {
             disabled={isRoleChangeDisabled(user)}
         >
             <SelectTrigger className="w-[120px]">
-            <SelectValue placeholder="Select role" />
+              <SelectValue placeholder="Select role" />
             </SelectTrigger>
             <SelectContent>
-            <SelectItem value="user">User</SelectItem>
-            <SelectItem value="admin">Admin</SelectItem>
+              <SelectItem value="user">User</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
             </SelectContent>
         </Select>
        );
@@ -170,6 +165,15 @@ export default function UserManagementPage() {
                 <AlertTitle>Read-Only Access</AlertTitle>
                 <AlertDescription>
                    Only the account owner can modify user roles.
+                </AlertDescription>
+            </Alert>
+        )}
+         {currentUserProfile?.role === 'owner' && (
+            <Alert className="mt-4 border-primary/50 text-primary-darker [&>svg]:text-primary">
+                <ShieldCheck className="h-4 w-4" />
+                <AlertTitle>Owner Privileges</AlertTitle>
+                <AlertDescription>
+                   You can assign roles to other users. You cannot change your own role or the role of another owner.
                 </AlertDescription>
             </Alert>
         )}

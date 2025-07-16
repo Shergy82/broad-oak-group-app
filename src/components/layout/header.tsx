@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useRouter } from 'next/navigation';
@@ -91,12 +92,10 @@ export function Header() {
                       <Shield className="mr-2" />
                       <span>Admin Panel</span>
                     </DropdownMenuItem>
-                    {userProfile.role === 'owner' && (
-                       <DropdownMenuItem onClick={() => router.push('/admin/users')} className="cursor-pointer">
-                         <UserCog className="mr-2" />
-                         <span>User Management</span>
-                       </DropdownMenuItem>
-                    )}
+                    <DropdownMenuItem onClick={() => router.push('/admin/users')} className="cursor-pointer">
+                      <UserCog className="mr-2" />
+                      <span>User Management</span>
+                    </DropdownMenuItem>
                   </>
                 )}
 
