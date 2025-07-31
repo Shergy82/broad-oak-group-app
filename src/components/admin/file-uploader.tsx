@@ -250,15 +250,7 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
                     
                     const parts = cellValue.split('-').map(p => p.trim());
                     if (parts.length < 2) {
-                        if (shiftDate >= today) {
-                            failedShifts.push({
-                                date: shiftDate,
-                                projectAddress: currentProjectAddress,
-                                cellContent: cellValue,
-                                reason: "Invalid format. Expected 'Task - Operative Name'."
-                            });
-                        }
-                        continue;
+                        continue; // Silently skip invalid formats
                     }
 
                     const namePart = parts.pop()!;
@@ -442,3 +434,5 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
     </div>
   );
 }
+
+    
