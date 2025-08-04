@@ -249,7 +249,8 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
                 if (!currentProjectAddress || r <= dateRowIndex) continue;
 
                 for (let c = 2; c < rowData.length; c++) {
-                    const cellValue = (rowData[c] || '').toString().trim().replace(/[\u2012\u2013\u2014\u2015]/g, '-');
+                    // Normalize cell content: replace newlines with spaces and trim
+                    const cellValue = (rowData[c] || '').toString().replace(/\r?\n|\r/g, " ").trim().replace(/[\u2012\u2013\u2014\u2015]/g, '-');
                     const shiftDate = masterDates[c];
                     
                     if (!cellValue || !shiftDate || cellValue.toLowerCase().includes('holiday') || cellValue.toLowerCase().includes('on hold') || (cellValue.includes('(') && cellValue.includes(')'))) {
@@ -420,3 +421,5 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
     </div>
   );
 }
+
+    
