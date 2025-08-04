@@ -155,7 +155,8 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
   const getShiftKey = (shift: { userId: string; date: Date | Timestamp; type: 'am' | 'pm' | 'all-day'; task: string; address: string }): string => {
     const d = (shift.date as any).toDate ? (shift.date as Timestamp).toDate() : (shift.date as Date);
     const normalizedDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    return `${shift.userId}-${normalizedDate.toISOString().slice(0, 10)}-${shift.type}-${shift.task.trim().toLowerCase()}-${shift.address.trim().toLowerCase()}`;
+    // Using a more robust key to uniquely identify a shift based on its core properties
+    return `${normalizedDate.toISOString().slice(0, 10)}-${shift.userId}-${shift.type}-${shift.address.trim().toLowerCase()}`;
   };
 
 
@@ -310,30 +311,34 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
             existingShiftsMap.set(getShiftKey(shiftData), shiftData);
         });
 
+        const excelShiftsMap = new Map<string, ParsedShift>();
+        for (const excelShift of shiftsFromExcel) {
+          excelShiftsMap.set(getShiftKey(excelShift), excelShift);
+        }
+
         const batch = writeBatch(db);
         let shiftsCreated = 0;
         let shiftsUpdated = 0;
+        let shiftsDeleted = 0;
 
-        for (const excelShift of shiftsFromExcel) {
-            const key = getShiftKey(excelShift);
+        const protectedStatuses: ShiftStatus[] = ['completed', 'incomplete'];
+
+        // Process Excel shifts: Add new or update existing
+        for (const [key, excelShift] of excelShiftsMap.entries()) {
             const existingShift = existingShiftsMap.get(key);
 
-            const protectedStatuses: ShiftStatus[] = ['completed', 'incomplete'];
-            if (existingShift && protectedStatuses.includes(existingShift.status)) {
-                continue;
-            }
-
             if (existingShift) {
-                if (existingShift.task !== excelShift.task || existingShift.address !== excelShift.address || existingShift.bNumber !== excelShift.bNumber) {
-                    const updateData = {
-                        task: excelShift.task,
-                        address: excelShift.address,
-                        bNumber: excelShift.bNumber || '',
-                    };
-                    batch.update(doc(db, 'shifts', existingShift.id), updateData);
-                    shiftsUpdated++;
+                // It exists, check if it needs an update
+                if (existingShift.task !== excelShift.task || existingShift.bNumber !== (excelShift.bNumber || '')) {
+                     if (!protectedStatuses.includes(existingShift.status)) {
+                        batch.update(doc(db, 'shifts', existingShift.id), { task: excelShift.task, bNumber: excelShift.bNumber || '' });
+                        shiftsUpdated++;
+                     }
                 }
+                // Remove from map so we know it's been handled
+                existingShiftsMap.delete(key);
             } else {
+                // It's a new shift, add it
                 const newShiftData = {
                     ...excelShift,
                     date: Timestamp.fromDate(excelShift.date),
@@ -343,18 +348,27 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
                 shiftsCreated++;
             }
         }
+
+        // Process remaining shifts in existingShiftsMap: these need to be deleted
+        for (const [key, shiftToDelete] of existingShiftsMap.entries()) {
+             if (!protectedStatuses.includes(shiftToDelete.status)) {
+                batch.delete(doc(db, 'shifts', shiftToDelete.id));
+                shiftsDeleted++;
+             }
+        }
         
-        if (shiftsCreated > 0 || shiftsUpdated > 0) {
+        if (shiftsCreated > 0 || shiftsUpdated > 0 || shiftsDeleted > 0) {
             await batch.commit();
         }
         
         let descriptionParts = [];
         if (shiftsCreated > 0) descriptionParts.push(`created ${shiftsCreated} new shift(s)`);
         if (shiftsUpdated > 0) descriptionParts.push(`updated ${shiftsUpdated} shift(s)`);
+        if (shiftsDeleted > 0) descriptionParts.push(`deleted ${shiftsDeleted} old shift(s)`);
 
         if (descriptionParts.length > 0) {
             toast({
-                title: 'Import Complete',
+                title: 'Import Complete & Reconciled',
                 description: `Successfully processed the file: ${descriptionParts.join(', ')}.`,
             });
         } else if (failedShifts.length === 0) {
@@ -417,7 +431,3 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
     </div>
   );
 }
-
-    
-
-    
