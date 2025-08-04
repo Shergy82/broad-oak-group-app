@@ -247,7 +247,7 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
                     
                     const cellValue = (rowData[c] || '').toString().replace(/\r?\n|\r/g, " ").trim().replace(/[\u2012\u2013\u2014\u2015]/g, '-');
                     
-                    if (!cellValue || cellValue.toLowerCase().includes('holiday') || cellValue.toLowerCase().includes('on hold')) {
+                    if (!cellValue || cellValue.toLowerCase().includes('holiday') || cellValue.toLowerCase().includes('on hold') || cellValue.includes('(') || cellValue.includes(')')) {
                         continue;
                     }
 
@@ -417,5 +417,7 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
     </div>
   );
 }
+
+    
 
     
