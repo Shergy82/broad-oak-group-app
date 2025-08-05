@@ -108,7 +108,7 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
     // --- Master Notification Toggle Check ---
     const settingsRef = db.collection('settings').doc('notifications');
     const settingsDoc = await settingsRef.get();
-    if (settingsDoc.exists && settingsDoc.data()?.enabled === false) {
+    if (settingsDoc.exists() && settingsDoc.data()?.enabled === false) {
       functions.logger.log('Global notifications are disabled by the owner. Aborting.');
       return;
     }
@@ -134,7 +134,7 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
     let userId: string | null = null;
     let payload: object | null = null;
 
-    if (change.after.exists && !change.before.exists) {
+    if (change.after.exists() && !change.before.exists()) {
       // A new shift is created
       userId = shiftDataAfter?.userId;
       payload = {
@@ -142,7 +142,7 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
         body: `You have a new shift: ${shiftDataAfter?.task} at ${shiftDataAfter?.address}.`,
         data: { url: `/dashboard` },
       };
-    } else if (!change.after.exists && change.before.exists) {
+    } else if (!change.after.exists() && change.before.exists()) {
       // A shift is deleted
       userId = shiftDataBefore?.userId;
       payload = {
@@ -150,7 +150,7 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
         body: `Your shift for ${shiftDataBefore?.task} at ${shiftDataBefore?.address} has been cancelled.`,
         data: { url: `/dashboard` },
       };
-    } else if (change.after.exists && change.before.exists) {
+    } else if (change.after.exists() && change.before.exists()) {
       // A shift is updated. This is the definitive check for meaningful changes.
       const before = shiftDataBefore;
       const after = shiftDataAfter;
@@ -256,7 +256,7 @@ export const projectReviewNotifier = functions
     // --- Master Notification Toggle Check ---
     const settingsRef = db.collection('settings').doc('notifications');
     const settingsDoc = await settingsRef.get();
-    if (settingsDoc.exists && settingsDoc.data()?.enabled === false) {
+    if (settingsDoc.exists() && settingsDoc.data()?.enabled === false) {
       functions.logger.log('Global notifications are disabled by the owner. Aborting project review notifier.');
       return;
     }
@@ -419,7 +419,7 @@ export const deleteProjectFile = functions.region("europe-west2").https.onCall(a
         const fileRef = db.collection('projects').doc(projectId).collection('files').doc(fileId);
         const fileDoc = await fileRef.get();
 
-        if (!fileDoc.exists) {
+        if (!fileDoc.exists()) {
             throw new functions.https.HttpsError("not-found", "The specified file does not exist.");
         }
 
@@ -568,3 +568,5 @@ export const deleteAllProjects = functions.region("europe-west2").https.onCall(a
         throw new functions.https.HttpsError("internal", "An error occurred while deleting all projects. Please check the function logs.");
     }
 });
+
+    
