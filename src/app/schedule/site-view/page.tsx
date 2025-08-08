@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shift, UserProfile } from '@/types';
-import { isSameWeek, format, startOfToday } from 'date-fns';
+import { isSameWeek, format, startOfToday, addDays } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useRouter } from 'next/navigation';
 import { getCorrectedLocalDate } from '@/lib/utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 
 const DayCard = ({ day, shifts, userNameMap }: { day: string, shifts: Shift[], userNameMap: Map<string, string> }) => {
@@ -39,6 +40,40 @@ const DayCard = ({ day, shifts, userNameMap }: { day: string, shifts: Shift[], u
                 ))}
             </CardContent>
         </Card>
+    );
+}
+
+const WeekScheduleView = ({ shifts, userNameMap, weekName }: { shifts: { [key: string]: Shift[] }, userNameMap: Map<string, string>, weekName: string }) => {
+    const hasShifts = Object.values(shifts).some(dayShifts => dayShifts.length > 0);
+    const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    const weekendDays = ['Saturday', 'Sunday'];
+
+    if (!hasShifts) {
+        return (
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center h-60">
+                <CalendarDays className="mx-auto h-12 w-12 text-muted-foreground" />
+                <h3 className="mt-4 text-lg font-semibold">No Shifts {weekName}</h3>
+                <p className="mt-2 text-sm text-muted-foreground">There is no work scheduled for this property during this period.</p>
+            </div>
+        )
+    }
+
+    return (
+        <div className="space-y-6">
+            <h3 className="text-xl font-semibold tracking-tight">Weekdays</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                {weekDays.map(day => <DayCard key={day} day={day} shifts={shifts[day]} userNameMap={userNameMap} />)}
+            </div>
+
+            {(shifts['Saturday']?.length > 0 || shifts['Sunday']?.length > 0) && (
+                <>
+                    <h3 className="text-xl font-semibold tracking-tight pt-4">Weekend</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                        {weekendDays.map(day => <DayCard key={day} day={day} shifts={shifts[day]} userNameMap={userNameMap} />)}
+                    </div>
+                </>
+            )}
+        </div>
     );
 }
 
@@ -88,35 +123,37 @@ export default function SiteSchedulePage() {
 
     const userNameMap = useMemo(() => new Map(users.map(u => [u.uid, u.name])), [users]);
 
-    const weekShifts = useMemo(() => {
+    const { thisWeekShifts, nextWeekShifts } = useMemo(() => {
         const today = startOfToday();
         
         if (!selectedAddress) {
-            return {};
+            return { thisWeekShifts: {}, nextWeekShifts: {} };
         }
 
-        // Filter the fetched shifts for the selected address and current week
-        const relevantShifts = allShifts.filter(s => 
-            s.address === selectedAddress &&
-            isSameWeek(getCorrectedLocalDate(s.date), today, { weekStartsOn: 1 })
-        );
+        const relevantShifts = allShifts.filter(s => s.address === selectedAddress);
+        
+        const groupShifts = (weekStart: Date) => {
+            const weekShifts = relevantShifts.filter(s => isSameWeek(getCorrectedLocalDate(s.date), weekStart, { weekStartsOn: 1 }));
+            const grouped: { [key: string]: Shift[] } = {
+                'Monday': [], 'Tuesday': [], 'Wednesday': [], 'Thursday': [], 'Friday': [], 'Saturday': [], 'Sunday': [],
+            };
+            weekShifts.forEach(shift => {
+                const dayName = format(getCorrectedLocalDate(shift.date), 'eeee');
+                if (grouped[dayName]) {
+                    grouped[dayName].push(shift);
+                }
+            });
+            return grouped;
+        }
 
-        const grouped: { [key: string]: Shift[] } = {
-            'Monday': [], 'Tuesday': [], 'Wednesday': [], 'Thursday': [], 'Friday': [], 'Saturday': [], 'Sunday': [],
+        const startOfThisWeek = today;
+        const startOfNextWeek = addDays(today, 7);
+
+        return {
+            thisWeekShifts: groupShifts(startOfThisWeek),
+            nextWeekShifts: groupShifts(startOfNextWeek)
         };
-        relevantShifts.forEach(shift => {
-            const dayName = format(getCorrectedLocalDate(shift.date), 'eeee');
-            if (grouped[dayName]) {
-                grouped[dayName].push(shift);
-            }
-        });
-        return grouped;
     }, [allShifts, selectedAddress]);
-
-    const hasShifts = Object.values(weekShifts).some(dayShifts => dayShifts.length > 0);
-    
-    const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-    const weekendDays = ['Saturday', 'Sunday'];
 
     if (error) {
         return (
@@ -172,28 +209,19 @@ export default function SiteSchedulePage() {
                             <Skeleton className="h-48 w-full" />
                         </div>
                     </div>
-                ) : !hasShifts ? (
-                     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center h-60">
-                        <CalendarDays className="mx-auto h-12 w-12 text-muted-foreground" />
-                        <h3 className="mt-4 text-lg font-semibold">No Shifts This Week</h3>
-                        <p className="mt-2 text-sm text-muted-foreground">There is no work scheduled for "{selectedAddress}" this week.</p>
-                    </div>
                 ) : (
-                    <div className="space-y-6">
-                        <h3 className="text-xl font-semibold tracking-tight">Weekdays</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                           {weekDays.map(day => <DayCard key={day} day={day} shifts={weekShifts[day]} userNameMap={userNameMap} />)}
-                        </div>
-
-                         {(weekShifts['Saturday']?.length > 0 || weekShifts['Sunday']?.length > 0) && (
-                            <>
-                                <h3 className="text-xl font-semibold tracking-tight pt-4">Weekend</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                                    {weekendDays.map(day => <DayCard key={day} day={day} shifts={weekShifts[day]} userNameMap={userNameMap} />)}
-                                </div>
-                            </>
-                         )}
-                    </div>
+                    <Tabs defaultValue="this-week">
+                        <TabsList>
+                            <TabsTrigger value="this-week">This Week</TabsTrigger>
+                            <TabsTrigger value="next-week">Next Week</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="this-week" className="mt-4">
+                            <WeekScheduleView shifts={thisWeekShifts} userNameMap={userNameMap} weekName="This Week" />
+                        </TabsContent>
+                        <TabsContent value="next-week" className="mt-4">
+                             <WeekScheduleView shifts={nextWeekShifts} userNameMap={userNameMap} weekName="Next Week" />
+                        </TabsContent>
+                    </Tabs>
                 )}
             </CardContent>
         </Card>
