@@ -13,11 +13,8 @@ import { ArrowLeft, Building2, CalendarDays, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useRouter } from 'next/navigation';
+import { getCorrectedLocalDate } from '@/lib/utils';
 
-const getCorrectedLocalDate = (date: { toDate: () => Date }) => {
-    const d = date.toDate();
-    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-};
 
 const DayCard = ({ day, shifts, userNameMap }: { day: string, shifts: Shift[], userNameMap: Map<string, string> }) => {
     if (shifts.length === 0) return null;
