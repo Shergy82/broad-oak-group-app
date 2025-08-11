@@ -24,7 +24,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteAllProjects = exports.deleteAllShifts = exports.deleteProjectFile = exports.deleteProjectAndFiles = exports.projectReviewNotifier = exports.sendShiftNotification = exports.setNotificationStatus = exports.getNotificationStatus = exports.getVapidPublicKey = void 0;
+exports.deleteAnnouncement = exports.deleteAllProjects = exports.deleteAllShifts = exports.deleteProjectFile = exports.deleteProjectAndFiles = exports.projectReviewNotifier = exports.sendShiftNotification = exports.setNotificationStatus = exports.getNotificationStatus = exports.getVapidPublicKey = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const webPush = __importStar(require("web-push"));
@@ -497,6 +497,48 @@ exports.deleteAllProjects = functions.region("europe-west2").https.onCall(async 
     catch (error) {
         functions.logger.error("Error deleting all projects:", error);
         throw new functions.https.HttpsError("internal", "An error occurred while deleting all projects. Please check the function logs.");
+    }
+});
+exports.deleteAnnouncement = functions.region("europe-west2").https.onCall(async (data, context) => {
+    // 1. Authentication check
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in to delete announcements.");
+    }
+    const uid = context.auth.uid;
+    const userDoc = await db.collection("users").doc(uid).get();
+    const userProfile = userDoc.data();
+    // 2. Authorization check
+    if (!userProfile || !['admin', 'owner'].includes(userProfile.role)) {
+        throw new functions.https.HttpsError("permission-denied", "You do not have permission to perform this action.");
+    }
+    // 3. Validation
+    const { announcementId } = data;
+    if (!announcementId || typeof announcementId !== 'string') {
+        throw new functions.https.HttpsError("invalid-argument", "The function must be called with an 'announcementId' string argument.");
+    }
+    functions.logger.log(`User ${uid} deleting announcement ${announcementId}`);
+    // 4. Execution
+    const announcementRef = db.collection('announcements').doc(announcementId);
+    const acknowledgementsRef = announcementRef.collection('acknowledgedBy');
+    try {
+        // Delete all documents in the subcollection first
+        const acknowledgementsSnapshot = await acknowledgementsRef.get();
+        if (!acknowledgementsSnapshot.empty) {
+            const batch = db.batch();
+            acknowledgementsSnapshot.docs.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+            functions.logger.log(`Deleted ${acknowledgementsSnapshot.size} acknowledgements for announcement ${announcementId}.`);
+        }
+        // Then delete the main announcement document
+        await announcementRef.delete();
+        functions.logger.log(`Successfully deleted announcement ${announcementId}.`);
+        return { success: true };
+    }
+    catch (error) {
+        functions.logger.error(`Error deleting announcement ${announcementId}:`, error);
+        throw new functions.https.HttpsError("internal", "An unexpected error occurred while deleting the announcement.");
     }
 });
 //# sourceMappingURL=index.js.map

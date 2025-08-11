@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { collection, onSnapshot, query, orderBy, doc, deleteDoc, getDocs } from 'firebase/firestore';
 import { format } from 'date-fns';
-import { db } from '@/lib/firebase';
+import { db, functions, httpsCallable } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Header } from '@/components/layout/header';
@@ -88,19 +88,18 @@ export default function AnnouncementsPage() {
   }
 
   const handleDelete = async (announcementId: string) => {
-    if (!db) return;
+    if (!functions) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not connect to backend services.' });
+      return;
+    }
+    toast({ title: 'Deleting...', description: 'Please wait while the announcement is deleted.' });
     try {
-        const acknowledgementsRef = collection(db, 'announcements', announcementId, 'acknowledgedBy');
-        const acknowledgementsSnap = await getDocs(acknowledgementsRef);
-        const batch = doc(db).firestore.batch();
-        acknowledgementsSnap.forEach(doc => batch.delete(doc.ref));
-        await batch.commit();
-
-        await deleteDoc(doc(db, 'announcements', announcementId));
-        toast({ title: 'Success', description: 'Announcement and all acknowledgements deleted.' });
-    } catch (error) {
+      const deleteAnnouncementFn = httpsCallable(functions, 'deleteAnnouncement');
+      await deleteAnnouncementFn({ announcementId });
+      toast({ title: 'Success', description: 'Announcement deleted.' });
+    } catch (error: any) {
         console.error('Error deleting announcement:', error)
-        toast({ variant: 'destructive', title: 'Error', description: 'Could not delete announcement.' });
+        toast({ variant: 'destructive', title: 'Error', description: error.message || 'Could not delete announcement.' });
     }
   }
   
