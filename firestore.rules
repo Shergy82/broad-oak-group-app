@@ -1,73 +1,60 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function isOwner(uid) {
-      return get(/databases/$(database)/documents/users/$(uid)).data.role == 'owner';
+  
+    function isOwner() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
     }
-
-    function isAdmin(uid) {
-      return get(/databases/$(database)/documents/users/$(uid)).data.role == 'admin';
-    }
-
-    function isOwnerOrAdmin(uid) {
-      let role = get(/databases/$(database)/documents/users/$(uid)).data.role;
-      return role == 'owner' || role == 'admin';
+    
+    function isAdmin() {
+       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
     }
 
     match /users/{userId} {
-      allow read;
+      allow read: if request.auth != null;
       allow create: if request.auth.uid == userId;
-      allow update: if request.auth.uid == userId 
-                    || isOwner(request.auth.uid) 
-                    && resource.data.role != 'owner'; // Owner can update users, but not change another user's role to owner
-      // Only owner should be able to delete users, but we disable for safety.
-      allow delete: if false; 
-      
-      match /pushSubscriptions/{subscriptionId} {
-        allow read, write: if request.auth.uid == userId;
-      }
-      
-      // New rule: Allow users to write their own acknowledgement receipts
-      match /acknowledgedAnnouncements/{announcementId} {
-        allow create: if request.auth.uid == userId;
-        allow read, update, delete: if false; // prevent modification
-      }
+      allow update: if request.auth.uid == userId || isOwner();
+    }
+    
+    match /users/{userId}/pushSubscriptions/{subscriptionId} {
+      allow read, write: if request.auth.uid == userId;
     }
 
     match /projects/{projectId} {
       allow read: if request.auth != null;
-      allow create, update: if isOwnerOrAdmin(request.auth.uid);
-      // Deletion is handled by a Cloud Function for safety.
-      allow delete: if false; 
-
+      allow create, update: if isAdmin();
+      // Deletion is handled by the deleteProjectAndFiles Cloud Function
+      allow delete: if isAdmin();
+      
       match /files/{fileId} {
         allow read: if request.auth != null;
-        allow create: if request.auth != null;
-        // Deletion is handled by a Cloud Function for safety.
-        allow delete: if false;
+        allow create: if request.auth != null; 
+        // Deletion is handled by the deleteProjectFile Cloud Function
+        allow delete: if request.auth.uid == resource.data.uploaderId || isAdmin();
       }
     }
 
     match /shifts/{shiftId} {
-      allow read: if request.auth.uid == resource.data.userId || isOwnerOrAdmin(request.auth.uid);
-      allow create: if isOwnerOrAdmin(request.auth.uid);
-      // User can update their own shift status. Admin/owner can update any shift.
-      allow update: if request.auth.uid == resource.data.userId || isOwnerOrAdmin(request.auth.uid);
-      // Only admin/owner can delete shifts from the main schedule view.
-      allow delete: if isOwnerOrAdmin(request.auth.uid);
+      allow read, write: if request.auth != null;
     }
     
+    match /settings/{docId} {
+      allow read, write: if isOwner();
+    }
+
     match /announcements/{announcementId} {
       allow read: if request.auth != null;
-      allow create, update, delete: if isOwnerOrAdmin(request.auth.uid);
-    }
-    
-    match /settings/{settingId} {
-       allow read: if isOwnerOrAdmin(request.auth.uid);
-       allow write: if isOwner(request.auth.uid);
+      allow create, update, delete: if isAdmin();
+
+      // Rule to allow users to acknowledge an announcement.
+      // This allows a user to create a document in this subcollection,
+      // but only if the document ID is their own user ID.
+      match /acknowledgedBy/{userId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null && request.auth.uid == userId;
+        allow update, delete: if false; // No one can modify or delete receipts from the client.
+      }
     }
   }
 }
