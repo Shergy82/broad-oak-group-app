@@ -575,8 +575,10 @@ export const deleteAnnouncement = functions.region("europe-west2").https.onCall(
   const userDoc = await db.collection("users").doc(uid).get();
   const userProfile = userDoc.data();
 
-  // 2. Authorization check
-  if (!userProfile || !['admin', 'owner'].includes(userProfile.role)) {
+  // 2. Authorization check - ROBUST CHECK
+  const userRole = userProfile?.role;
+  if (!userRole || !['admin', 'owner'].includes(userRole)) {
+    functions.logger.warn(`User ${uid} with role '${userRole}' attempted to delete an announcement without permission.`);
     throw new functions.https.HttpsError("permission-denied", "You do not have permission to perform this action.");
   }
   
@@ -586,7 +588,7 @@ export const deleteAnnouncement = functions.region("europe-west2").https.onCall(
     throw new functions.https.HttpsError("invalid-argument", "The function must be called with an 'announcementId' string argument.");
   }
 
-  functions.logger.log(`User ${uid} deleting announcement ${announcementId}`);
+  functions.logger.log(`Admin user ${uid} deleting announcement ${announcementId}`);
 
   // 4. Execution
   const announcementRef = db.collection('announcements').doc(announcementId);
