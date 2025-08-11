@@ -56,8 +56,11 @@ export const acknowledgeAnnouncement = functions.region("europe-west2").https.on
     const batch = db.batch();
 
     try {
-        announcementIds.forEach((announcementId) => {
-            if (typeof announcementId !== 'string' || announcementId.length === 0) return;
+        announcementIds.forEach((announcementId: any) => {
+            if (typeof announcementId !== 'string' || announcementId.length === 0) {
+                 functions.logger.warn("Skipping invalid announcementId:", announcementId);
+                 return;
+            }
             const announcementRef = db.collection('announcements').doc(announcementId);
             // Use set with merge to safely create or update the viewedBy map
             batch.set(announcementRef, { viewedBy: { [uid]: now } }, { merge: true });
@@ -68,7 +71,6 @@ export const acknowledgeAnnouncement = functions.region("europe-west2").https.on
         return { success: true };
     } catch (error) {
         functions.logger.error(`Error acknowledging announcements for user ${uid}:`, error);
-        // Provide more detail in the error thrown back to the client
         const errorMessage = (error instanceof Error) ? error.message : "An unexpected error occurred.";
         throw new functions.https.HttpsError("internal", `Failed to acknowledge announcements: ${errorMessage}`);
     }

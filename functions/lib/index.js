@@ -24,7 +24,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteAllProjects = exports.deleteAllShifts = exports.deleteProjectFile = exports.deleteProjectAndFiles = exports.projectReviewNotifier = exports.sendShiftNotification = exports.getVapidPublicKey = void 0;
+exports.deleteAllProjects = exports.deleteAllShifts = exports.deleteProjectFile = exports.deleteProjectAndFiles = exports.projectReviewNotifier = exports.sendShiftNotification = exports.acknowledgeAnnouncement = exports.getVapidPublicKey = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const webPush = __importStar(require("web-push"));
@@ -60,6 +60,39 @@ exports.getVapidPublicKey = functions.region("europe-west2").https.onCall((data,
         throw new functions.https.HttpsError('not-found', 'VAPID public key is not configured on the server.');
     }
     return { publicKey };
+});
+exports.acknowledgeAnnouncement = functions.region("europe-west2").https.onCall(async (data, context) => {
+    // 1. Authentication check
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in to perform this action.");
+    }
+    // 2. Validation
+    const { announcementIds } = data;
+    if (!Array.isArray(announcementIds) || announcementIds.length === 0) {
+        throw new functions.https.HttpsError("invalid-argument", "The function must be called with an 'announcementIds' array.");
+    }
+    const uid = context.auth.uid;
+    const now = admin.firestore.Timestamp.now();
+    const batch = db.batch();
+    try {
+        announcementIds.forEach((announcementId) => {
+            if (typeof announcementId !== 'string' || announcementId.length === 0) {
+                functions.logger.warn("Skipping invalid announcementId:", announcementId);
+                return;
+            }
+            const announcementRef = db.collection('announcements').doc(announcementId);
+            // Use set with merge to safely create or update the viewedBy map
+            batch.set(announcementRef, { viewedBy: { [uid]: now } }, { merge: true });
+        });
+        await batch.commit();
+        functions.logger.log(`User ${uid} acknowledged ${announcementIds.length} announcement(s).`);
+        return { success: true };
+    }
+    catch (error) {
+        functions.logger.error(`Error acknowledging announcements for user ${uid}:`, error);
+        const errorMessage = (error instanceof Error) ? error.message : "An unexpected error occurred.";
+        throw new functions.https.HttpsError("internal", `Failed to acknowledge announcements: ${errorMessage}`);
+    }
 });
 exports.sendShiftNotification = functions.region("europe-west2").firestore.document("shifts/{shiftId}")
     .onWrite(async (change, context) => {
