@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -80,21 +81,22 @@ export default function AnnouncementsPage() {
   }
 
   const handleDelete = async (announcementId: string) => {
-    if (!db) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not connect to the database.' });
-      return;
+    if (!isPrivilegedUser) {
+        toast({ variant: 'destructive', title: 'Permission Denied', description: 'You cannot delete this.' });
+        return;
     }
+    if (!db) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Database service is not available.' });
+        return;
+    }
+
     toast({ title: 'Deleting...', description: 'Please wait while the announcement is deleted.' });
     try {
-      await deleteDoc(doc(db, 'announcements', announcementId));
-      toast({ title: 'Success', description: 'Announcement has been deleted.' });
+        await deleteDoc(doc(db, 'announcements', announcementId));
+        toast({ title: 'Success', description: 'Announcement has been deleted.' });
     } catch (error: any) {
         console.error('Error deleting announcement:', error);
-        let errorMessage = 'Could not delete announcement.';
-        if (error.code === 'permission-denied') {
-            errorMessage = 'You do not have permission to delete this announcement. Please check Firestore security rules.';
-        }
-        toast({ variant: 'destructive', title: 'Error', description: errorMessage });
+        toast({ variant: 'destructive', title: 'Deletion Failed', description: error.message || 'Could not delete announcement.' });
     }
   }
   
@@ -107,7 +109,7 @@ export default function AnnouncementsPage() {
       </div>
     );
   }
-
+  
   return (
     <>
       <div className="flex min-h-screen w-full flex-col">
@@ -170,7 +172,7 @@ export default function AnnouncementsPage() {
                                       <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                       <AlertDialogDescription>
                                           This action cannot be undone. This will permanently delete the announcement titled "{announcement.title}".
-                                      </Description>
+                                      </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
                                       <AlertDialogCancel>Cancel</AlertDialogCancel>

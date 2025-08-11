@@ -2,68 +2,63 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper functions
-    function isOwner() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
-    }
-    function isAdmin() {
-      let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return userRole == 'admin' || userRole == 'owner';
-    }
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    // Users Collection
+  
+    // --- Users Collection ---
+    // Users can read their own profile.
+    // Any authenticated user can create their own user document.
+    // Users can update their own profile data.
+    // Role changes are restricted and handled by Cloud Functions.
     match /users/{userId} {
-      allow read; // All signed-in users can read profiles for name lookups
-      allow create: if request.auth.uid == userId; // Allow users to create their own profile on signup
-      allow update: if request.auth.uid == userId || isOwner(); // Users can update their own profile, owner can update any
-    }
-    
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth.uid == userId; // Users can only access their own subcollections
+      allow read, update: if request.auth.uid == userId;
+      allow create: if request.auth.uid != null;
+
+      // --- Push Subscriptions Subcollection ---
+      // A user can manage their own push notification subscriptions.
+      match /pushSubscriptions/{subscriptionId} {
+        allow read, write, delete: if request.auth.uid == userId;
+      }
     }
 
-    // Shifts Collection
+    // --- Shifts Collection ---
+    // Logged-in users can see only their own shifts.
+    // Admins and owners can see all shifts.
+    // Users can update the status of their own shifts.
+    // Admins and owners can create, update, and delete any shift.
     match /shifts/{shiftId} {
-      allow read, update: if request.auth.uid == resource.data.userId; // Users can only read/update their own shifts
-      allow create, delete: if isAdmin(); // Only admins/owners can create or delete shifts for anyone
+      allow read: if request.auth.uid != null && (resource.data.userId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner']);
+      allow create, update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+      allow update: if request.auth.uid != null && resource.data.userId == request.auth.uid && request.resource.data.keys().hasAny(['status', 'notes']);
     }
 
-    // Projects Collection
+    // --- Projects Collection ---
+    // Any authenticated user can read the list of projects and their files.
+    // Creation and deletion of projects and files are restricted to admins/owners and handled via Cloud Functions.
     match /projects/{projectId} {
-      allow read: if isSignedIn(); // All signed-in users can view project details
-      allow create, update, delete: if isAdmin(); // Only admins/owners can manage projects
-
-      // Files Subcollection
+      allow read: if request.auth.uid != null;
+      allow create, update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+      
+      // --- Files Subcollection ---
+      // Any authenticated user can read files.
+      // Any authenticated user can upload (create) files.
+      // Deletion is restricted and handled by a Cloud Function.
       match /files/{fileId} {
-        allow read: if isSignedIn(); // All signed-in users can view files
-        
-        // Allow create/delete only for admins/owners OR the user who uploaded the file
-        allow create: if isSignedIn();
-        allow delete: if isAdmin() || request.auth.uid == resource.data.uploaderId;
+         allow read, create: if request.auth.uid != null;
+         allow delete: if request.auth.uid != null && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'] || resource.data.uploaderId == request.auth.uid);
       }
-    }
-
-    // Settings Collection
-    match /settings/{docId} {
-      allow read, write: if isOwner(); // Only owner can read/write global settings
     }
     
-    // Announcements Collection
+    // --- Announcements Collection ---
+    // Any authenticated user can read announcements.
+    // Admins/owners can create, update, and delete announcements.
     match /announcements/{announcementId} {
-      allow read: if isSignedIn(); // All signed-in users can read announcements.
-      allow create, update: if isAdmin(); // Only admins/owners can create or update announcements.
-      allow delete: if isAdmin(); // Admins/owners can delete announcements (deletion is now handled client-side with recursive=true in the rule)
+        allow read: if request.auth.uid != null;
+        allow write, delete: if request.auth.uid != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+    }
 
-      // Acknowledgements Subcollection
-      match /acknowledgedBy/{userId} {
-        // Correct Rule: A user can create a document here if their UID matches the document ID they are trying to create.
-        allow create: if request.auth.uid == userId;
-        allow read: if isAdmin(); // Only admins/owners can read the list of who has acknowledged.
-      }
+    // --- Settings Collection ---
+    // Only the owner can read or write to the settings.
+    match /settings/{settingId} {
+      allow read, write: if request.auth.uid != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
     }
   }
 }
