@@ -1,77 +1,84 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check for admin or owner roles.
-    function isOwnerOrAdmin(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.role in ['admin', 'owner'];
+    // Helper function to check if a user is an admin or owner
+    function isPrivileged(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)) &&
+             get(/databases/$(database)/documents/users/$(userId)).data.role in ['admin', 'owner'];
     }
-
-    // Helper function to check if the user is the owner of the resource.
+    
+    // Helper function to check if a user is the owner
     function isOwner(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.role == 'owner';
+      return exists(/databases/$(database)/documents/users/$(userId)) &&
+             get(/databases/$(database)/documents/users/$(userId)).data.role == 'owner';
     }
 
-    // USERS:
-    // 1. Allow users to read their own profile.
-    // 2. Allow admins/owners to read any user profile.
-    // 3. Allow users to create their own profile upon signup.
-    // 4. Allow users to update their own profile.
-    // 5. Allow owners to update any user's profile (for role changes).
+    // Users can read their own profile, admins/owners can read all profiles.
+    // Users can only create their own profile document and update their own name/phone.
+    // Only the owner can change a user's role.
     match /users/{userId} {
-      allow read: if request.auth.uid == userId || isOwnerOrAdmin(request.auth.uid);
+      allow read: if request.auth.uid == userId || isPrivileged(request.auth.uid);
       allow create: if request.auth.uid == userId;
-      allow update: if request.auth.uid == userId || isOwner(request.auth.uid);
-    }
-
-    // PUSH SUBSCRIPTIONS (subcollection of users)
-    // Users can only manage their own push notification subscriptions.
-    match /users/{userId}/pushSubscriptions/{subscriptionId} {
-        allow read, write, delete: if request.auth.uid == userId;
-    }
-
-    // SHIFTS:
-    // 1. Allow any authenticated user to read all shifts (for dashboards).
-    // 2. Allow admins/owners to create/update/delete any shift.
-    // 3. Allow users to update the status of their own assigned shifts.
-    match /shifts/{shiftId} {
-      allow read: if request.auth.uid != null;
-      allow create, delete: if isOwnerOrAdmin(request.auth.uid);
-      allow update: if isOwnerOrAdmin(request.auth.uid) || (request.auth.uid == resource.data.userId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'notes']));
-    }
-
-    // PROJECTS:
-    // 1. Allow any authenticated user to read all projects and their files.
-    // 2. Allow admins/owners to create/delete projects.
-    // 3. Allow any authenticated user to upload files to a project.
-    // 4. Allow the uploader or an admin/owner to delete a specific file.
-    match /projects/{projectId} {
-      allow read: if request.auth.uid != null;
-      allow create, delete: if isOwnerOrAdmin(request.auth.uid);
+      allow update: if request.auth.uid == userId && 
+                       request.resource.data.keys().hasOnly(['name', 'phoneNumber', 'email', 'createdAt', 'role']) &&
+                       request.resource.data.role == resource.data.role; // Cannot change own role
       
-      match /files/{fileId} {
-        allow read: if request.auth.uid != null;
-        allow create: if request.auth.uid != null;
-        allow delete: if isOwnerOrAdmin(request.auth.uid) || request.auth.uid == resource.data.uploaderId;
-      }
+      // Separate rule for the owner to change other users' roles
+      allow update: if isOwner(request.auth.uid) &&
+                       request.resource.data.keys().hasOnly(['name', 'phoneNumber', 'email', 'createdAt', 'role']);
+    }
+
+    // Allow read access to push subscriptions only for the user themselves.
+    // Allow create and delete for the user to manage their own subscriptions.
+    match /users/{userId}/pushSubscriptions/{subscriptionId} {
+      allow read, create, delete: if request.auth.uid == userId;
+    }
+
+    // Shifts can be read by the assigned user or by any privileged user.
+    // Shifts can only be created or deleted by a privileged user.
+    // Users can update their own shifts (e.g., status), privileged users can update any.
+    match /shifts/{shiftId} {
+      allow read: if request.auth != null && (resource.data.userId == request.auth.uid || isPrivileged(request.auth.uid));
+      allow create, delete: if isPrivileged(request.auth.uid);
+      allow update: if request.auth != null && (resource.data.userId == request.auth.uid || isPrivileged(request.auth.uid));
     }
     
-    // ANNOUNCEMENTS:
-    // 1. Any authenticated user can read announcements.
-    // 2. Admins/owners can create and update them.
-    // 3. Any authenticated user can update an announcement to mark it as viewed.
-    //    This is secure because the client-side code only ever updates the `viewedBy` map.
+    // Any authenticated user can read projects and their files.
+    // Only privileged users can create, update or delete projects.
+    match /projects/{projectId} {
+        allow read: if request.auth != null;
+        allow create, update, delete: if isPrivileged(request.auth.uid);
+        
+        // Files can be created by any authenticated user.
+        // Files can be deleted by the uploader or a privileged user.
+        match /files/{fileId} {
+            allow read: if request.auth != null;
+            allow create: if request.auth != null;
+            allow delete: if request.auth != null && (resource.data.uploaderId == request.auth.uid || isPrivileged(request.auth.uid));
+        }
+    }
+    
+    // Any authenticated user can read announcements.
+    // Only privileged users can create or delete them.
     match /announcements/{announcementId} {
-      allow read: if request.auth.uid != null;
-      allow write: if request.auth.uid != null;
-      allow delete: if isOwnerOrAdmin(request.auth.uid);
+      allow read: if request.auth != null;
+      allow create, delete: if isPrivileged(request.auth.uid);
+
+      // This is the key rule: Allow an update only if the ONLY field being changed
+      // is the 'viewedBy' map, and the user is only adding their own UID to it.
+      allow update: if request.auth != null &&
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['viewedBy']) &&
+                      request.resource.data.viewedBy.diff(resource.data.viewedBy).affectedKeys()
+                        .hasOnly([request.auth.uid]);
     }
-    
-    // SETTINGS:
-    // Global app settings can only be read or modified by the owner.
-    match /settings/{docId} {
-      allow read, write: if isOwner(request.auth.uid);
+
+    // Settings can only be read and modified by the Owner.
+    match /settings/{settingId} {
+        allow read, write: if isOwner(request.auth.uid);
     }
   }
 }

@@ -20,6 +20,7 @@ export default function DashboardPage() {
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
+  const [showAnnouncements, setShowAnnouncements] = useState(true);
 
   useEffect(() => {
     if (!isAuthLoading && !user) {
@@ -53,7 +54,6 @@ export default function DashboardPage() {
       return [];
     }
     // Filter announcements the current user has not yet viewed.
-    // This now applies to all users, including admins/owners.
     return announcements.filter(announcement => {
       return !announcement.viewedBy || !Object.keys(announcement.viewedBy).includes(user.uid);
     });
@@ -70,9 +70,13 @@ export default function DashboardPage() {
   }
 
   // If there are unread announcements, show the modal instead of the dashboard
-  if (unreadAnnouncements.length > 0) {
+  if (unreadAnnouncements.length > 0 && showAnnouncements) {
     return (
-        <UnreadAnnouncements announcements={unreadAnnouncements} user={user} />
+        <UnreadAnnouncements 
+          announcements={unreadAnnouncements} 
+          user={user} 
+          onClose={() => setShowAnnouncements(false)}
+        />
     );
   }
 

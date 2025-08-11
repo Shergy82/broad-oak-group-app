@@ -11,7 +11,6 @@ import type { Announcement } from '@/types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -26,9 +25,10 @@ import { Check } from 'lucide-react';
 interface UnreadAnnouncementsProps {
   announcements: Announcement[];
   user: User;
+  onClose: () => void;
 }
 
-export function UnreadAnnouncements({ announcements, user }: UnreadAnnouncementsProps) {
+export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnnouncementsProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -55,11 +55,7 @@ export function UnreadAnnouncements({ announcements, user }: UnreadAnnouncements
         description: 'You can now proceed to your dashboard.',
       });
       
-      // Close the modal and refresh the dashboard page state
-      setIsOpen(false); 
-      // A soft navigation refresh to re-trigger the logic on the dashboard page
-      router.replace('/dashboard'); 
-
+      onClose(); // This will now correctly hide the modal
     } catch (error) {
       console.error("Failed to mark announcements as viewed:", error);
       toast({
@@ -72,14 +68,16 @@ export function UnreadAnnouncements({ announcements, user }: UnreadAnnouncements
     }
   };
   
-  const handleClose = () => {
-      setIsOpen(false);
-      router.replace('/dashboard');
+  const handleDialogClose = (open: boolean) => {
+      if (!open) {
+          setIsOpen(false);
+          onClose(); // This ensures the dashboard re-renders correctly
+      }
   }
 
   return (
     // The Dialog is used here as a modal that overlays the entire screen
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={handleDialogClose}>
       <DialogContent className="max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>New Announcements</DialogTitle>
