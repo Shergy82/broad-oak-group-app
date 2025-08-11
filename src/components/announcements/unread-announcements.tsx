@@ -19,6 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { Spinner } from '@/components/shared/spinner';
 import { Check, X } from 'lucide-react';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 interface UnreadAnnouncementsProps {
   announcements: Announcement[];
@@ -30,6 +31,7 @@ export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnno
   const [isOpen, setIsOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const { userProfile } = useUserProfile(); // Get the full user profile
 
   const handleAcknowledge = async () => {
     setIsLoading(true);
@@ -37,8 +39,11 @@ export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnno
       if (!db) {
           throw new Error("Firestore is not available.");
       }
+      if (!userProfile) {
+        throw new Error("User profile not loaded yet.");
+      }
 
-      // 1. Use local storage to immediately hide the dialog
+      // 1. Use local storage to immediately hide the dialog for the user
       const acknowledgedIds = announcements.map(a => a.id);
       localStorage.setItem(`acknowledgedAnnouncements_${user.uid}`, JSON.stringify(acknowledgedIds));
       
@@ -48,7 +53,8 @@ export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnno
         const ackRef = doc(db, `announcements/${announcement.id}/acknowledgedBy`, user.uid);
         batch.set(ackRef, { 
             acknowledgedAt: serverTimestamp(),
-            userName: user.displayName || 'Unknown User'
+            // Use the name from the userProfile for accuracy
+            userName: userProfile.name || 'Unknown User'
         });
       });
       await batch.commit();
@@ -62,7 +68,7 @@ export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnno
     } catch (error: any) {
       console.error("Failed to save acknowledgements:", error);
       // Even if Firestore fails, we proceed because local storage succeeded.
-      // This ensures the user is not blocked.
+      // This ensures the user is not blocked from using the app.
       toast({
         variant: 'destructive',
         title: 'Error Syncing',
