@@ -1,60 +1,73 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-  
-    function isOwner() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
-    }
     
-    function isAdmin() {
-       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-    }
-
+    // --- Users Collection ---
+    // Users can read their own profile.
+    // Users can create their own profile during signup.
+    // Admins/Owners can read all user profiles.
     match /users/{userId} {
-      allow read: if request.auth != null;
+      allow read, update: if request.auth.uid == userId;
       allow create: if request.auth.uid == userId;
-      allow update: if request.auth.uid == userId || isOwner();
+
+      // Rule for acknowledgment receipts
+      // A user can create a receipt in their own document.
+      match /acknowledgedAnnouncements/{announcementId} {
+        allow create: if request.auth.uid == userId;
+      }
+
+      // Rules for push subscriptions
+      // A user can manage their own subscriptions.
+      match /pushSubscriptions/{subscriptionId} {
+        allow read, write, delete: if request.auth.uid == userId;
+      }
     }
     
-    match /users/{userId}/pushSubscriptions/{subscriptionId} {
-      allow read, write: if request.auth.uid == userId;
+    // Allow admins/owners to read the full users list.
+    match /users/{userId} {
+      allow list: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
     }
 
+    // --- Shifts Collection ---
+    // Admins/Owners can read/write all shifts.
+    // Users can only read shifts assigned to them.
+    // Users can update the status of their own shifts.
+    match /shifts/{shiftId} {
+      allow read, update, delete, create: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+      allow read, update: if request.auth.uid == resource.data.userId;
+    }
+
+    // --- Projects & Project Files ---
+    // Any authenticated user can read projects and files.
+    // Admins/Owners can create/delete projects.
+    // Any authenticated user can upload files (create).
+    // Uploader or Admin/Owner can delete files.
     match /projects/{projectId} {
       allow read: if request.auth != null;
-      allow create, update: if isAdmin();
-      // Deletion is handled by the deleteProjectAndFiles Cloud Function
-      allow delete: if isAdmin();
+      allow create, update, delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
       
       match /files/{fileId} {
-        allow read: if request.auth != null;
-        allow create: if request.auth != null; 
-        // Deletion is handled by the deleteProjectFile Cloud Function
-        allow delete: if request.auth.uid == resource.data.uploaderId || isAdmin();
+        allow read, create: if request.auth != null;
+        // Delete allowed by uploader or admin/owner. This is handled by a Cloud Function for security.
+        allow update, delete: if false; 
       }
     }
 
-    match /shifts/{shiftId} {
-      allow read, write: if request.auth != null;
-    }
-    
-    match /settings/{docId} {
-      allow read, write: if isOwner();
-    }
-
+    // --- Announcements ---
+    // Any authenticated user can read announcements.
+    // Only admins/owners can create, update, or delete them.
     match /announcements/{announcementId} {
       allow read: if request.auth != null;
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+    }
 
-      // Rule to allow users to acknowledge an announcement.
-      // This allows a user to create a document in this subcollection,
-      // but only if the document ID is their own user ID.
-      match /acknowledgedBy/{userId} {
-        allow read: if request.auth != null;
-        allow create: if request.auth != null && request.auth.uid == userId;
-        allow update, delete: if false; // No one can modify or delete receipts from the client.
-      }
+    // --- Settings Collection ---
+    // Only the owner can read or write to the settings.
+    // This is handled by Cloud Functions with their own auth checks.
+    match /settings/{docId} {
+      allow read, write: if false;
     }
   }
 }

@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, onSnapshot, query, orderBy, doc, deleteDoc, collectionGroup, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, deleteDoc, collectionGroup } from 'firebase/firestore';
 import { format, formatDistanceToNow } from 'date-fns';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
@@ -98,9 +98,10 @@ export default function AnnouncementsPage() {
         const acknowledgedQuery = query(collectionGroup(db, 'acknowledgedAnnouncements'));
         unsubscribeAcks = onSnapshot(acknowledgedQuery, (snapshot) => {
             const newViewedData = new Map<string, any[]>();
-            snapshot.docs.forEach(doc => {
-                const data = doc.data();
-                const pathParts = doc.ref.path.split('/');
+            snapshot.docs.forEach(ackDoc => {
+                const data = ackDoc.data();
+                // Path is users/{userId}/acknowledgedAnnouncements/{announcementId}
+                const pathParts = ackDoc.ref.path.split('/');
                 const userId = pathParts[1];
                 const announcementId = pathParts[3];
 

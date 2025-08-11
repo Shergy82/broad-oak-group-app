@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import type { User } from 'firebase/auth';
 import { format } from 'date-fns';
-import { db, functions, httpsCallable } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import type { Announcement } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -41,10 +41,13 @@ export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnno
 
     try {
       const batch = writeBatch(db);
+      
       announcements.forEach(announcement => {
+        // This is the corrected path. It writes a receipt to the current user's document.
         const ackRef = doc(db, `users/${user.uid}/acknowledgedAnnouncements`, announcement.id);
         batch.set(ackRef, { acknowledgedAt: serverTimestamp() });
       });
+
       await batch.commit();
       
       toast({
@@ -68,12 +71,11 @@ export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnno
   const handleDialogClose = (open: boolean) => {
       if (!open) {
           setIsOpen(false);
-          onClose(); // This ensures the dashboard content loads if the dialog is closed
+          onClose();
       }
   }
 
   return (
-    // The Dialog is used here as a modal that overlays the entire screen
     <Dialog open={isOpen} onOpenChange={handleDialogClose}>
       <DialogContent className="max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>

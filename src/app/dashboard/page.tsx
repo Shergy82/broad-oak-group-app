@@ -8,7 +8,7 @@ import { useUserProfile } from '@/hooks/use-user-profile';
 import Dashboard from '@/components/dashboard/index';
 import { Header } from '@/components/layout/header';
 import { Spinner } from '@/components/shared/spinner';
-import { collection, onSnapshot, query, orderBy, collectionGroup, where, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Announcement } from '@/types';
 import { UnreadAnnouncements } from '@/components/announcements/unread-announcements';
@@ -29,7 +29,6 @@ export default function DashboardPage() {
     }
   }, [user, isAuthLoading, router]);
 
-  // Fetch all announcements and acknowledgements once the user is loaded
   useEffect(() => {
     if (!user || !db) {
       setLoadingAnnouncements(false);
@@ -66,7 +65,6 @@ export default function DashboardPage() {
     if (!user || loadingAnnouncements) {
       return [];
     }
-    // Filter announcements the current user has not yet viewed.
     return announcements.filter(announcement => !acknowledgedIds.has(announcement.id));
   }, [announcements, user, loadingAnnouncements, acknowledgedIds]);
   
@@ -80,7 +78,6 @@ export default function DashboardPage() {
     );
   }
 
-  // If there are unread announcements, show the modal instead of the dashboard
   if (unreadAnnouncements.length > 0 && showAnnouncements) {
     return (
         <UnreadAnnouncements 
@@ -91,7 +88,6 @@ export default function DashboardPage() {
     );
   }
 
-  // Otherwise, show the regular dashboard
   return (
     <div className="flex min-h-screen w-full flex-col">
       <Header />

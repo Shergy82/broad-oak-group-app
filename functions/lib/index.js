@@ -1,3 +1,4 @@
+
 "use strict";
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -23,12 +24,15 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteAllProjects = exports.deleteAllShifts = exports.deleteProjectFile = exports.deleteProjectAndFiles = exports.projectReviewNotifier = exports.sendShiftNotification = exports.getVapidPublicKey = void 0;
+exports.deleteAllProjects = exports.deleteAllShifts = exports.deleteProjectFile = exports.deleteProjectAndFiles = exports.projectReviewNotifier = exports.sendShiftNotification = exports.setNotificationStatus = exports.getNotificationStatus = exports.getVapidPublicKey = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const webPush = __importStar(require("web-push"));
 admin.initializeApp();
 const db = admin.firestore();
+// Define a converter for the PushSubscription type.
+// This is the modern, correct way to handle typed data with Firestore.
+// It ensures that when we fetch data, it's already in the correct shape.
 const pushSubscriptionConverter = {
     toFirestore(subscription) {
         return { endpoint: subscription.endpoint, keys: subscription.keys };
@@ -47,6 +51,7 @@ const pushSubscriptionConverter = {
         };
     }
 };
+// This is the v1 SDK syntax for onCall functions
 exports.getVapidPublicKey = functions.region("europe-west2").https.onCall((data, context) => {
     var _a;
     const publicKey = (_a = functions.config().webpush) === null || _a === void 0 ? void 0 : _a.public_key;
@@ -56,11 +61,73 @@ exports.getVapidPublicKey = functions.region("europe-west2").https.onCall((data,
     }
     return { publicKey };
 });
+exports.getNotificationStatus = functions.region("europe-west2").https.onCall(async (data, context) => {
+    // 1. Authentication check
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in to perform this action.");
+    }
+    // 2. Authorization check
+    const uid = context.auth.uid;
+    const userDoc = await db.collection("users").doc(uid).get();
+    const userProfile = userDoc.data();
+    if (!userProfile || userProfile.role !== 'owner') {
+        throw new functions.https.HttpsError("permission-denied", "Only the account owner can view notification settings.");
+    }
+    // 3. Execution
+    try {
+        const settingsRef = db.collection('settings').doc('notifications');
+        const docSnap = await settingsRef.get();
+        if (docSnap.exists() && docSnap.data()?.enabled === false) {
+            return { enabled: false };
+        }
+        return { enabled: true }; // Default to enabled
+    }
+    catch (error) {
+        functions.logger.error("Error reading notification settings:", error);
+        throw new functions.https.HttpsError("internal", "An unexpected error occurred while reading the settings.");
+    }
+});
+exports.setNotificationStatus = functions.region("europe-west2").https.onCall(async (data, context) => {
+    // 1. Authentication check
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in to perform this action.");
+    }
+    // 2. Authorization check
+    const uid = context.auth.uid;
+    const userDoc = await db.collection("users").doc(uid).get();
+    const userProfile = userDoc.data();
+    if (!userProfile || userProfile.role !== 'owner') {
+        throw new functions.https.HttpsError("permission-denied", "Only the account owner can change notification settings.");
+    }
+    // 3. Validation
+    const { enabled } = data;
+    if (typeof enabled !== 'boolean') {
+        throw new functions.https.HttpsError("invalid-argument", "The 'enabled' field must be a boolean value.");
+    }
+    // 4. Execution
+    try {
+        const settingsRef = db.collection('settings').doc('notifications');
+        await settingsRef.set({ enabled: enabled }, { merge: true });
+        functions.logger.log(`Owner ${uid} set global notifications to: ${enabled}`);
+        return { success: true };
+    }
+    catch (error) {
+        functions.logger.error("Error updating notification settings:", error);
+        throw new functions.https.HttpsError("internal", "An unexpected error occurred while updating the settings.");
+    }
+});
 exports.sendShiftNotification = functions.region("europe-west2").firestore.document("shifts/{shiftId}")
     .onWrite(async (change, context) => {
     var _a, _b, _c, _d, _e;
     const shiftId = context.params.shiftId;
     functions.logger.log(`Function triggered for shiftId: ${shiftId}`);
+    // --- Master Notification Toggle Check ---
+    const settingsRef = db.collection('settings').doc('notifications');
+    const settingsDoc = await settingsRef.get();
+    if (settingsDoc.exists() && settingsDoc.data()?.enabled === false) {
+        functions.logger.log('Global notifications are disabled by the owner. Aborting.');
+        return;
+    }
     const config = functions.config();
     const publicKey = (_a = config.webpush) === null || _a === void 0 ? void 0 : _a.public_key;
     const privateKey = (_b = config.webpush) === null || _b === void 0 ? void 0 : _b.private_key;
@@ -73,7 +140,7 @@ exports.sendShiftNotification = functions.region("europe-west2").firestore.docum
     const shiftDataAfter = change.after.data();
     let userId = null;
     let payload = null;
-    if (change.after.exists && !change.before.exists) {
+    if (change.after.exists() && !change.before.exists()) {
         // A new shift is created
         userId = shiftDataAfter === null || shiftDataAfter === void 0 ? void 0 : shiftDataAfter.userId;
         payload = {
@@ -82,7 +149,7 @@ exports.sendShiftNotification = functions.region("europe-west2").firestore.docum
             data: { url: `/dashboard` },
         };
     }
-    else if (!change.after.exists && change.before.exists) {
+    else if (!change.after.exists() && change.before.exists()) {
         // A shift is deleted
         userId = shiftDataBefore === null || shiftDataBefore === void 0 ? void 0 : shiftDataBefore.userId;
         payload = {
@@ -91,7 +158,7 @@ exports.sendShiftNotification = functions.region("europe-west2").firestore.docum
             data: { url: `/dashboard` },
         };
     }
-    else if (change.after.exists && change.before.exists) {
+    else if (change.after.exists() && change.before.exists()) {
         // A shift is updated. This is the definitive check for meaningful changes.
         const before = shiftDataBefore;
         const after = shiftDataAfter;
@@ -177,6 +244,13 @@ exports.projectReviewNotifier = functions
     .onRun(async (context) => {
     var _a, _b;
     functions.logger.log("Running daily project review notifier.");
+    // --- Master Notification Toggle Check ---
+    const settingsRef = db.collection('settings').doc('notifications');
+    const settingsDoc = await settingsRef.get();
+    if (settingsDoc.exists() && settingsDoc.data()?.enabled === false) {
+        functions.logger.log('Global notifications are disabled by the owner. Aborting project review notifier.');
+        return;
+    }
     const config = functions.config();
     const publicKey = (_a = config.webpush) === null || _a === void 0 ? void 0 : _a.public_key;
     const privateKey = (_b = config.webpush) === null || _b === void 0 ? void 0 : _b.private_key;
