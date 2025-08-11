@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, onSnapshot, query, orderBy, doc, deleteDoc, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, deleteDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
-import { db, functions, httpsCallable } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Header } from '@/components/layout/header';
@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Megaphone, PlusCircle, Trash2, Edit } from 'lucide-react';
 import { AnnouncementForm } from '@/components/admin/announcement-form';
-import type { Announcement, UserProfile } from '@/types';
+import type { Announcement } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import {
     AlertDialog,
@@ -34,7 +34,7 @@ export default function AnnouncementsPage() {
   const { toast } = useToast();
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
@@ -49,7 +49,7 @@ export default function AnnouncementsPage() {
 
   useEffect(() => {
     if (!db) {
-        setLoading(false);
+        setLoadingAnnouncements(false);
         return;
     }
     const announcementsQuery = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
@@ -57,11 +57,11 @@ export default function AnnouncementsPage() {
     const unsubscribeAnnouncements = onSnapshot(announcementsQuery, (snapshot) => {
       const fetchedAnnouncements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement));
       setAnnouncements(fetchedAnnouncements);
-      setLoading(false);
+      setLoadingAnnouncements(false);
     }, (error) => {
       console.error("Error fetching announcements:", error);
       toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch announcements.' });
-      setLoading(false);
+      setLoadingAnnouncements(false);
     });
 
     return () => {
@@ -98,9 +98,9 @@ export default function AnnouncementsPage() {
     }
   }
   
-  const isLoadingPage = isAuthLoading || isProfileLoading || (loading && announcements.length === 0);
+  const isLoadingPage = isAuthLoading || isProfileLoading;
 
-  if (isLoadingPage && !user) {
+  if (isLoadingPage) {
     return (
       <div className="flex min-h-screen w-full flex-col items-center justify-center">
         <Spinner size="lg" />
@@ -127,7 +127,7 @@ export default function AnnouncementsPage() {
               )}
             </CardHeader>
             <CardContent>
-              {isLoadingPage ? (
+              {loadingAnnouncements ? (
                 <div className="flex items-center justify-center p-12">
                   <Spinner />
                 </div>
@@ -141,51 +141,49 @@ export default function AnnouncementsPage() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {announcements.map(announcement => {
-                    return (
-                        <Card key={announcement.id} className="shadow-sm">
-                          <CardHeader>
-                            <CardTitle>{announcement.title}</CardTitle>
-                            <CardDescription>
-                              Posted by {announcement.authorName} {announcement.createdAt ? `on ${format(announcement.createdAt.toDate(), 'PPP')}` : ''}
-                            </CardDescription>
-                          </CardHeader>
-                          <CardContent>
-                            <p className="whitespace-pre-wrap text-sm">{announcement.content}</p>
-                          </CardContent>
-                          {isPrivilegedUser && (
-                            <CardFooter className="flex justify-end gap-2 bg-muted/30 p-3 border-t">
-                                   <Button variant="outline" size="sm" onClick={() => handleEdit(announcement)}>
-                                     <Edit className="mr-2 h-4 w-4" />
-                                     Edit
-                                   </Button>
-                                   <AlertDialog>
-                                      <AlertDialogTrigger asChild>
-                                          <Button variant="destructive" size="sm">
-                                              <Trash2 className="mr-2 h-4 w-4" />
-                                              Delete
-                                          </Button>
-                                      </AlertDialogTrigger>
-                                      <AlertDialogContent>
-                                          <AlertDialogHeader>
-                                              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                              <AlertDialogDescription>
-                                                  This action cannot be undone. This will permanently delete the announcement titled "{announcement.title}".
-                                              </Description>
-                                          </AlertDialogHeader>
-                                          <AlertDialogFooter>
-                                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                              <AlertDialogAction onClick={() => handleDelete(announcement.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                                  Delete
-                                              </AlertDialogAction>
-                                          </AlertDialogFooter>
-                                      </AlertDialogContent>
-                                   </AlertDialog>
-                            </CardFooter>
-                          )}
-                        </Card>
-                    )
-                  })}
+                  {announcements.map(announcement => (
+                    <Card key={announcement.id} className="shadow-sm">
+                      <CardHeader>
+                        <CardTitle>{announcement.title}</CardTitle>
+                        <CardDescription>
+                          Posted by {announcement.authorName} {announcement.createdAt ? `on ${format(announcement.createdAt.toDate(), 'PPP')}` : ''}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="whitespace-pre-wrap text-sm">{announcement.content}</p>
+                      </CardContent>
+                      {isPrivilegedUser && (
+                        <CardFooter className="flex justify-end gap-2 bg-muted/30 p-3 border-t">
+                           <Button variant="outline" size="sm" onClick={() => handleEdit(announcement)}>
+                             <Edit className="mr-2 h-4 w-4" />
+                             Edit
+                           </Button>
+                           <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                  <Button variant="destructive" size="sm">
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Delete
+                                  </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                          This action cannot be undone. This will permanently delete the announcement titled "{announcement.title}".
+                                      </Description>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleDelete(announcement.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                          Delete
+                                      </AlertDialogAction>
+                                  </AlertDialogFooter>
+                              </AlertDialogContent>
+                           </AlertDialog>
+                        </CardFooter>
+                      )}
+                    </Card>
+                  ))}
                 </div>
               )}
             </CardContent>
@@ -194,14 +192,12 @@ export default function AnnouncementsPage() {
       </div>
       
       {isPrivilegedUser && userProfile && (
-         <>
-            <AnnouncementForm
-                currentUser={userProfile}
-                announcement={selectedAnnouncement}
-                open={isFormOpen}
-                onOpenChange={setIsFormOpen}
-            />
-         </>
+         <AnnouncementForm
+            currentUser={userProfile}
+            announcement={selectedAnnouncement}
+            open={isFormOpen}
+            onOpenChange={setIsFormOpen}
+        />
       )}
     </>
   );
