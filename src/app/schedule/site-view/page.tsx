@@ -203,22 +203,22 @@ export default function SiteSchedulePage() {
 
         const doc = new jsPDF();
         const generationDate = new Date();
-        const pageContentMargin = 14;
+        const pageMargin = 14;
         const pageWidth = doc.internal.pageSize.width;
-        const maxTextWidth = pageWidth - (pageContentMargin * 2);
+        const usableWidth = pageWidth - (pageMargin * 2);
 
-        const titleText = `Work Schedule for: ${selectedAddress}`;
-        const titleLines = doc.splitTextToSize(titleText, maxTextWidth);
+        doc.setFontSize(16);
+        doc.text(`Work Schedule for:`, pageMargin, 22);
 
-        doc.setFontSize(18);
-        doc.text(titleLines, pageContentMargin, 22);
+        doc.setFontSize(12);
+        const addressLines = doc.splitTextToSize(selectedAddress, usableWidth);
+        doc.text(addressLines, pageMargin, 28);
         
-        const titleHeight = doc.getTextDimensions(titleLines).h;
-        let finalY = 22 + titleHeight; // Start next element below the title
+        let finalY = 28 + (addressLines.length * 7);
 
         doc.setFontSize(11);
         doc.setTextColor(100);
-        doc.text(`Generated on: ${format(generationDate, 'PPP p')}`, pageContentMargin, finalY);
+        doc.text(`Generated on: ${format(generationDate, 'PPP p')}`, pageMargin, finalY);
         finalY += 10;
         
         const generateTableForWeek = (title: string, shiftsForPeriod: { [key: string]: Shift[] }) => {
@@ -226,7 +226,7 @@ export default function SiteSchedulePage() {
             if (allWeekShifts.length === 0) return;
 
             doc.setFontSize(16);
-            doc.text(title, pageContentMargin, finalY);
+            doc.text(title, pageMargin, finalY);
             finalY += 10;
             
             allWeekShifts.sort((a,b) => getCorrectedLocalDate(a.date).getTime() - getCorrectedLocalDate(b.date).getTime());
