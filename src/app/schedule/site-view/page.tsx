@@ -9,12 +9,13 @@ import { isSameWeek, format, startOfToday, addDays } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { ArrowLeft, Building2, CalendarDays, Terminal } from 'lucide-react';
+import { ArrowLeft, Building2, CalendarDays, Search, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useRouter } from 'next/navigation';
 import { getCorrectedLocalDate } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
 
 
 const DayCard = ({ day, shifts, userNameMap }: { day: string, shifts: Shift[], userNameMap: Map<string, string> }) => {
@@ -84,6 +85,7 @@ export default function SiteSchedulePage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
+    const [addressSearchTerm, setAddressSearchTerm] = useState('');
     const router = useRouter();
 
     useEffect(() => {
@@ -113,12 +115,41 @@ export default function SiteSchedulePage() {
             unsubUsers();
         };
     }, []);
+    
+    // Natural sort for address strings (e.g., "10 Main St" comes after "2 Main St")
+    const naturalSort = (a: string, b: string) => {
+        const aParts = a.match(/(\d+)|(\D+)/g) || [];
+        const bParts = b.match(/(\d+)|(\D+)/g) || [];
+        
+        for (let i = 0; i < Math.min(aParts.length, bParts.length); i++) {
+            const partA = aParts[i];
+            const partB = bParts[i];
+
+            if (isNaN(parseInt(partA)) || isNaN(parseInt(partB))) {
+                // Alphabetical comparison
+                if (partA < partB) return -1;
+                if (partA > partB) return 1;
+            } else {
+                // Numerical comparison
+                const numA = parseInt(partA);
+                const numB = parseInt(partB);
+                if (numA < numB) return -1;
+                if (numA > numB) return 1;
+            }
+        }
+        return a.length - b.length;
+    };
 
     const availableAddresses = useMemo(() => {
         if (loading) return [];
-        const addresses = new Set(allShifts.map(shift => shift.address));
-        return Array.from(addresses).sort((a,b) => a.localeCompare(b));
-    }, [allShifts, loading]);
+        const uniqueAddresses = Array.from(new Set(allShifts.map(shift => shift.address)));
+        
+        const filtered = uniqueAddresses.filter(address => 
+            address.toLowerCase().includes(addressSearchTerm.toLowerCase())
+        );
+
+        return filtered.sort(naturalSort);
+    }, [allShifts, loading, addressSearchTerm]);
 
 
     const userNameMap = useMemo(() => new Map(users.map(u => [u.uid, u.name])), [users]);
@@ -178,17 +209,32 @@ export default function SiteSchedulePage() {
                         Back to Team View
                     </Button>
                 </div>
-                <div className="pt-4">
+                <div className="pt-4 space-y-4">
+                     <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input 
+                            placeholder="Search addresses..."
+                            value={addressSearchTerm}
+                            onChange={(e) => setAddressSearchTerm(e.target.value)}
+                            className="w-full sm:w-[400px] pl-10"
+                        />
+                    </div>
                     <Select onValueChange={setSelectedAddress} value={selectedAddress || ''}>
                         <SelectTrigger className="w-full sm:w-[400px]">
                             <SelectValue placeholder="Select a property address..." />
                         </SelectTrigger>
                         <SelectContent>
-                            {availableAddresses.map(address => (
-                                <SelectItem key={address} value={address}>
-                                    {address}
-                                </SelectItem>
-                            ))}
+                            {availableAddresses.length > 0 ? (
+                                availableAddresses.map(address => (
+                                    <SelectItem key={address} value={address}>
+                                        {address}
+                                    </SelectItem>
+                                ))
+                            ) : (
+                                <div className="p-4 text-center text-sm text-muted-foreground">
+                                    No matching addresses found.
+                                </div>
+                            )}
                         </SelectContent>
                     </Select>
                 </div>
@@ -227,3 +273,5 @@ export default function SiteSchedulePage() {
         </Card>
     );
 }
+
+    
