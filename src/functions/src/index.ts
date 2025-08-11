@@ -178,11 +178,7 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
       }
 
       // 2. Compare dates with day-level precision, ignoring time-of-day.
-      const beforeDate = before.date.toDate();
-      const afterDate = after.date.toDate();
-      if (beforeDate.getUTCFullYear() !== afterDate.getUTCFullYear() ||
-          beforeDate.getUTCMonth() !== afterDate.getUTCMonth() ||
-          beforeDate.getUTCDate() !== afterDate.getUTCDate()) {
+      if (before.date && after.date && !before.date.isEqual(after.date)) {
         changedFields.push('date');
       }
 
