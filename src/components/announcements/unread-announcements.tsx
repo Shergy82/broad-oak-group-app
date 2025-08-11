@@ -4,8 +4,6 @@
 import { useState } from 'react';
 import type { User } from 'firebase/auth';
 import { format } from 'date-fns';
-import { db } from '@/lib/firebase';
-import { writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import type { Announcement } from '@/types';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,21 +31,12 @@ export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnno
   const { toast } = useToast();
 
   const handleAcknowledge = async () => {
-    if (!db) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Database service not available.' });
-        return;
-    }
     setIsLoading(true);
-
     try {
-      const batch = writeBatch(db);
-      
-      announcements.forEach(announcement => {
-        const ackRef = doc(db, `users/${user.uid}/acknowledgedAnnouncements`, announcement.id);
-        batch.set(ackRef, { acknowledgedAt: serverTimestamp() });
-      });
-
-      await batch.commit();
+      // Use localStorage as a simple, client-side way to acknowledge announcements.
+      // This avoids all backend complexity and permission issues.
+      const acknowledgedIds = announcements.map(a => a.id);
+      localStorage.setItem(`acknowledgedAnnouncements_${user.uid}`, JSON.stringify(acknowledgedIds));
       
       toast({
         title: 'Announcements Acknowledged',
@@ -56,11 +45,11 @@ export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnno
       
       onClose();
     } catch (error: any) {
-      console.error("Failed to mark announcements as viewed:", error);
+      console.error("Failed to save acknowledgements to localStorage:", error);
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: error.message || 'Could not save your acknowledgement. Please try again.',
+        description: 'Could not save your acknowledgement. Please try again.',
       });
     } finally {
       setIsLoading(false);

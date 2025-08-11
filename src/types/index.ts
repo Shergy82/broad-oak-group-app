@@ -68,4 +68,5 @@ export interface Announcement {
   authorId: string;
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+  viewedBy?: { [key: string]: Timestamp }; // Optional, as it's not being written to anymore
 }

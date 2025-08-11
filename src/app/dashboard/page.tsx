@@ -21,7 +21,6 @@ export default function DashboardPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
   const [showAnnouncements, setShowAnnouncements] = useState(true);
-  const [acknowledgedIds, setAcknowledgedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!isAuthLoading && !user) {
@@ -39,34 +38,37 @@ export default function DashboardPage() {
     const unsubscribeAnnouncements = onSnapshot(announcementsQuery, (snapshot) => {
       const fetchedAnnouncements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement));
       setAnnouncements(fetchedAnnouncements);
+      setLoadingAnnouncements(false);
     }, (error) => {
       console.error("Error fetching announcements:", error);
-    });
-
-    const acknowledgedQuery = query(collection(db, `users/${user.uid}/acknowledgedAnnouncements`));
-    const unsubscribeAcknowledgements = onSnapshot(acknowledgedQuery, (snapshot) => {
-        const newIds = new Set<string>();
-        snapshot.forEach(doc => newIds.add(doc.id));
-        setAcknowledgedIds(newIds);
-        setLoadingAnnouncements(false);
-    }, (error) => {
-        console.error("Error fetching acknowledgements:", error);
-        setLoadingAnnouncements(false);
+      setLoadingAnnouncements(false);
     });
 
 
     return () => {
         unsubscribeAnnouncements();
-        unsubscribeAcknowledgements();
     };
   }, [user]);
 
   const unreadAnnouncements = useMemo(() => {
-    if (!user || loadingAnnouncements) {
+    if (!user || loadingAnnouncements || announcements.length === 0) {
       return [];
     }
-    return announcements.filter(announcement => !acknowledgedIds.has(announcement.id));
-  }, [announcements, user, loadingAnnouncements, acknowledgedIds]);
+    
+    // Check localStorage for acknowledged announcements. This is a simpler client-side only solution.
+    const storedAcknowledged = localStorage.getItem(`acknowledgedAnnouncements_${user.uid}`);
+    const acknowledgedIds = storedAcknowledged ? JSON.parse(storedAcknowledged) : [];
+    const currentAnnouncementIds = announcements.map(a => a.id).sort().join(',');
+    const acknowledgedIdsString = [...acknowledgedIds].sort().join(',');
+
+    // If the list of current announcements is the same as the list they last acknowledged, don't show the dialog.
+    if (currentAnnouncementIds === acknowledgedIdsString) {
+        return [];
+    }
+    
+    return announcements;
+
+  }, [announcements, user, loadingAnnouncements]);
   
   const isLoading = isAuthLoading || isProfileLoading || loadingAnnouncements;
 

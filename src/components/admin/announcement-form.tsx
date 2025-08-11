@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -82,7 +83,6 @@ export function AnnouncementForm({ currentUser, announcement, open, onOpenChange
           authorName: currentUser.name,
           authorId: currentUser.uid,
           createdAt: serverTimestamp(),
-          viewedBy: {}, // Initialize with an empty map
         });
         toast({ title: 'Success', description: 'Announcement created.' });
       }

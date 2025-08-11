@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, onSnapshot, query, orderBy, doc, deleteDoc, collectionGroup } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, deleteDoc, collectionGroup, getDocs } from 'firebase/firestore';
 import { format, formatDistanceToNow } from 'date-fns';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
@@ -45,7 +45,6 @@ export default function AnnouncementsPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewedData, setViewedData] = useState<Map<string, any[]>>(new Map());
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
@@ -87,37 +86,17 @@ export default function AnnouncementsPage() {
     });
 
     let unsubscribeUsers = () => {};
-    let unsubscribeAcks = () => {};
 
     if (isPrivilegedUser) {
         const usersQuery = query(collection(db, 'users'));
         unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
             setUsers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
         });
-
-        const acknowledgedQuery = query(collectionGroup(db, 'acknowledgedAnnouncements'));
-        unsubscribeAcks = onSnapshot(acknowledgedQuery, (snapshot) => {
-            const newViewedData = new Map<string, any[]>();
-            snapshot.docs.forEach(ackDoc => {
-                const data = ackDoc.data();
-                // Path is users/{userId}/acknowledgedAnnouncements/{announcementId}
-                const pathParts = ackDoc.ref.path.split('/');
-                const userId = pathParts[1];
-                const announcementId = pathParts[3];
-
-                if (!newViewedData.has(announcementId)) {
-                    newViewedData.set(announcementId, []);
-                }
-                newViewedData.get(announcementId)!.push({ userId, ...data });
-            });
-            setViewedData(newViewedData);
-        });
     }
 
     return () => {
         unsubscribeAnnouncements();
         unsubscribeUsers();
-        unsubscribeAcks();
     };
   }, [toast, isPrivilegedUser]);
   
@@ -185,14 +164,6 @@ export default function AnnouncementsPage() {
               ) : (
                 <div className="space-y-6">
                   {announcements.map(announcement => {
-                    const viewersRaw = viewedData.get(announcement.id) || [];
-                    const viewedByCount = viewersRaw.length;
-                    const viewers = viewersRaw.map(v => ({
-                        uid: v.userId,
-                        name: userNameMap.get(v.userId) || 'Unknown User',
-                        viewedAt: v.acknowledgedAt,
-                    })).sort((a,b) => b.viewedAt.toMillis() - a.viewedAt.toMillis());
-
                     return (
                         <Card key={announcement.id} className="shadow-sm">
                           <CardHeader>
@@ -205,8 +176,7 @@ export default function AnnouncementsPage() {
                             <p className="whitespace-pre-wrap text-sm">{announcement.content}</p>
                           </CardContent>
                           {isPrivilegedUser && (
-                            <CardFooter className="flex-col items-stretch p-0">
-                                <div className="flex justify-end gap-2 bg-muted/30 p-3 border-t">
+                            <CardFooter className="flex justify-end gap-2 bg-muted/30 p-3 border-t">
                                    <Button variant="outline" size="sm" onClick={() => handleEdit(announcement)}>
                                      <Edit className="mr-2 h-4 w-4" />
                                      Edit
@@ -233,36 +203,6 @@ export default function AnnouncementsPage() {
                                           </AlertDialogFooter>
                                       </AlertDialogContent>
                                    </AlertDialog>
-                                </div>
-                                {viewedByCount > 0 && (
-                                <Accordion type="single" collapsible className="w-full">
-                                    <AccordionItem value="item-1" className="border-t">
-                                        <AccordionTrigger className="px-4 py-2 text-sm hover:no-underline bg-muted/50">
-                                            <div className="flex items-center gap-2">
-                                                <Eye className="h-4 w-4" />
-                                                Viewed by {viewedByCount} user(s)
-                                            </div>
-                                        </AccordionTrigger>
-                                        <AccordionContent className="p-4 bg-muted/20 max-h-60 overflow-y-auto">
-                                            <ul className="space-y-3">
-                                                {viewers.map(viewer => (
-                                                    <li key={viewer.uid} className="flex items-center justify-between">
-                                                        <div className="flex items-center gap-3">
-                                                            <Avatar className="h-8 w-8 text-xs">
-                                                                <AvatarFallback>{getInitials(viewer.name)}</AvatarFallback>
-                                                            </Avatar>
-                                                            <span className="font-medium text-sm">{viewer.name}</span>
-                                                        </div>
-                                                        <span className="text-xs text-muted-foreground">
-                                                            {viewer.viewedAt ? formatDistanceToNow(viewer.viewedAt.toDate(), { addSuffix: true }) : 'Just now'}
-                                                        </span>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </AccordionContent>
-                                    </AccordionItem>
-                                </Accordion>
-                                )}
                             </CardFooter>
                           )}
                         </Card>
