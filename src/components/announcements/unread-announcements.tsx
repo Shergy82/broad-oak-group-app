@@ -43,7 +43,6 @@ export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnno
       const batch = writeBatch(db);
       
       announcements.forEach(announcement => {
-        // This is the corrected path. It writes a receipt to the current user's document.
         const ackRef = doc(db, `users/${user.uid}/acknowledgedAnnouncements`, announcement.id);
         batch.set(ackRef, { acknowledgedAt: serverTimestamp() });
       });
