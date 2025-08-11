@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, onSnapshot, query, orderBy, doc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, deleteDoc, collectionGroup, getDocs } from 'firebase/firestore';
 import { format, formatDistanceToNow } from 'date-fns';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
@@ -45,6 +45,7 @@ export default function AnnouncementsPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewedData, setViewedData] = useState<Map<string, any[]>>(new Map());
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
@@ -75,7 +76,7 @@ export default function AnnouncementsPage() {
     }
     const announcementsQuery = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
 
-    const unsubscribe = onSnapshot(announcementsQuery, (snapshot) => {
+    const unsubscribeAnnouncements = onSnapshot(announcementsQuery, (snapshot) => {
       const fetchedAnnouncements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement));
       setAnnouncements(fetchedAnnouncements);
       setLoading(false);
@@ -85,18 +86,37 @@ export default function AnnouncementsPage() {
       setLoading(false);
     });
 
-    // Fetch all users if the current user is an admin/owner to display viewer names
     let unsubscribeUsers = () => {};
+    let unsubscribeAcks = () => {};
+
     if (isPrivilegedUser) {
         const usersQuery = query(collection(db, 'users'));
         unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
             setUsers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
         });
+
+        const acknowledgedQuery = query(collectionGroup(db, 'acknowledgedAnnouncements'));
+        unsubscribeAcks = onSnapshot(acknowledgedQuery, (snapshot) => {
+            const newViewedData = new Map<string, any[]>();
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                const pathParts = doc.ref.path.split('/');
+                const userId = pathParts[1];
+                const announcementId = pathParts[3];
+
+                if (!newViewedData.has(announcementId)) {
+                    newViewedData.set(announcementId, []);
+                }
+                newViewedData.get(announcementId)!.push({ userId, ...data });
+            });
+            setViewedData(newViewedData);
+        });
     }
 
     return () => {
-        unsubscribe();
+        unsubscribeAnnouncements();
         unsubscribeUsers();
+        unsubscribeAcks();
     };
   }, [toast, isPrivilegedUser]);
   
@@ -164,12 +184,13 @@ export default function AnnouncementsPage() {
               ) : (
                 <div className="space-y-6">
                   {announcements.map(announcement => {
-                    const viewedByCount = announcement.viewedBy ? Object.keys(announcement.viewedBy).length : 0;
-                    const viewers = announcement.viewedBy ? Object.entries(announcement.viewedBy).map(([uid, timestamp]) => ({
-                        uid,
-                        name: userNameMap.get(uid) || 'Unknown User',
-                        viewedAt: timestamp
-                    })).sort((a,b) => b.viewedAt.toMillis() - a.viewedAt.toMillis()) : [];
+                    const viewersRaw = viewedData.get(announcement.id) || [];
+                    const viewedByCount = viewersRaw.length;
+                    const viewers = viewersRaw.map(v => ({
+                        uid: v.userId,
+                        name: userNameMap.get(v.userId) || 'Unknown User',
+                        viewedAt: v.acknowledgedAt,
+                    })).sort((a,b) => b.viewedAt.toMillis() - a.viewedAt.toMillis());
 
                     return (
                         <Card key={announcement.id} className="shadow-sm">
@@ -232,7 +253,7 @@ export default function AnnouncementsPage() {
                                                             <span className="font-medium text-sm">{viewer.name}</span>
                                                         </div>
                                                         <span className="text-xs text-muted-foreground">
-                                                            {formatDistanceToNow(viewer.viewedAt.toDate(), { addSuffix: true })}
+                                                            {viewer.viewedAt ? formatDistanceToNow(viewer.viewedAt.toDate(), { addSuffix: true }) : 'Just now'}
                                                         </span>
                                                     </li>
                                                 ))}

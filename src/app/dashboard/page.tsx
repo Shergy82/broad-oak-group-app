@@ -8,7 +8,7 @@ import { useUserProfile } from '@/hooks/use-user-profile';
 import Dashboard from '@/components/dashboard/index';
 import { Header } from '@/components/layout/header';
 import { Spinner } from '@/components/shared/spinner';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, collectionGroup, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Announcement } from '@/types';
 import { UnreadAnnouncements } from '@/components/announcements/unread-announcements';
@@ -21,6 +21,7 @@ export default function DashboardPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
   const [showAnnouncements, setShowAnnouncements] = useState(true);
+  const [acknowledgedIds, setAcknowledgedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!isAuthLoading && !user) {
@@ -28,7 +29,7 @@ export default function DashboardPage() {
     }
   }, [user, isAuthLoading, router]);
 
-  // Fetch all announcements once the user is loaded
+  // Fetch all announcements and acknowledgements once the user is loaded
   useEffect(() => {
     if (!user || !db) {
       setLoadingAnnouncements(false);
@@ -36,17 +37,29 @@ export default function DashboardPage() {
     };
 
     const announcementsQuery = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
-
-    const unsubscribe = onSnapshot(announcementsQuery, (snapshot) => {
+    const unsubscribeAnnouncements = onSnapshot(announcementsQuery, (snapshot) => {
       const fetchedAnnouncements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement));
       setAnnouncements(fetchedAnnouncements);
-      setLoadingAnnouncements(false);
     }, (error) => {
       console.error("Error fetching announcements:", error);
-      setLoadingAnnouncements(false);
     });
 
-    return () => unsubscribe();
+    const acknowledgedQuery = query(collection(db, `users/${user.uid}/acknowledgedAnnouncements`));
+    const unsubscribeAcknowledgements = onSnapshot(acknowledgedQuery, (snapshot) => {
+        const newIds = new Set<string>();
+        snapshot.forEach(doc => newIds.add(doc.id));
+        setAcknowledgedIds(newIds);
+        setLoadingAnnouncements(false);
+    }, (error) => {
+        console.error("Error fetching acknowledgements:", error);
+        setLoadingAnnouncements(false);
+    });
+
+
+    return () => {
+        unsubscribeAnnouncements();
+        unsubscribeAcknowledgements();
+    };
   }, [user]);
 
   const unreadAnnouncements = useMemo(() => {
@@ -54,10 +67,8 @@ export default function DashboardPage() {
       return [];
     }
     // Filter announcements the current user has not yet viewed.
-    return announcements.filter(announcement => {
-      return !announcement.viewedBy || !Object.keys(announcement.viewedBy).includes(user.uid);
-    });
-  }, [announcements, user, loadingAnnouncements]);
+    return announcements.filter(announcement => !acknowledgedIds.has(announcement.id));
+  }, [announcements, user, loadingAnnouncements, acknowledgedIds]);
   
   const isLoading = isAuthLoading || isProfileLoading || loadingAnnouncements;
 

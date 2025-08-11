@@ -1,10 +1,11 @@
+
 'use client';
 
 import { useState } from 'react';
 import type { User } from 'firebase/auth';
-import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
-import { functions, httpsCallable } from '@/lib/firebase';
+import { db, functions, httpsCallable } from '@/lib/firebase';
+import { writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import type { Announcement } from '@/types';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,12 +15,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogClose,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { Spinner } from '@/components/shared/spinner';
-import { Check } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 
 interface UnreadAnnouncementsProps {
   announcements: Announcement[];
@@ -33,18 +33,19 @@ export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnno
   const { toast } = useToast();
 
   const handleAcknowledge = async () => {
-    if (!functions) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Functions service not available.' });
+    if (!db) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Database service not available.' });
         return;
     }
     setIsLoading(true);
 
     try {
-      const acknowledgeFn = httpsCallable(functions, 'acknowledgeAnnouncement');
-      const announcementIds = announcements.map(a => a.id);
-      // This is the corrected call. The payload should be the array directly,
-      // not an object containing the array.
-      await acknowledgeFn(announcementIds);
+      const batch = writeBatch(db);
+      announcements.forEach(announcement => {
+        const ackRef = doc(db, `users/${user.uid}/acknowledgedAnnouncements`, announcement.id);
+        batch.set(ackRef, { acknowledgedAt: serverTimestamp() });
+      });
+      await batch.commit();
       
       toast({
         title: 'Announcements Acknowledged',
@@ -67,7 +68,7 @@ export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnno
   const handleDialogClose = (open: boolean) => {
       if (!open) {
           setIsOpen(false);
-          onClose();
+          onClose(); // This ensures the dashboard content loads if the dialog is closed
       }
   }
 
@@ -97,11 +98,10 @@ export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnno
         </ScrollArea>
 
         <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="secondary" onClick={onClose}>
-                Close
-            </Button>
-          </DialogClose>
+          <Button type="button" variant="ghost" onClick={onClose}>
+              <X className="mr-2 h-4 w-4" />
+              Close
+          </Button>
           <Button onClick={handleAcknowledge} disabled={isLoading} className="w-full sm:w-auto">
             {isLoading ? <Spinner /> : 
             <>

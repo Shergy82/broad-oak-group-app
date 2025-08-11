@@ -1,3 +1,4 @@
+
 import type { Timestamp } from 'firebase/firestore';
 
 export type ShiftStatus = 'pending-confirmation' | 'confirmed' | 'completed' | 'incomplete';
@@ -67,5 +68,4 @@ export interface Announcement {
   authorId: string;
   createdAt: Timestamp;
   updatedAt?: Timestamp;
-  viewedBy?: { [key: string]: Timestamp };
 }
