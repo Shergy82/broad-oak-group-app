@@ -222,112 +222,120 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     doc.text(`Generated on: ${format(generationDate, 'PPP p')}`, pageContentMargin, 28);
 
     let finalY = 35;
+    
+    const today = new Date();
+
+    const allThisWeekShifts = shifts.filter(s => isSameWeek(getCorrectedLocalDate(s.date), today, { weekStartsOn: 1 }));
+    const allNextWeekShifts = shifts.filter(s => {
+        const shiftDate = getCorrectedLocalDate(s.date);
+        const startOfNextWeek = addDays(today, 7);
+        return isSameWeek(shiftDate, startOfNextWeek, { weekStartsOn: 1 });
+    });
 
     const generateTablesForPeriod = (periodTitle: string, shiftsForPeriod: Shift[]) => {
-      if (shiftsForPeriod.length === 0) return;
+        if (shiftsForPeriod.length === 0) return;
+        
+        const periodFilteredShifts = selectedUserId === 'all'
+            ? shiftsForPeriod
+            : shiftsForPeriod.filter(s => s.userId === selectedUserId);
 
-      if (finalY > 40) { // Add extra space between "This Week" and "Next Week"
-        finalY += 8;
-      }
-      doc.setFontSize(16);
-      doc.text(periodTitle, pageContentMargin, finalY);
-      finalY += 10;
-      
-      const shiftsByUser = new Map<string, Shift[]>();
-      shiftsForPeriod.forEach(shift => {
-        if (!shiftsByUser.has(shift.userId)) {
-          shiftsByUser.set(shift.userId, []);
+        if (periodFilteredShifts.length === 0) return;
+
+        if (finalY > 40) {
+            finalY += 8;
         }
-        shiftsByUser.get(shift.userId)!.push(shift);
-      });
-
-      const usersToIterate = selectedUser ? [selectedUser] : [...users].sort((a, b) => a.name.localeCompare(b.name)).filter(u => shiftsByUser.has(u.uid));
-      
-      for (const user of usersToIterate) {
-        const userShifts = shiftsByUser.get(user.uid) || [];
-        if (userShifts.length === 0) continue;
-
-        userShifts.sort((a, b) => getCorrectedLocalDate(a.date).getTime() - getCorrectedLocalDate(b.date).getTime());
+        doc.setFontSize(16);
+        doc.text(periodTitle, pageContentMargin, finalY);
+        finalY += 10;
         
-        const head = [['Date', 'Type', 'Task & Address', 'Status']];
-        const body = userShifts.map(shift => {
-          const shiftDate = getCorrectedLocalDate(shift.date);
-          const statusText = shift.status.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-          let taskAndAddress = `${shift.task}\n${shift.address}`;
-
-          return {
-            date: format(shiftDate, 'EEE, dd MMM'),
-            type: shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase(),
-            task: taskAndAddress,
-            status: statusText,
-            notes: (shift.status === 'incomplete' && shift.notes) ? `Note: ${shift.notes}` : null,
-          };
-        });
-        
-        let tableStartY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 10 : finalY;
-        
-        const estimatedHeight = 10 + (body.length + 1) * 10;
-        if (tableStartY + estimatedHeight > pageHeight - 20) {
-          doc.addPage();
-          tableStartY = 20;
-          finalY = 20;
-        }
-        
-        if (!selectedUser) {
-            doc.setFontSize(12);
-            doc.setFont(doc.getFont().fontName, 'bold');
-            doc.text(user.name, pageContentMargin, tableStartY - 4);
-        }
-
-        autoTable(doc, {
-          head,
-          body: body.map(row => [row.date, row.type, row.task, row.status]),
-          startY: selectedUser ? tableStartY : tableStartY,
-          headStyles: { fillColor: [6, 95, 212] },
-          didDrawPage: (data) => {
-            finalY = data.cursor?.y || 0;
-          },
-          didParseCell: (data) => {
-            if (data.section === 'body' && data.column.dataKey === 2) { // Task & Address column
-              const rowData = body[data.row.index];
-              if (rowData.notes) {
-                data.cell.text = [rowData.task, rowData.notes];
-              }
+        const shiftsByUser = new Map<string, Shift[]>();
+        periodFilteredShifts.forEach(shift => {
+            if (!shiftsByUser.has(shift.userId)) {
+                shiftsByUser.set(shift.userId, []);
             }
-          },
-           willDrawCell: (data) => {
-             if (data.section === 'body' && data.column.dataKey === 2) {
-                const rowData = body[data.row.index];
-                if (rowData.notes) {
-                    const textLines = doc.splitTextToSize(rowData.task, data.cell.contentWidth);
-                    const textHeight = textLines.length * (doc.getLineHeight() / doc.internal.scaleFactor);
-                    const noteStartY = data.cell.y + textHeight + 1;
-                    
-                    const noteLines = doc.splitTextToSize(rowData.notes, data.cell.contentWidth);
-                    const noteHeight = noteLines.length * (doc.getLineHeight() / doc.internal.scaleFactor);
-
-                    doc.setFillColor(255, 252, 204);
-                    doc.rect( data.cell.x, noteStartY - (doc.getLineHeight() / doc.internal.scaleFactor) * 0.75, data.cell.width, noteHeight + 2, 'F');
-                }
-             }
-          },
+            shiftsByUser.get(shift.userId)!.push(shift);
         });
-        finalY = (doc as any).lastAutoTable.finalY;
-      }
-    };
 
-    const today = new Date();
-    const allThisWeekShifts = shifts.filter(s => isSameWeek(getCorrectedLocalDate(s.date), today, { weekStartsOn: 1 }) && (selectedUserId === 'all' || s.userId === selectedUserId));
-    const allNextWeekShifts = shifts.filter(s => {
-      const shiftDate = getCorrectedLocalDate(s.date);
-      const startOfNextWeek = addDays(today, 7);
-      return isSameWeek(shiftDate, startOfNextWeek, { weekStartsOn: 1 }) && (selectedUserId === 'all' || s.userId === selectedUserId);
-    });
+        const usersToIterate = selectedUser ? [selectedUser] : [...users].sort((a, b) => a.name.localeCompare(b.name)).filter(u => shiftsByUser.has(u.uid));
+        
+        for (const user of usersToIterate) {
+            const userShifts = shiftsByUser.get(user.uid) || [];
+            if (userShifts.length === 0) continue;
+
+            userShifts.sort((a, b) => getCorrectedLocalDate(a.date).getTime() - getCorrectedLocalDate(b.date).getTime());
+            
+            const head = [['Date', 'Type', 'Task & Address', 'Status']];
+            const body = userShifts.map(shift => {
+                const shiftDate = getCorrectedLocalDate(shift.date);
+                const statusText = shift.status.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                let taskAndAddress = `${shift.task}\n${shift.address}`;
+                return {
+                    date: format(shiftDate, 'EEE, dd MMM'),
+                    type: shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase(),
+                    task: taskAndAddress,
+                    status: statusText,
+                    notes: (shift.status === 'incomplete' && shift.notes) ? `Note: ${shift.notes}` : null,
+                };
+            });
+            
+            let tableStartY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 15 : finalY;
+            
+            const estimatedHeight = 15 + (body.length + 1) * 12;
+            if (tableStartY + estimatedHeight > pageHeight - 20) {
+                doc.addPage();
+                tableStartY = 20;
+                finalY = 20;
+            }
+            
+            if (selectedUserId === 'all') {
+                doc.setFontSize(12);
+                doc.setFont(doc.getFont().fontName, 'bold');
+                doc.text(user.name, pageContentMargin, tableStartY - 5);
+                tableStartY += 2; 
+            }
+
+            autoTable(doc, {
+                head,
+                body: body.map(row => [row.date, row.type, row.task, row.status]),
+                startY: tableStartY,
+                headStyles: { fillColor: [6, 95, 212] },
+                didDrawPage: (data) => {
+                    finalY = data.cursor?.y || 0;
+                },
+                didParseCell: (data) => {
+                    if (data.section === 'body' && data.column.dataKey === 2) { // Task & Address column
+                        const rowData = body[data.row.index];
+                        if (rowData.notes) {
+                            data.cell.text = [rowData.task, rowData.notes];
+                        }
+                    }
+                },
+                willDrawCell: (data) => {
+                    if (data.section === 'body' && data.column.dataKey === 2) {
+                        const rowData = body[data.row.index];
+                        if (rowData.notes) {
+                            const textLines = doc.splitTextToSize(rowData.task, data.cell.contentWidth);
+                            const textHeight = textLines.length * (doc.getLineHeight() / doc.internal.scaleFactor);
+                            const noteStartY = data.cell.y + textHeight + 1;
+                            
+                            const noteLines = doc.splitTextToSize(rowData.notes, data.cell.contentWidth);
+                            const noteHeight = noteLines.length * (doc.getLineHeight() / doc.internal.scaleFactor);
+
+                            doc.setFillColor(255, 252, 204);
+                            doc.rect( data.cell.x, noteStartY - (doc.getLineHeight() / doc.internal.scaleFactor) * 0.75, data.cell.width, noteHeight + 2, 'F');
+                        }
+                    }
+                },
+            });
+            finalY = (doc as any).lastAutoTable.finalY;
+        }
+    };
 
     generateTablesForPeriod("This Week's Shifts", allThisWeekShifts);
     generateTablesForPeriod("Next Week's Shifts", allNextWeekShifts);
 
-    if (allThisWeekShifts.length === 0 && allNextWeekShifts.length === 0) {
+    if (allThisWeekShifts.filter(s => selectedUserId === 'all' || s.userId === selectedUserId).length === 0 && 
+        allNextWeekShifts.filter(s => selectedUserId === 'all' || s.userId === selectedUserId).length === 0) {
       doc.text("No shifts scheduled for these periods.", pageContentMargin, finalY);
     }
     
