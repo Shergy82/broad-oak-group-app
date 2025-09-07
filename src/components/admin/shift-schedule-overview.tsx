@@ -303,27 +303,23 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                     finalY = data.cursor?.y || 0;
                 },
                 didParseCell: (data) => {
-                    if (data.section === 'body' && data.column.dataKey === 2) { // Task & Address column
-                        const rowData = body[data.row.index];
-                        if (rowData.notes) {
-                            data.cell.text = [rowData.task, rowData.notes];
-                        }
+                    const rowData = body[data.row.index];
+                    if (data.section === 'body' && data.column.dataKey === 2 && rowData?.notes) {
+                        data.cell.text = [rowData.task, rowData.notes];
                     }
                 },
                 willDrawCell: (data) => {
-                    if (data.section === 'body' && data.column.dataKey === 2) {
-                        const rowData = body[data.row.index];
-                        if (rowData.notes) {
-                            const textLines = doc.splitTextToSize(rowData.task, data.cell.contentWidth);
-                            const textHeight = textLines.length * (doc.getLineHeight() / doc.internal.scaleFactor);
-                            const noteStartY = data.cell.y + textHeight + 1;
-                            
-                            const noteLines = doc.splitTextToSize(rowData.notes, data.cell.contentWidth);
-                            const noteHeight = noteLines.length * (doc.getLineHeight() / doc.internal.scaleFactor);
+                    const rowData = body[data.row.index];
+                    if (data.section === 'body' && data.column.dataKey === 2 && rowData?.notes) {
+                        const textLines = doc.splitTextToSize(rowData.task, data.cell.contentWidth);
+                        const textHeight = textLines.length * (doc.getLineHeight() / doc.internal.scaleFactor);
+                        const noteStartY = data.cell.y + textHeight + 1;
+                        
+                        const noteLines = doc.splitTextToSize(rowData.notes, data.cell.contentWidth);
+                        const noteHeight = noteLines.length * (doc.getLineHeight() / doc.internal.scaleFactor);
 
-                            doc.setFillColor(255, 252, 204);
-                            doc.rect( data.cell.x, noteStartY - (doc.getLineHeight() / doc.internal.scaleFactor) * 0.75, data.cell.width, noteHeight + 2, 'F');
-                        }
+                        doc.setFillColor(255, 252, 204);
+                        doc.rect( data.cell.x, noteStartY - (doc.getLineHeight() / doc.internal.scaleFactor) * 0.75, data.cell.width, noteHeight + 2, 'F');
                     }
                 },
             });
