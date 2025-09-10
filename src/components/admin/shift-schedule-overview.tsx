@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { RefreshCw, Terminal, MessageSquareText, PlusCircle, Edit, Trash2, Download, History, Trash, Users2, Building } from 'lucide-react';
+import { RefreshCw, Terminal, MessageSquareText, PlusCircle, Edit, Trash2, Download, History, Trash, Users2, Building, BarChart2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -270,13 +270,14 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                 const shiftDate = getCorrectedLocalDate(shift.date);
                 const statusText = shift.status.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                 let taskAndAddress = `${shift.task}\n${shift.address}`;
-                return {
+                const rowData = {
                     date: format(shiftDate, 'EEE, dd MMM'),
                     type: shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase(),
                     task: taskAndAddress,
                     status: statusText,
                     notes: (shift.status === 'incomplete' && shift.notes) ? `Note: ${shift.notes}` : null,
                 };
+                return rowData;
             });
             
             let tableStartY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 15 : finalY;
@@ -306,7 +307,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                 didParseCell: (data) => {
                     if (data.row.index >= 0) { // Check if it's a body row
                         const rowData = body[data.row.index];
-                        if (data.section === 'body' && data.column.dataKey === 2 && rowData?.notes) {
+                        if (rowData && data.section === 'body' && data.column.dataKey === 2 && rowData?.notes) {
                             data.cell.text = [rowData.task, rowData.notes];
                         }
                     }
@@ -314,7 +315,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                 willDrawCell: (data) => {
                     if (data.row.index >= 0) { // Check if it's a body row
                         const rowData = body[data.row.index];
-                        if (data.section === 'body' && data.column.dataKey === 2 && rowData?.notes) {
+                        if (rowData && data.section === 'body' && data.column.dataKey === 2 && rowData?.notes) {
                             const textLines = doc.splitTextToSize(rowData.task, data.cell.contentWidth);
                             const textHeight = textLines.length * (doc.getLineHeight() / doc.internal.scaleFactor);
                             const noteStartY = data.cell.y + textHeight + 1;
@@ -371,6 +372,76 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
         setIsDeletingAll(false);
     }
   };
+
+  const handleDownloadDailyReport = async () => {
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+    
+    const today = new Date();
+    const todaysShifts = shifts.filter(s => isToday(getCorrectedLocalDate(s.date)));
+    
+    if (todaysShifts.length === 0) {
+        toast({
+            title: 'No Shifts Today',
+            description: 'There are no shifts scheduled for today to generate a report.',
+        });
+        return;
+    }
+
+    const doc = new jsPDF();
+    
+    // Stats
+    const totalShifts = todaysShifts.length;
+    const completed = todaysShifts.filter(s => s.status === 'completed').length;
+    const pending = todaysShifts.filter(s => s.status === 'pending-confirmation').length;
+    const confirmed = todaysShifts.filter(s => s.status === 'confirmed').length;
+    const incomplete = todaysShifts.filter(s => s.status === 'incomplete').length;
+    const operatives = new Set(todaysShifts.map(s => s.userId)).size;
+
+    doc.setFontSize(18);
+    doc.text(`Daily Report for ${format(today, 'PPP')}`, 14, 22);
+
+    doc.setFontSize(12);
+    doc.text('Summary of Today\'s Activities:', 14, 32);
+    autoTable(doc, {
+      startY: 36,
+      body: [
+          ['Total Shifts', totalShifts],
+          ['Operatives on Site', operatives],
+          ['Completed Shifts', completed],
+          ['Confirmed & In Progress', confirmed],
+          ['Pending Confirmation', pending],
+          ['Marked Incomplete', incomplete],
+      ],
+      theme: 'grid',
+      styles: {
+          fontStyle: 'bold',
+      },
+      columnStyles: {
+          0: { cellWidth: 50 },
+          1: { cellWidth: 'auto', halign: 'center' },
+      }
+    });
+    
+    const lastY = (doc as any).lastAutoTable.finalY;
+
+    doc.text('All Shifts for Today:', 14, lastY + 15);
+
+    autoTable(doc, {
+        startY: lastY + 19,
+        head: [['Operative', 'Task', 'Address', 'Type', 'Status']],
+        body: todaysShifts.map(shift => [
+            userNameMap.get(shift.userId) || 'Unknown',
+            shift.task,
+            shift.address,
+            shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase(),
+            shift.status.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+        ]),
+        headStyles: { fillColor: [6, 95, 212] },
+    });
+
+    doc.save(`daily_report_${format(today, 'yyyy-MM-dd')}.pdf`);
+};
 
   const renderShiftList = (shiftsToRender: Shift[]) => {
     if (shiftsToRender.length === 0) {
@@ -589,6 +660,10 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                      <Button variant="outline" onClick={() => router.push('/schedule/site-view')}>
                         <Building className="mr-2 h-4 w-4" />
                         Site View
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleDownloadDailyReport}>
+                        <BarChart2 className="mr-2 h-4 w-4" />
+                        Daily Report
                     </Button>
                     {isOwner && (
                         <Button onClick={handleAddShift} className="w-full sm:w-auto">
