@@ -9,7 +9,7 @@ import { ShiftCard } from '@/components/dashboard/shift-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { isToday, isSameWeek, addDays, format } from 'date-fns';
+import { isToday, isSameWeek, addDays, format, subDays } from 'date-fns';
 import type { Shift } from '@/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Clock, Download, RefreshCw, Sunrise, Sunset, Terminal, History } from 'lucide-react';
@@ -82,9 +82,21 @@ export default function Dashboard() {
     allThisWeekShifts,
     allNextWeekShifts,
   } = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const fourWeeksAgo = subDays(today, 28);
+
     // 1. Separate shifts into active and historical
     const activeShifts = shifts.filter(s => s.status !== 'completed' && s.status !== 'incomplete');
-    const historicalShifts = shifts.filter(s => s.status === 'completed' || s.status === 'incomplete');
+    
+    // Filter historical shifts to be within the last 4 weeks
+    const historicalShifts = shifts.filter(s => {
+        const isHistorical = s.status === 'completed' || s.status === 'incomplete';
+        if (!isHistorical) return false;
+        const shiftDate = getCorrectedLocalDate(s.date);
+        return shiftDate >= fourWeeksAgo;
+    });
+
     historicalShifts.sort((a, b) => getCorrectedLocalDate(b.date).getTime() - getCorrectedLocalDate(a.date).getTime());
 
     // 2. Group shifts for display using ONLY activeShifts
@@ -99,8 +111,6 @@ export default function Dashboard() {
       });
       return grouped;
     };
-    
-    const today = new Date();
     
     // Display shifts (from activeShifts)
     const activeTodayShifts = activeShifts.filter(s => isToday(getCorrectedLocalDate(s.date)));
@@ -380,3 +390,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
+    
