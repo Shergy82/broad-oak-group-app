@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -432,15 +433,24 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     };
     
     // Sort shifts by status for the report
-    const statusOrder = {
+    const statusOrder: {[key: string]: number} = {
         'completed': 1,
         'incomplete': 2,
         'confirmed': 3,
         'pending-confirmation': 4,
     };
     const sortedShifts = [...todaysShifts].sort((a, b) => {
-        return statusOrder[a.status] - statusOrder[b.status];
+        const aStatus = a.status || 'pending-confirmation';
+        const bStatus = b.status || 'pending-confirmation';
+        return statusOrder[aStatus] - statusOrder[bStatus];
     });
+
+    const statusColors: {[key: string]: {bg: [number, number, number], text: [number, number, number]}} = {
+      completed: { bg: [211, 255, 211], text: [0, 100, 0] },
+      incomplete: { bg: [255, 239, 213], text: [139, 69, 19] },
+      confirmed: { bg: [224, 236, 255], text: [0, 0, 128] },
+      'pending-confirmation': { bg: [245, 245, 245], text: [105, 105, 105] },
+    };
 
 
     autoTable(doc, {
@@ -462,6 +472,20 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
         },
         rowPageBreak: 'avoid',
         bodyStyles: { minCellHeight: 12 },
+        willDrawCell: (data) => {
+          if (data.section === 'body' && data.column.dataKey === 4) { // Status column
+            const shift = sortedShifts[data.row.index];
+            if (shift) {
+              const status = shift.status || 'pending-confirmation';
+              const colors = statusColors[status];
+              if (colors) {
+                doc.setFillColor(...colors.bg);
+                doc.setTextColor(...colors.text);
+                doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+              }
+            }
+          }
+        },
     });
 
     doc.save(`daily_report_${format(today, 'yyyy-MM-dd')}.pdf`);
