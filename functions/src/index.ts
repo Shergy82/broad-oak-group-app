@@ -187,8 +187,8 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
             changedFields.push('time (AM/PM)');
         }
 
-        // 2. Compare dates with day-level precision, ignoring time-of-day.
-        if (before.date && after.date && !before.date.isEqual(after.date)) {
+        // 2. Compare dates with millisecond precision
+        if (before.date?.toMillis() !== after.date?.toMillis()) {
             changedFields.push('date');
         }
 
