@@ -27,15 +27,20 @@ let storage: FirebaseStorage | null = null;
 let functions: Functions | null = null;
 
 
-if (isFirebaseConfigured) {
+if (isFirebaseConfigured && typeof window !== 'undefined') {
     app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
     storage = getStorage(app);
     functions = getFunctions(app, 'europe-west2');
-} else {
-    // This console.error is helpful for server-side debugging
-    console.error("Firebase not configured. Please check your .env.local file.");
+} else if (isFirebaseConfigured) {
+    // For server-side rendering
+    app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    storage = getStorage(app);
+    functions = getFunctions(app, 'europe-west2');
 }
+
 
 export { app, auth, db, storage, functions, httpsCallable };
