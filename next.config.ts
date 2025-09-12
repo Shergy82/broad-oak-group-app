@@ -1,4 +1,4 @@
-import type {NextConfig} from 'next';
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -16,6 +16,12 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+    ],
+  },
+  experimental: {
+    // This is the fix for the cross-origin request warning.
+    allowedDevOrigins: [
+      'https://6000-firebase-studio-1750626806884.cluster-oayqgyglpfgseqclbygurw4xd4.cloudworkstations.dev',
     ],
   },
 };
