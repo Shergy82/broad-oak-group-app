@@ -15,7 +15,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!isFirebaseConfigured) {
+    if (!isFirebaseConfigured || !auth) {
       setIsLoading(false);
       return;
     }
