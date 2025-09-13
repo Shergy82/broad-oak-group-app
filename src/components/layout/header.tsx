@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Logo } from '../shared/logo';
 import { Button } from '@/components/ui/button';
-import { Briefcase, Calendar, HardHat, LogOut, Megaphone, Shield, User, UserCog, Users, TrendingUp } from 'lucide-react';
+import { Briefcase, Calendar, HardHat, LogOut, Megaphone, Shield, User, UserCog, Users, TrendingUp, SunMoon } from 'lucide-react';
 import { NotificationButton } from '../shared/notification-button';
 import {
   DropdownMenu,
@@ -82,6 +82,10 @@ export function Header() {
                 <DropdownMenuItem onClick={() => router.push('/health-and-safety')} className="cursor-pointer">
                   <HardHat className="mr-2" />
                   <span>Health & Safety</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => window.open('https://studio--leavewise-7vjf7.us-central1.hosted.app', '_blank')} className="cursor-pointer">
+                    <SunMoon className="mr-2" />
+                    <span>Annual Leave & Sickness</span>
                 </DropdownMenuItem>
                 
                 {isPrivilegedUser && (
