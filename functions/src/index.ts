@@ -585,8 +585,8 @@ export const setUserStatus = functions.region("europe-west2").https.onCall(async
     const { uid, disabled, newStatus } = data;
     const validStatuses = ['active', 'suspended', 'pending-approval'];
 
-    if (typeof uid !== 'string' || typeof disabled !== 'boolean' || (newStatus && !validStatuses.includes(newStatus))) {
-        throw new functions.https.HttpsError("invalid-argument", "The function requires 'uid' (string), 'disabled' (boolean), and a valid 'newStatus' (string) argument.");
+    if (typeof uid !== 'string' || typeof disabled !== 'boolean' || !newStatus || !validStatuses.includes(newStatus)) {
+        throw new functions.https.HttpsError("invalid-argument", `Invalid arguments provided. 'uid' must be a string, 'disabled' a boolean, and 'newStatus' must be one of ${validStatuses.join(', ')}.`);
     }
 
     // Owner cannot disable themselves.
@@ -682,3 +682,5 @@ export const onUserCreate = functions.region("europe-west2").auth.user().onCreat
     
 
     
+
+  
