@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { RefreshCw, Terminal, MessageSquareText, PlusCircle, Edit, Trash2, Download, History, Trash, Users2, Building, BarChart2 } from 'lucide-react';
+import { Terminal, MessageSquareText, PlusCircle, Edit, Trash2, Download, History, Trash, Users2, Building, BarChart2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -78,7 +78,6 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
@@ -128,7 +127,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
       unsubscribeUsers();
       unsubscribeShifts();
     };
-  }, [refreshKey]);
+  }, []);
 
   const getCorrectedLocalDate = (date: { toDate: () => Date }) => {
     const d = date.toDate();
@@ -719,10 +718,6 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                             Add Shift
                         </Button>
                     )}
-                    <Button variant="outline" size="sm" onClick={() => setRefreshKey(prev => prev + 1)}>
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        Refresh
-                    </Button>
                     {isOwner && (
                         <AlertDialog>
                             <AlertDialogTrigger asChild>

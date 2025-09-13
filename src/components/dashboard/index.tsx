@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { isToday, isSameWeek, addDays, format, subDays } from 'date-fns';
 import type { Shift, ShiftStatus } from '@/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Clock, Download, RefreshCw, Sunrise, Sunset, Terminal, History } from 'lucide-react';
+import { Clock, Download, Sunrise, Sunset, Terminal, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
@@ -28,7 +28,6 @@ export default function Dashboard() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [dismissedShiftIds, setDismissedShiftIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -82,7 +81,7 @@ export default function Dashboard() {
     });
 
     return () => unsubscribe();
-  }, [user, refreshKey]);
+  }, [user]);
 
   const handleDismissShift = (shiftId: string) => {
       if (!user) return;
@@ -342,10 +341,6 @@ export default function Dashboard() {
             <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={loading}>
               <Download className="mr-2 h-4 w-4" />
               Download PDF
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setRefreshKey(prev => prev + 1)}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh
             </Button>
           </div>
         </div>
