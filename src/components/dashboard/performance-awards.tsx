@@ -7,6 +7,7 @@ import { Award } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import type { Shift, UserProfile } from '@/types';
 import { Trophy } from 'lucide-react';
+import { getCorrectedLocalDate } from '@/lib/utils';
 
 interface PerformanceAwardsProps {
     allShifts: Shift[];
@@ -61,13 +62,17 @@ export function PerformanceAwards({ allShifts, allUsers }: PerformanceAwardsProp
         const startOfThisWeek = startOfWeek(now, { weekStartsOn: 1 });
         const endOfThisWeek = endOfWeek(now, { weekStartsOn: 1 });
         const weeklyShifts = allShifts.filter(s => {
-            if (!s.createdAt) return false;
-            const shiftDate = s.createdAt.toDate();
+            const shiftDate = getCorrectedLocalDate(s.date);
             return isWithinInterval(shiftDate, { start: startOfThisWeek, end: endOfThisWeek });
         });
 
         // Monthly: First day to last day of the current month.
-        const monthlyShifts = allShifts.filter(s => s.createdAt && isWithinInterval(s.createdAt.toDate(), { start: startOfMonth(now), end: endOfMonth(now) }));
+        const startOfThisMonth = startOfMonth(now);
+        const endOfThisMonth = endOfMonth(now);
+        const monthlyShifts = allShifts.filter(s => {
+            const shiftDate = getCorrectedLocalDate(s.date);
+            return isWithinInterval(shiftDate, { start: startOfThisMonth, end: endOfThisMonth });
+        });
 
         return {
             weeklyTop: calculateTopPerformer(weeklyShifts, allUsers),
@@ -81,7 +86,7 @@ export function PerformanceAwards({ allShifts, allUsers }: PerformanceAwardsProp
             <Card>
                 <CardHeader>
                     <CardTitle>Team Leaderboard</CardTitle>
-                    <CardDescription>Recognizing the top performers on the team.</CardDescription>
+                    <CardDescription>Recognizing the top performers on the team based on shift completion rates.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center h-48">
