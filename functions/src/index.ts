@@ -576,7 +576,6 @@ export const setUserStatus = functions.region("europe-west2").https.onCall(async
     const callerDoc = await db.collection("users").doc(callerUid).get();
     const callerProfile = callerDoc.data();
 
-    // Corrected Authorization: Only the 'owner' can perform these actions.
     if (!callerProfile || callerProfile.role !== 'owner') {
         throw new functions.https.HttpsError("permission-denied", "Only the account owner can change user status.");
     }
@@ -622,7 +621,6 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
     const callerDoc = await db.collection("users").doc(callerUid).get();
     const callerProfile = callerDoc.data();
 
-    // Corrected Authorization: Only the 'owner' can perform this action.
     if (!callerProfile || callerProfile.role !== 'owner') {
         throw new functions.https.HttpsError("permission-denied", "Only the account owner can delete users.");
     }
@@ -654,7 +652,7 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
     }
 });
 
-// New function to handle new user setup
+
 export const onUserCreate = functions.region("europe-west2").auth.user().onCreate(async (user) => {
     functions.logger.log(`New user created: ${user.uid}, email: ${user.email}`);
 
@@ -679,3 +677,5 @@ export const onUserCreate = functions.region("europe-west2").auth.user().onCreat
         functions.logger.warn(`Could not find Firestore profile for new user ${user.uid}. Cannot set initial disabled state.`);
     }
 });
+
+    

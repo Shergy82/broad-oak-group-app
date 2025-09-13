@@ -212,7 +212,7 @@ export default function UserManagementPage() {
             </Alert>
         )}
          {currentUserProfile?.role === 'owner' && (
-            <Alert className="mt-4 border-primary/50 text-primary-darker [&>svg]:text-primary">
+            <Alert className="mt-4 border-primary/50 text-primary [&>svg]:text-primary">
                 <ShieldCheck className="h-4 w-4" />
                 <AlertTitle>Owner Privileges</AlertTitle>
                 <AlertDescription>
@@ -325,3 +325,5 @@ export default function UserManagementPage() {
     </>
   );
 }
+
+    
