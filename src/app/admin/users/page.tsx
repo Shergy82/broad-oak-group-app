@@ -1,9 +1,8 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
 import { collection, onSnapshot, query } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useToast } from '@/hooks/use-toast';
@@ -17,9 +16,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { ShieldX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ExternalLink } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
+const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -72,20 +74,18 @@ export default function UserManagementPage() {
       }
   }
 
+  const generateConsoleLink = (uid: string) => {
+    if (!projectId) return '#';
+    return `https://console.firebase.google.com/project/${projectId}/firestore/data/~2Fusers~2F${uid}`;
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>User Management</CardTitle>
         <CardDescription>
-            View all users and their assigned roles in the system.
+            View all users and their assigned roles. To manage a user (e.g., delete their record), use the link to the Firebase Console.
         </CardDescription>
-        <Alert className="mt-4">
-            <ShieldX className="h-4 w-4" />
-            <AlertTitle>Notice</AlertTitle>
-            <AlertDescription>
-                User management actions (approval, suspension, deletion) are currently disabled. This page provides a read-only view of user data.
-            </AlertDescription>
-        </Alert>
       </CardHeader>
       <CardContent>
         <Table>
@@ -97,6 +97,7 @@ export default function UserManagementPage() {
               <TableHead>Phone Number</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Status</TableHead>
+              {isOwner && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -109,6 +110,7 @@ export default function UserManagementPage() {
                   <TableCell><Skeleton className="h-4 w-28" /></TableCell>
                   <TableCell><Skeleton className="h-6 w-20" /></TableCell>
                   <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                  {isOwner && <TableCell><Skeleton className="h-8 w-24 ml-auto" /></TableCell>}
                 </TableRow>
               ))
             ) : (
@@ -126,6 +128,27 @@ export default function UserManagementPage() {
                   <TableCell>
                       {getStatusBadge(user.status)}
                   </TableCell>
+                  {isOwner && (
+                    <TableCell className="text-right">
+                      {user.uid !== currentUserProfile?.uid && isFirebaseConfigured && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button variant="outline" size="sm" asChild>
+                                <a href={generateConsoleLink(user.uid)} target="_blank" rel="noopener noreferrer">
+                                  Manage
+                                  <ExternalLink className="ml-2 h-4 w-4" />
+                                </a>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Open user record in Firebase Console</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))
             )}
