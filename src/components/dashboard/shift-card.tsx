@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -78,7 +79,7 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
       const updateData: { status: ShiftStatus; notes?: any } = { status: newStatus };
       if (notes) {
         updateData.notes = notes;
-      } else if (newStatus === 'confirmed') {
+      } else if (newStatus === 'confirmed' || newStatus === 'on-site') { // Also remove notes when going back to 'on-site'
         updateData.notes = deleteField();
       }
       
@@ -226,3 +227,5 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
     </>
   );
 }
+
+    

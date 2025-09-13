@@ -238,7 +238,7 @@ export default function Dashboard() {
     const weekends = ['Saturday', 'Sunday'];
     const allDays = [...weekdays, ...weekends];
     
-    const hasShiftsThisWeek = Object.keys(groupedShifts).length > 0;
+    const hasShiftsThisWeek = Object.keys(groupedShifts).length > 0 && Object.values(groupedShifts).some(s => s.length > 0);
 
     if (loading) {
         return (
@@ -417,3 +417,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
+    
