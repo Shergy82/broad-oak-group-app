@@ -2,12 +2,13 @@
 'use client';
 
 import { useMemo } from 'react';
-import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { Award } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import type { Shift, UserProfile } from '@/types';
 import { Trophy } from 'lucide-react';
-import { getCorrectedLocalDate } from '@/lib/utils';
+import { getCorrectedLocalDate, isWithin } from '@/lib/utils';
+
 
 interface PerformanceAwardsProps {
     allShifts: Shift[];
@@ -23,14 +24,14 @@ interface PerformanceMetric {
 const AwardCard = ({ title, user, value, icon: Icon, unit }: { title: string, user: string, value: string, icon: React.ElementType, unit?: string }) => (
     <Card className="shadow-lg transform hover:scale-105 transition-transform duration-300">
         <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-2">
+            <CardDescription className="flex items-center gap-1.5">
                 <Icon className="h-4 w-4 text-amber-500" />
                 {title}
             </CardDescription>
-            <CardTitle className="text-2xl truncate">{user || 'N/A'}</CardTitle>
+            <CardTitle className="text-xl truncate">{user || 'N/A'}</CardTitle>
         </CardHeader>
         <CardContent>
-            <p className="text-lg font-bold text-muted-foreground">{value}{unit}</p>
+            <p className="text-md font-bold text-muted-foreground">{value}{unit}</p>
         </CardContent>
     </Card>
 );
@@ -58,20 +59,18 @@ export function PerformanceAwards({ allShifts, allUsers }: PerformanceAwardsProp
     const { weeklyTop, monthlyTop, allTimeTop } = useMemo(() => {
         const now = new Date();
         
-        // Weekly: Monday to Sunday of the current week.
         const startOfThisWeek = startOfWeek(now, { weekStartsOn: 1 });
         const endOfThisWeek = endOfWeek(now, { weekStartsOn: 1 });
         const weeklyShifts = allShifts.filter(s => {
             const shiftDate = getCorrectedLocalDate(s.date);
-            return isWithinInterval(shiftDate, { start: startOfThisWeek, end: endOfThisWeek });
+            return isWithin(shiftDate, { start: startOfThisWeek, end: endOfThisWeek });
         });
-
-        // Monthly: First day to last day of the current month.
+        
         const startOfThisMonth = startOfMonth(now);
         const endOfThisMonth = endOfMonth(now);
         const monthlyShifts = allShifts.filter(s => {
-            const shiftDate = getCorrectedLocalDate(s.date);
-            return isWithinInterval(shiftDate, { start: startOfThisMonth, end: endOfThisMonth });
+             const shiftDate = getCorrectedLocalDate(s.date);
+            return isWithin(shiftDate, { start: startOfThisMonth, end: endOfThisMonth });
         });
 
         return {

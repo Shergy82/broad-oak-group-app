@@ -17,7 +17,7 @@ const StatCard = ({ title, value, icon: Icon }: { title: string, value: string |
             <Icon className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-            <div className="text-2xl font-bold">{value}</div>
+            <div className="text-xl font-bold">{value}</div>
         </CardContent>
     </Card>
 );
@@ -40,7 +40,7 @@ export function UserStatsDashboard({ allShifts }: UserStatsDashboardProps) {
 
     return (
         <div>
-            <h3 className="text-lg font-semibold tracking-tight mb-4">Your All-Time Stats</h3>
+            <h3 className="text-md font-semibold tracking-tight mb-2">Your All-Time Stats</h3>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <StatCard title="Total Shifts" value={stats.totalShifts} icon={History} />
                 <StatCard title="Completed" value={stats.completedShifts} icon={CheckCircle2} />
