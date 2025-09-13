@@ -84,7 +84,7 @@ export default function UserManagementPage() {
       <CardHeader>
         <CardTitle>User Management</CardTitle>
         <CardDescription>
-            View all users and their assigned roles. To manage a user (e.g., delete their record), use the link to the Firebase Console.
+            View all users and their assigned roles. {isOwner ? "As the owner, you can use the 'Manage' button to open a user's record in the Firebase Console to modify or delete it." : "Only the account owner can manage users."}
         </CardDescription>
       </CardHeader>
       <CardContent>
