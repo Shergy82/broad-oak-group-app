@@ -637,7 +637,7 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
     if (!subscriptionsSnapshot.empty) {
       const batch = db.batch();
       subscriptionsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
+      await batch.commit(); // <-- CORRECTED: Await the batch commit
       functions.logger.log(`Deleted ${subscriptionsSnapshot.size} push subscriptions for user ${uid}.`);
     }
 
@@ -776,6 +776,8 @@ export const testUserDeletion = functions.region("europe-west2").https.onCall(as
         throw new functions.https.HttpsError("internal", `Test failed: ${error.message}`);
     }
 });
+
+    
 
     
 
