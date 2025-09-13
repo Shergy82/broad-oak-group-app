@@ -6,7 +6,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth, isFirebaseConfigured } from '@/lib/firebase';
+import { auth, isFirebaseConfigured, db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -45,8 +46,32 @@ export function LoginForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     setError(null);
+    if (!auth || !db) return;
+
     try {
-      await signInWithEmailAndPassword(auth!, values.email, values.password);
+      const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
+      const user = userCredential.user;
+
+      // Check user status in Firestore
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+
+      if (userDoc.exists()) {
+        const userProfile = userDoc.data();
+        if (userProfile.status === 'suspended') {
+            await auth.signOut();
+            setError('Your account has been suspended. Please contact an administrator.');
+            setIsLoading(false);
+            return;
+        }
+        if (userProfile.status === 'pending-approval') {
+            await auth.signOut();
+            setError('Your account is pending approval. You will be able to log in once an administrator approves your account.');
+            setIsLoading(false);
+            return;
+        }
+      }
+
       toast({
         title: 'Login Successful',
         description: "Welcome back!",
@@ -58,6 +83,9 @@ export function LoginForm() {
         switch (error.code) {
           case 'auth/invalid-credential':
             errorMessage = 'Invalid email or password. Please try again.';
+            break;
+          case 'auth/user-disabled':
+            errorMessage = 'This account has been disabled. Please contact an administrator.';
             break;
           case 'auth/too-many-requests':
             errorMessage = 'Too many login attempts. Please try again later.';

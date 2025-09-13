@@ -21,7 +21,7 @@ export interface UserProfile {
   phoneNumber: string;
   role: 'user' | 'admin' | 'owner';
   createdAt?: Timestamp;
-  status?: 'active' | 'suspended';
+  status?: 'active' | 'suspended' | 'pending-approval';
 }
 
 export interface Project {

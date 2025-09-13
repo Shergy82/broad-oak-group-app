@@ -574,14 +574,18 @@ export const setUserStatus = functions.region("europe-west2").https.onCall(async
     const callerDoc = await db.collection("users").doc(callerUid).get();
     const callerProfile = callerDoc.data();
 
-    if (!callerProfile || callerProfile.role !== 'owner') {
-        throw new functions.https.HttpsError("permission-denied", "Only the account owner can change user status.");
+    if (!callerProfile || !['admin', 'owner'].includes(callerProfile.role)) {
+        throw new functions.https.HttpsError("permission-denied", "Only administrators can change user status.");
     }
     
     // 2. Validation
-    const { uid, disabled } = data;
-    if (typeof uid !== 'string' || typeof disabled !== 'boolean') {
-        throw new functions.https.HttpsError("invalid-argument", "The function requires a 'uid' (string) and 'disabled' (boolean) argument.");
+    const { uid, disabled, newStatus } = data;
+    if (typeof uid !== 'string' || typeof disabled !== 'boolean' || typeof newStatus !== 'string') {
+        throw new functions.https.HttpsError("invalid-argument", "The function requires a 'uid' (string), 'disabled' (boolean), and 'newStatus' (string) argument.");
+    }
+
+    if (callerProfile.role !== 'owner') {
+        throw new functions.https.HttpsError("permission-denied", "Only the owner can perform this action.");
     }
 
     // Owner cannot disable themselves.
@@ -596,9 +600,9 @@ export const setUserStatus = functions.region("europe-west2").https.onCall(async
         
         // Update user status in Firestore
         const userDocRef = db.collection('users').doc(uid);
-        await userDocRef.update({ status: disabled ? 'suspended' : 'active' });
+        await userDocRef.update({ status: newStatus });
 
-        functions.logger.log(`Owner ${callerUid} has ${disabled ? 'suspended' : 'reactivated'} user ${uid}.`);
+        functions.logger.log(`Admin ${callerUid} has set user ${uid} to status: ${newStatus} (Auth disabled: ${disabled}).`);
         return { success: true };
     } catch (error: any) {
         functions.logger.error(`Error updating status for user ${uid}:`, error);
@@ -643,5 +647,32 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
     } catch (error: any) {
         functions.logger.error(`Error deleting user ${uid}:`, error);
         throw new functions.https.HttpsError("internal", `An unexpected error occurred while deleting the user: ${error.message}`);
+    }
+});
+
+// New function to handle new user setup
+export const onUserCreate = functions.region("europe-west2").auth.user().onCreate(async (user) => {
+    functions.logger.log(`New user created: ${user.uid}, email: ${user.email}`);
+
+    // Find the user profile in Firestore
+    const userDocRef = db.collection('users').doc(user.uid);
+    const userDoc = await userDocRef.get();
+
+    if (userDoc.exists()) {
+        const userProfile = userDoc.data();
+        // If the user is not an owner, disable their account in Auth until approved.
+        // This prevents them from logging in.
+        if (userProfile && userProfile.role !== 'owner') {
+            try {
+                await admin.auth().updateUser(user.uid, { disabled: true });
+                functions.logger.log(`Successfully disabled account for new user ${user.uid} pending admin approval.`);
+            } catch (error) {
+                functions.logger.error(`Failed to disable account for new user ${user.uid}:`, error);
+            }
+        } else {
+             functions.logger.log(`User ${user.uid} is an owner. Account remains enabled.`);
+        }
+    } else {
+        functions.logger.warn(`Could not find Firestore profile for new user ${user.uid}. Cannot set initial disabled state.`);
     }
 });

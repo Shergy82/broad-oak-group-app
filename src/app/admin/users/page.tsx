@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -24,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Terminal, ShieldCheck, ShieldX, MoreHorizontal, UserCheck, UserX, Trash2 } from 'lucide-react';
+import { Terminal, ShieldCheck, ShieldX, MoreHorizontal, UserCheck, UserX, Trash2, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
@@ -69,7 +70,7 @@ export default function UserManagementPage() {
     return () => unsubscribe();
   }, [currentUserProfile, toast]);
 
-  const executeUserAction = async (action: 'suspend' | 'reactivate' | 'delete', targetUser: UserProfile) => {
+  const executeUserAction = async (action: 'approve' | 'suspend' | 'reactivate' | 'delete', targetUser: UserProfile) => {
     if (!functions) {
         toast({ variant: 'destructive', title: 'Error', description: 'Functions service not available.' });
         return;
@@ -91,7 +92,7 @@ export default function UserManagementPage() {
         } else {
             callableFunction = httpsCallable(functions, 'setUserStatus');
             const isDisabled = action === 'suspend';
-            payload = { uid: targetUser.uid, disabled: isDisabled };
+            payload = { uid: targetUser.uid, disabled: isDisabled, newStatus: action === 'approve' ? 'active' : (isDisabled ? 'suspended' : 'active') };
             successMessage = `User ${targetUser.name} has been ${action}d.`;
         }
         
@@ -160,6 +161,19 @@ export default function UserManagementPage() {
     );
   }
 
+  const getStatusBadge = (status?: 'active' | 'suspended' | 'pending-approval') => {
+      switch (status) {
+          case 'active':
+              return <Badge className="bg-green-600 hover:bg-green-700">Active</Badge>
+          case 'suspended':
+              return <Badge variant="destructive">Suspended</Badge>
+          case 'pending-approval':
+              return <Badge variant="secondary" className="bg-amber-500 hover:bg-amber-600 text-white">Pending</Badge>
+          default:
+              return <Badge variant="outline">Unknown</Badge>
+      }
+  }
+
   return (
     <>
     <Card>
@@ -167,7 +181,7 @@ export default function UserManagementPage() {
         <CardTitle>User Management</CardTitle>
         <CardDescription>
             {currentUserProfile?.role === 'owner' 
-                ? 'As the owner, you can view, assign roles, and manage user accounts.' 
+                ? 'As the owner, you can view, assign roles, approve, and manage user accounts.' 
                 : 'As an admin, you can view all users and their assigned roles.'
             }
         </CardDescription>
@@ -185,7 +199,7 @@ export default function UserManagementPage() {
                 <ShieldCheck className="h-4 w-4" />
                 <AlertTitle>Owner Privileges</AlertTitle>
                 <AlertDescription>
-                   You can assign roles, suspend, or delete users. You cannot change your own role or the role of another owner.
+                   You can assign roles, approve, suspend, or delete users. You cannot change your own role or the role of another owner.
                 </AlertDescription>
             </Alert>
         )}
@@ -225,9 +239,7 @@ export default function UserManagementPage() {
                   <TableCell>{user.phoneNumber}</TableCell>
                   <TableCell>{renderRoleCell(user)}</TableCell>
                   <TableCell>
-                      <Badge variant={user.status === 'suspended' ? 'destructive' : 'default'} className={user.status === 'suspended' ? '' : 'bg-green-600 hover:bg-green-700'}>
-                        {user.status === 'suspended' ? 'Suspended' : 'Active'}
-                      </Badge>
+                      {getStatusBadge(user.status)}
                   </TableCell>
                    {currentUserProfile?.role === 'owner' && (
                      <TableCell className="text-right">
@@ -242,12 +254,18 @@ export default function UserManagementPage() {
                                 <DropdownMenuContent align="end">
                                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
                                     <DropdownMenuSeparator />
+                                    {user.status === 'pending-approval' && (
+                                        <DropdownMenuItem onClick={() => executeUserAction('approve', user)}>
+                                            <CheckCircle2 className="mr-2 h-4 w-4" />
+                                            Approve User
+                                        </DropdownMenuItem>
+                                    )}
                                     {user.status === 'suspended' ? (
                                         <DropdownMenuItem onClick={() => executeUserAction('reactivate', user)}>
                                             <UserCheck className="mr-2 h-4 w-4" />
                                             Reactivate User
                                         </DropdownMenuItem>
-                                    ) : (
+                                    ) : user.status !== 'pending-approval' && (
                                         <DropdownMenuItem onClick={() => executeUserAction('suspend', user)}>
                                             <UserX className="mr-2 h-4 w-4" />
                                             Suspend User

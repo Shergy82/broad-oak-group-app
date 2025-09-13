@@ -64,20 +64,30 @@ export function SignUpForm() {
       await updateProfile(user, { displayName: fullName });
 
       const userRole = values.email.toLowerCase() === 'phil.s@broadoakgroup.com' ? 'owner' : 'user';
+      const userStatus = userRole === 'owner' ? 'active' : 'pending-approval';
+
+      // The user must be disabled in Auth first to prevent login before approval
+      // This will be handled by a Cloud Function triggered by user creation for non-owners.
+      // For now, we just set the Firestore status.
 
       await setDoc(doc(db, 'users', user.uid), {
         name: fullName,
         email: values.email,
         phoneNumber: values.phoneNumber,
         role: userRole,
+        status: userStatus,
         createdAt: Timestamp.now(),
       });
 
       toast({
-        title: 'Account Created',
-        description: "You've been successfully signed up!",
+        title: 'Account Created & Pending Approval',
+        description: "Your account has been created. An administrator will approve it shortly, and you will then be able to log in.",
       });
-      // Redirect handled by AuthProvider
+      
+      await auth.signOut();
+      
+      form.reset();
+      
     } catch (error: any) {
       let errorMessage = 'An unexpected error occurred. Please try again.';
       if (error.code) {
