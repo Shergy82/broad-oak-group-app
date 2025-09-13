@@ -35,9 +35,16 @@ export function UnreadAnnouncements({ announcements, user, onClose }: UnreadAnno
   const handleAcknowledge = async () => {
     setIsLoading(true);
     try {
-      // Use local storage to immediately hide the dialog for the user
-      const acknowledgedIds = announcements.map(a => a.id);
-      localStorage.setItem(`acknowledgedAnnouncements_${user.uid}`, JSON.stringify(acknowledgedIds));
+      // Get the list of announcements being displayed in the dialog.
+      const newlyAcknowledgedIds = announcements.map(a => a.id);
+      
+      // Get the existing list of acknowledged IDs from local storage.
+      const storedAcknowledged = localStorage.getItem(`acknowledgedAnnouncements_${user.uid}`);
+      const acknowledgedIds = new Set(storedAcknowledged ? JSON.parse(storedAcknowledged) : []);
+
+      // Add the new IDs to the set and save back to local storage.
+      newlyAcknowledgedIds.forEach(id => acknowledgedIds.add(id));
+      localStorage.setItem(`acknowledgedAnnouncements_${user.uid}`, JSON.stringify(Array.from(acknowledgedIds)));
       
       toast({
         title: 'Announcements Acknowledged',

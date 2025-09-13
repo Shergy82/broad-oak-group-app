@@ -55,18 +55,14 @@ export default function DashboardPage() {
       return [];
     }
     
-    // Check localStorage for acknowledged announcements. This is a simpler client-side only solution.
+    // Check localStorage for acknowledged announcements.
     const storedAcknowledged = localStorage.getItem(`acknowledgedAnnouncements_${user.uid}`);
-    const acknowledgedIds = storedAcknowledged ? JSON.parse(storedAcknowledged) : [];
-    const currentAnnouncementIds = announcements.map(a => a.id).sort().join(',');
-    const acknowledgedIdsString = [...acknowledgedIds].sort().join(',');
+    const acknowledgedIds = new Set(storedAcknowledged ? JSON.parse(storedAcknowledged) : []);
 
-    // If the list of current announcements is the same as the list they last acknowledged, don't show the dialog.
-    if (currentAnnouncementIds === acknowledgedIdsString) {
-        return [];
-    }
-    
-    return announcements;
+    // Filter out announcements that have already been acknowledged.
+    const newUnreadAnnouncements = announcements.filter(a => !acknowledgedIds.has(a.id));
+
+    return newUnreadAnnouncements;
 
   }, [announcements, user, loadingAnnouncements]);
   
