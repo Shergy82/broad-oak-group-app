@@ -298,8 +298,6 @@ export default function Dashboard({ allShifts }: { allShifts: Shift[] }) {
             </Button>
         </div>
       )}
-
-      <UserStatsDashboard allShifts={shifts} />
       
       <Tabs defaultValue="today" className="w-full">
         <TabsList>
