@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -138,8 +139,11 @@ export default function UserManagementPage() {
   
   const isActionDisabled = (targetUser: UserProfile) => {
     if (!currentUserProfile) return true;
+    // Only the owner can perform actions
     if (currentUserProfile.role !== 'owner') return true;
+    // The owner cannot act on themselves
     if (currentUserProfile.uid === targetUser.uid) return true;
+    // The owner cannot act on another owner
     if (targetUser.role === 'owner') return true;
     return false;
   }
@@ -147,7 +151,8 @@ export default function UserManagementPage() {
   const renderRoleCell = (user: UserProfile) => {
     const roleMap: {[key: string]: string} = { 'user': 'User', 'admin': 'Admin', 'owner': 'Owner' };
     
-    if (currentUserProfile?.role === 'admin' || isActionDisabled(user)) {
+    // Admins or users viewing themselves or other owners see a read-only badge.
+    if (currentUserProfile?.role !== 'owner' || isActionDisabled(user)) {
       return (
         <Badge variant={user.role === 'owner' || user.role === 'admin' ? 'default' : 'secondary'} className="capitalize">
           {roleMap[user.role] || user.role}
@@ -155,10 +160,12 @@ export default function UserManagementPage() {
       );
     }
        
+    // The owner can change roles for non-owner users.
     return (
         <Select
             defaultValue={user.role}
             onValueChange={(newRole: 'user' | 'admin') => handleRoleChange(user.uid, newRole)}
+            disabled={isActionDisabled(user)}
         >
             <SelectTrigger className="w-[120px]">
               <SelectValue placeholder="Select role" />

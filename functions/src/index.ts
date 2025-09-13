@@ -622,6 +622,7 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
     const callerDoc = await db.collection("users").doc(callerUid).get();
     const callerProfile = callerDoc.data();
 
+    // Corrected Authorization: Only the 'owner' can perform this action.
     if (!callerProfile || callerProfile.role !== 'owner') {
         throw new functions.https.HttpsError("permission-denied", "Only the account owner can delete users.");
     }
@@ -632,6 +633,7 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
         throw new functions.https.HttpsError("invalid-argument", "The function requires a 'uid' (string) argument.");
     }
     
+    // Owner cannot delete themselves.
     if (uid === callerUid) {
         throw new functions.https.HttpsError("permission-denied", "The account owner cannot delete their own account.");
     }
