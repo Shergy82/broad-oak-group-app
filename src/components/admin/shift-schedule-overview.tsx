@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Terminal, MessageSquareText, PlusCircle, Edit, Trash2, Download, History, Trash, Users2, Building, BarChart2 } from 'lucide-react';
+import { Terminal, MessageSquareText, PlusCircle, Edit, Trash2, Download, History, Trash, Users2, Building, BarChart2, HardHat } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -41,6 +41,8 @@ const getStatusBadge = (shift: Shift) => {
             return <Badge variant="secondary" {...baseProps}>Pending</Badge>;
         case 'confirmed':
             return <Badge {...baseProps}>Confirmed</Badge>;
+        case 'on-site':
+            return <Badge {...baseProps} className="bg-teal-500 hover:bg-teal-600"><HardHat className="mr-1.5 h-3 w-3" />On Site</Badge>;
         case 'completed':
             return <Badge {...baseProps} className="bg-green-600 hover:bg-green-700 text-white">Completed</Badge>;
         case 'incomplete':
@@ -651,7 +653,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
         });
     }
 
-    const activeShifts = sortShifts(weekShifts.filter(s => s.status === 'pending-confirmation' || s.status === 'confirmed'));
+    const activeShifts = sortShifts(weekShifts.filter(s => s.status === 'pending-confirmation' || s.status === 'confirmed' || s.status === 'on-site'));
     const historicalShifts = sortShifts(weekShifts.filter(s => s.status === 'completed' || s.status === 'incomplete'))
       .sort((a,b) => getCorrectedLocalDate(b.date).getTime() - getCorrectedLocalDate(a.date).getTime());
 
