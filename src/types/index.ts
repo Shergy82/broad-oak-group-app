@@ -1,6 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 
-export type ShiftStatus = 'pending-confirmation' | 'confirmed' | 'completed' | 'incomplete';
+export type ShiftStatus = 'pending-confirmation' | 'confirmed' | 'on-site' | 'completed' | 'incomplete';
 
 export interface Shift {
   id: string;

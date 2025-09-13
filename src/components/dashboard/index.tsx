@@ -113,7 +113,8 @@ export default function Dashboard() {
     const visibleShifts = shifts.filter(s => !dismissedShiftIds.includes(s.id));
 
     // 1. Separate shifts into active and historical
-    const activeShifts = visibleShifts.filter(s => s.status !== 'completed' && s.status !== 'incomplete');
+    const activeStatuses = ['pending-confirmation', 'confirmed', 'on-site'];
+    const activeShifts = visibleShifts.filter(s => activeStatuses.includes(s.status));
     
     // Filter historical shifts to be within the last 4 weeks
     const historicalShifts = visibleShifts.filter(s => {
