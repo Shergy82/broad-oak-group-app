@@ -1,4 +1,3 @@
-
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as webPush from "web-push";
@@ -565,4 +564,84 @@ export const deleteAllProjects = functions.region("europe-west2").https.onCall(a
     }
 });
 
+
+export const setUserStatus = functions.region("europe-west2").https.onCall(async (data, context) => {
+    // 1. Authentication & Authorization
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
+    }
+    const callerUid = context.auth.uid;
+    const callerDoc = await db.collection("users").doc(callerUid).get();
+    const callerProfile = callerDoc.data();
+
+    if (!callerProfile || callerProfile.role !== 'owner') {
+        throw new functions.https.HttpsError("permission-denied", "Only the account owner can change user status.");
+    }
     
+    // 2. Validation
+    const { uid, disabled } = data;
+    if (typeof uid !== 'string' || typeof disabled !== 'boolean') {
+        throw new functions.https.HttpsError("invalid-argument", "The function requires a 'uid' (string) and 'disabled' (boolean) argument.");
+    }
+
+    // Owner cannot disable themselves.
+    if (uid === callerUid) {
+        throw new functions.https.HttpsError("permission-denied", "The account owner cannot suspend their own account.");
+    }
+    
+    // 3. Execution
+    try {
+        // Update Firebase Auth user
+        await admin.auth().updateUser(uid, { disabled });
+        
+        // Update user status in Firestore
+        const userDocRef = db.collection('users').doc(uid);
+        await userDocRef.update({ status: disabled ? 'suspended' : 'active' });
+
+        functions.logger.log(`Owner ${callerUid} has ${disabled ? 'suspended' : 'reactivated'} user ${uid}.`);
+        return { success: true };
+    } catch (error: any) {
+        functions.logger.error(`Error updating status for user ${uid}:`, error);
+        throw new functions.https.HttpsError("internal", `An unexpected error occurred: ${error.message}`);
+    }
+});
+
+
+export const deleteUser = functions.region("europe-west2").https.onCall(async (data, context) => {
+    // 1. Authentication & Authorization
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
+    }
+    const callerUid = context.auth.uid;
+    const callerDoc = await db.collection("users").doc(callerUid).get();
+    const callerProfile = callerDoc.data();
+
+    if (!callerProfile || callerProfile.role !== 'owner') {
+        throw new functions.https.HttpsError("permission-denied", "Only the account owner can delete users.");
+    }
+    
+    // 2. Validation
+    const { uid } = data;
+    if (typeof uid !== 'string') {
+        throw new functions.https.HttpsError("invalid-argument", "The function requires a 'uid' (string) argument.");
+    }
+    
+    if (uid === callerUid) {
+        throw new functions.https.HttpsError("permission-denied", "The account owner cannot delete their own account.");
+    }
+
+    // 3. Execution
+    try {
+        // Delete from Firestore first
+        await db.collection('users').doc(uid).delete();
+        
+        // Then delete from Firebase Auth
+        await admin.auth().deleteUser(uid);
+        
+        functions.logger.log(`Owner ${callerUid} has permanently deleted user ${uid}.`);
+        return { success: true };
+    } catch (error: any) {
+        functions.logger.error(`Error deleting user ${uid}:`, error);
+        throw new functions.https.HttpsError("internal", `An unexpected error occurred while deleting the user: ${error.message}`);
+    }
+});

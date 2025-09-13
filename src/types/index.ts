@@ -1,4 +1,3 @@
-
 import type { Timestamp } from 'firebase/firestore';
 
 export type ShiftStatus = 'pending-confirmation' | 'confirmed' | 'on-site' | 'completed' | 'incomplete';
@@ -22,6 +21,7 @@ export interface UserProfile {
   phoneNumber: string;
   role: 'user' | 'admin' | 'owner';
   createdAt?: Timestamp;
+  status?: 'active' | 'suspended';
 }
 
 export interface Project {
