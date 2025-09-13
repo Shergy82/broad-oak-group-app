@@ -36,6 +36,7 @@ function DeletionTester() {
                 toast({ title: 'Test Passed', description: data.message });
                 setResult(`SUCCESS: ${data.message}`);
             } else {
+                // This case should ideally not be hit if the function throws an error on failure.
                 toast({ variant: 'destructive', title: 'Test Failed', description: data.message });
                 setResult(`FAILURE: ${data.message}`);
             }
@@ -56,7 +57,7 @@ function DeletionTester() {
                     Deletion Function Test
                 </CardTitle>
                 <CardDescription>
-                    Click the button below to run a live test on the `deleteUser` Cloud Function. This will create and then immediately attempt to delete a temporary user.
+                    Click the button below to run a live, end-to-end test on the `deleteUser` Cloud Function. This will create a temporary user and then immediately attempt to delete them, verifying that all associated data is removed.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -123,10 +124,6 @@ export default function AdminPageContent() {
 
   return (
     <div className="space-y-8">
-
-      {isOwner && (
-        <DeletionTester />
-      )}
       
       {isPrivilegedUser && (
         <Card>
@@ -229,3 +226,5 @@ export default function AdminPageContent() {
     </div>
   );
 }
+
+    

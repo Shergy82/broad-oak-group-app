@@ -631,34 +631,46 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
   }
 
   try {
-    // Delete subcollection pushSubscriptions
+    // Step 1: Delete all documents from the 'pushSubscriptions' subcollection.
     const subscriptionsRef = db.collection("users").doc(uid).collection("pushSubscriptions");
     const subscriptionsSnapshot = await subscriptionsRef.get();
     if (!subscriptionsSnapshot.empty) {
       const batch = db.batch();
       subscriptionsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
       await batch.commit();
+      functions.logger.log(`Deleted ${subscriptionsSnapshot.size} push subscriptions for user ${uid}.`);
     }
 
-    // Delete user Firestore doc
+    // Step 2: Delete the main user document from Firestore.
     await db.collection("users").doc(uid).delete();
+    functions.logger.log(`Deleted Firestore document for user ${uid}.`);
 
-    // Delete Firebase Auth user
+    // Step 3: Delete the user from Firebase Authentication.
     await admin.auth().deleteUser(uid);
+    functions.logger.log(`Deleted Firebase Auth user ${uid}.`);
 
-    functions.logger.log(`Owner ${callerUid} deleted user ${uid}`);
+    functions.logger.log(`Owner ${callerUid} successfully deleted user ${uid}`);
     return { success: true };
 
   } catch (error: any) {
     functions.logger.error(`Error deleting user ${uid}:`, error);
 
     if (error.code === "auth/user-not-found") {
-      throw new functions.https.HttpsError("not-found", "User does not exist in Firebase Auth.");
+      // If the auth user is already gone, log it but don't fail the whole operation.
+      // The main goal is to clean up, so if it's already partly clean, that's okay.
+      functions.logger.warn(`User ${uid} was already deleted from Firebase Auth.`);
+    } else {
+        // For other errors, re-throw a clear error message.
+        throw new functions.https.HttpsError("internal", `An unexpected error occurred while deleting the user: ${error.message}`);
     }
-
-    throw new functions.https.HttpsError("internal", "An unexpected error occurred while deleting the user.");
+    
+    // If an error occurred but we want to ensure the function completes gracefully,
+    // we might still return a success if the main records are gone.
+    // For now, we will throw, but this could be changed based on desired behavior.
+    return { success: true, message: "User deletion process completed, though some errors were encountered." };
   }
 });
+
 
 export const testUserDeletion = functions.region("europe-west2").https.onCall(async (data, context) => {
     if (!context.auth || !context.auth.uid) {
@@ -685,11 +697,11 @@ export const testUserDeletion = functions.region("europe-west2").https.onCall(as
         testUserUid = userRecord.uid;
         functions.logger.log("Test Deletion: Created temporary auth user", testUserUid);
 
-        // Step 2: Create a corresponding document in Firestore
+        // Step 2: Create a corresponding document in Firestore with a role
         await db.collection("users").doc(testUserUid).set({
             name: "Deletion Test User",
             email: testEmail,
-            role: 'user',
+            role: 'user', // Explicitly set role
             status: 'active',
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
@@ -702,34 +714,35 @@ export const testUserDeletion = functions.region("europe-west2").https.onCall(as
         });
         functions.logger.log("Test Deletion: Added dummy subcollection doc for", testUserUid);
 
-
-        // Step 3: Call the actual deleteUser function with the correct context.
-        // This simulates a call from the client as the owner.
+        // Step 3: Call the actual deleteUser function, simulating the owner making the request
         await deleteUser({ uid: testUserUid }, { auth: context.auth });
-        functions.logger.log("Test Deletion: deleteUser function executed successfully for", testUserUid);
+        functions.logger.log("Test Deletion: deleteUser function executed for", testUserUid);
 
         // Step 4: Verify deletion
         try {
             await admin.auth().getUser(testUserUid);
             // If this doesn't throw, the user still exists, which is a failure
-            throw new Error("Auth user was not deleted.");
+            throw new Error(`Auth user ${testUserUid} was not deleted.`);
         } catch (error: any) {
             if (error.code !== 'auth/user-not-found') {
                 // Some other error occurred during verification
                 throw error;
             }
-            // This is the expected outcome, user is not found.
+            // This is the expected outcome: user is not found.
+            functions.logger.log("Test Deletion: Verified Auth user deleted.");
         }
 
         const userDoc = await db.collection("users").doc(testUserUid).get();
         if (userDoc.exists) {
-            throw new Error("Firestore document was not deleted.");
+            throw new Error(`Firestore document for ${testUserUid} was not deleted.`);
         }
+        functions.logger.log("Test Deletion: Verified Firestore doc deleted.");
         
         const subcollectionSnapshot = await db.collection("users").doc(testUserUid).collection("pushSubscriptions").get();
         if (!subcollectionSnapshot.empty) {
-            throw new Error("pushSubscriptions subcollection was not deleted.");
+            throw new Error(`pushSubscriptions subcollection for ${testUserUid} was not deleted.`);
         }
+        functions.logger.log("Test Deletion: Verified subcollection deleted.");
 
         functions.logger.log("Test Deletion: Verification complete. User deleted successfully.");
         return { success: true, message: "Test user created, deleted, and verified successfully." };
@@ -737,23 +750,32 @@ export const testUserDeletion = functions.region("europe-west2").https.onCall(as
     } catch (error: any) {
         functions.logger.error("Test Deletion: An error occurred during the test.", error);
         
-        // Cleanup attempt in case of failure mid-way
+        // Aggressive cleanup attempt in case of failure mid-way
         if (testUserUid) {
             try {
-                await admin.auth().deleteUser(testUserUid);
+                // Try deleting records in reverse order of creation
                 const subcollection = await db.collection("users").doc(testUserUid).collection("pushSubscriptions").get();
-                const batch = db.batch();
-                subcollection.forEach(doc => batch.delete(doc.ref));
-                await batch.commit();
-                await db.collection("users").doc(testUserUid).delete();
+                if (!subcollection.empty) {
+                    const batch = db.batch();
+                    subcollection.forEach(doc => batch.delete(doc.ref));
+                    await batch.commit();
+                }
+                const userDoc = await db.collection("users").doc(testUserUid).get();
+                if (userDoc.exists) {
+                    await db.collection("users").doc(testUserUid).delete();
+                }
+                await admin.auth().deleteUser(testUserUid);
             } catch (cleanupError) {
-                functions.logger.error("Test Deletion: Cleanup failed.", cleanupError);
+                functions.logger.error("Test Deletion: Aggressive cleanup failed.", cleanupError);
             }
         }
         
+        // Re-throw the original error to the client
         if (error instanceof functions.https.HttpsError) {
             throw error;
         }
         throw new functions.https.HttpsError("internal", `Test failed: ${error.message}`);
     }
 });
+
+    

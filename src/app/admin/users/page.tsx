@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, doc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db, functions, httpsCallable } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { useUserProfile } from '@/hooks/use-user-profile';
@@ -25,19 +25,22 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Terminal, ShieldCheck, ShieldX, MoreHorizontal, UserCheck, UserX, Trash2, CheckCircle2 } from 'lucide-react';
+import { Terminal, ShieldCheck, ShieldX, MoreHorizontal, UserCheck, UserX, Trash2, CheckCircle2, FlaskConical } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Spinner } from '@/components/shared/spinner';
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionUser, setActionUser] = useState<UserProfile | null>(null);
   const [isDeleteAlertOpen, setDeleteAlertOpen] = useState(false);
+  const [isTestRunning, setIsTestRunning] = useState(false);
   const { userProfile: currentUserProfile } = useUserProfile();
   const { toast } = useToast();
+  const isOwner = currentUserProfile?.role === 'owner';
 
   useEffect(() => {
     if (!currentUserProfile || !db) {
@@ -75,7 +78,7 @@ export default function UserManagementPage() {
         toast({ variant: 'destructive', title: 'Error', description: 'Functions service not available.' });
         return;
     }
-     if (currentUserProfile?.role !== 'owner') {
+     if (!isOwner) {
         toast({ variant: 'destructive', title: 'Permission Denied', description: 'Only the owner can manage users.' });
         return;
     }
@@ -122,39 +125,45 @@ export default function UserManagementPage() {
     }
   };
 
-  const handleRoleChange = async (userId: string, newRole: 'user' | 'admin' | 'owner') => {
-    if (!db || currentUserProfile?.role !== 'owner') {
-        toast({ variant: 'destructive', title: 'Permission Denied', description: 'Only the owner can change user roles.' });
+  const handleRunDeletionTest = async () => {
+    setIsTestRunning(true);
+    if (!functions) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Functions not available.' });
+        setIsTestRunning(false);
         return;
     }
-    const userDocRef = doc(db, 'users', userId);
+
     try {
-      await updateDoc(userDocRef, { role: newRole });
-      toast({ title: 'Success', description: "User role updated successfully." });
-    } catch (error) {
-      console.error("Error updating role:", error);
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to update user role.' });
+        const testFunction = httpsCallable(functions, 'testUserDeletion');
+        const response = await testFunction();
+        const data = response.data as { success: boolean; message: string };
+        if (data.success) {
+            toast({ title: 'Test Passed', description: data.message, duration: 10000 });
+        }
+    } catch (error: any) {
+        console.error('Deletion test failed:', error);
+        toast({ variant: 'destructive', title: 'Test Failed', description: error.message || 'An unknown error occurred.', duration: 10000 });
+    } finally {
+        setIsTestRunning(false);
     }
   };
   
   const isActionDisabled = (targetUser: UserProfile) => {
-    if (!currentUserProfile) return true;
     // Only the owner can perform actions
-    if (currentUserProfile.role !== 'owner') return true;
+    if (!isOwner) return true;
     // The owner cannot act on themselves
-    if (currentUserProfile.uid === targetUser.uid) return true;
-    // The owner cannot act on another owner
-    if (targetUser.role === 'owner') return true;
+    if (currentUserProfile?.uid === targetUser.uid) return true;
     return false;
   }
 
   const renderRoleCell = (user: UserProfile) => {
     const roleMap: {[key: string]: string} = { 'user': 'User', 'admin': 'Admin', 'owner': 'Owner' };
     
-    // Admins or users viewing themselves or other owners see a read-only badge.
-    if (currentUserProfile?.role !== 'owner' || isActionDisabled(user)) {
+    // Anyone who is not the owner sees a read-only badge.
+    // The owner also sees a read-only badge for themselves or other owners.
+    if (!isOwner || user.role === 'owner' || user.uid === currentUserProfile?.uid) {
       return (
-        <Badge variant={user.role === 'owner' || user.role === 'admin' ? 'default' : 'secondary'} className="capitalize">
+        <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
           {roleMap[user.role] || user.role}
         </Badge>
       );
@@ -164,8 +173,13 @@ export default function UserManagementPage() {
     return (
         <Select
             defaultValue={user.role}
-            onValueChange={(newRole: 'user' | 'admin') => handleRoleChange(user.uid, newRole)}
-            disabled={isActionDisabled(user)}
+            onValueChange={(newRole: 'user' | 'admin') => {
+                 if (!db) return;
+                 const userDocRef = doc(db, 'users', user.uid);
+                 updateDoc(userDocRef, { role: newRole })
+                    .then(() => toast({ title: 'Success', description: "User role updated successfully."}))
+                    .catch((e) => toast({ variant: 'destructive', title: 'Error', description: e.message || 'Failed to update user role.' }));
+            }}
         >
             <SelectTrigger className="w-[120px]">
               <SelectValue placeholder="Select role" />
@@ -195,14 +209,24 @@ export default function UserManagementPage() {
     <>
     <Card>
       <CardHeader>
-        <CardTitle>User Management</CardTitle>
-        <CardDescription>
-            {currentUserProfile?.role === 'owner' 
-                ? 'As the owner, you can view, assign roles, approve, and manage user accounts.' 
-                : 'As an admin, you can view all users and their assigned roles.'
-            }
-        </CardDescription>
-        {currentUserProfile?.role !== 'owner' && (
+         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+                <CardTitle>User Management</CardTitle>
+                 <CardDescription>
+                    {isOwner
+                        ? 'As the owner, you can view, assign roles, approve, and manage user accounts.' 
+                        : 'As an admin, you can view all users and their assigned roles.'
+                    }
+                </CardDescription>
+            </div>
+             {isOwner && (
+                <Button onClick={handleRunDeletionTest} disabled={isTestRunning} variant="outline" size="sm">
+                    {isTestRunning ? <Spinner className="mr-2"/> : <FlaskConical className="mr-2"/>}
+                    Run Deletion Test
+                </Button>
+            )}
+        </div>
+        {!isOwner && (
             <Alert className="mt-4">
                 <ShieldX className="h-4 w-4" />
                 <AlertTitle>Read-Only Access</AlertTitle>
@@ -211,12 +235,12 @@ export default function UserManagementPage() {
                 </AlertDescription>
             </Alert>
         )}
-         {currentUserProfile?.role === 'owner' && (
+         {isOwner && (
             <Alert className="mt-4 border-primary/50 text-primary [&>svg]:text-primary">
                 <ShieldCheck className="h-4 w-4" />
                 <AlertTitle>Owner Privileges</AlertTitle>
                 <AlertDescription>
-                   You can assign roles, approve, suspend, or delete users. You cannot change your own role or the role of another owner.
+                   You can assign roles, approve, suspend, or delete users. You cannot change your own role or suspend yourself.
                 </AlertDescription>
             </Alert>
         )}
@@ -231,7 +255,7 @@ export default function UserManagementPage() {
               <TableHead>Phone Number</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Status</TableHead>
-              { currentUserProfile?.role === 'owner' && <TableHead className="text-right">Actions</TableHead> }
+              { isOwner && <TableHead className="text-right">Actions</TableHead> }
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -244,7 +268,7 @@ export default function UserManagementPage() {
                   <TableCell><Skeleton className="h-4 w-28" /></TableCell>
                   <TableCell><Skeleton className="h-10 w-32" /></TableCell>
                   <TableCell><Skeleton className="h-6 w-20" /></TableCell>
-                  { currentUserProfile?.role === 'owner' && <TableCell><Skeleton className="h-10 w-10 ml-auto" /></TableCell> }
+                  { isOwner && <TableCell><Skeleton className="h-10 w-10 ml-auto" /></TableCell> }
                 </TableRow>
               ))
             ) : (
@@ -258,7 +282,7 @@ export default function UserManagementPage() {
                   <TableCell>
                       {getStatusBadge(user.status)}
                   </TableCell>
-                   {currentUserProfile?.role === 'owner' && (
+                   {isOwner && (
                      <TableCell className="text-right">
                         {!isActionDisabled(user) && (
                              <DropdownMenu>
@@ -325,3 +349,5 @@ export default function UserManagementPage() {
     </>
   );
 }
+
+    
