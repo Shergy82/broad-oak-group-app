@@ -576,7 +576,6 @@ export const setUserStatus = functions.region("europe-west2").https.onCall(async
     const callerDoc = await db.collection("users").doc(callerUid).get();
     const callerProfile = callerDoc.data();
 
-    // CORRECTED: Only the 'owner' can perform this action.
     if (!callerProfile || callerProfile.role !== 'owner') {
         throw new functions.https.HttpsError("permission-denied", "Only the account owner can change user status.");
     }
@@ -589,17 +588,14 @@ export const setUserStatus = functions.region("europe-west2").https.onCall(async
         throw new functions.https.HttpsError("invalid-argument", `Invalid arguments provided. 'uid' must be a string, 'disabled' a boolean, and 'newStatus' must be one of ${validStatuses.join(', ')}.`);
     }
 
-    // Owner cannot disable themselves.
     if (uid === callerUid) {
         throw new functions.https.HttpsError("permission-denied", "The account owner cannot suspend their own account.");
     }
     
     // 3. Execution
     try {
-        // Update Firebase Auth user
         await admin.auth().updateUser(uid, { disabled });
         
-        // Update Firestore status
         const userDocRef = db.collection('users').doc(uid);
         await userDocRef.update({ status: newStatus });
         
@@ -614,54 +610,52 @@ export const setUserStatus = functions.region("europe-west2").https.onCall(async
 
 
 export const deleteUser = functions.region("europe-west2").https.onCall(async (data, context) => {
-    // 1. Authentication & Authorization
-    if (!context.auth) {
-        throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
-    }
-    const callerUid = context.auth.uid;
-    const callerDoc = await db.collection("users").doc(callerUid).get();
-    const callerProfile = callerDoc.data();
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
+  }
 
-    // CORRECTED: Only the owner can delete users.
-    if (!callerProfile || callerProfile.role !== 'owner') {
-        throw new functions.https.HttpsError("permission-denied", "Only the account owner can delete users.");
-    }
-    
-    // 2. Validation
-    const { uid } = data;
-    if (typeof uid !== 'string') {
-        throw new functions.https.HttpsError("invalid-argument", "The function requires a 'uid' (string) argument.");
-    }
-    
-    // Owner cannot delete themselves.
-    if (uid === callerUid) {
-        throw new functions.https.HttpsError("permission-denied", "The account owner cannot delete their own account.");
+  const callerUid = context.auth.uid;
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  const callerProfile = callerDoc.data() as { role: string } | undefined;
+
+  if (!callerProfile || callerProfile.role !== 'owner') {
+    throw new functions.https.HttpsError("permission-denied", "Only the account owner can delete users.");
+  }
+
+  const { uid } = data;
+  if (typeof uid !== "string") {
+    throw new functions.https.HttpsError("invalid-argument", "The function requires a 'uid' (string) argument.");
+  }
+  if (uid === callerUid) {
+    throw new functions.https.HttpsError("permission-denied", "The account owner cannot delete their own account.");
+  }
+
+  try {
+    // Delete subcollection pushSubscriptions
+    const subscriptionsRef = db.collection("users").doc(uid).collection("pushSubscriptions");
+    const subscriptionsSnapshot = await subscriptionsRef.get();
+    if (!subscriptionsSnapshot.empty) {
+      const batch = db.batch();
+      subscriptionsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
     }
 
-    // 3. Execution
-    try {
-        // Step 1: Delete subcollections (e.g., pushSubscriptions)
-        const subscriptionsRef = db.collection('users').doc(uid).collection('pushSubscriptions');
-        const subscriptionsSnapshot = await subscriptionsRef.get();
-        if (!subscriptionsSnapshot.empty) {
-            const batch = db.batch();
-            subscriptionsSnapshot.docs.forEach(doc => {
-                batch.delete(doc.ref);
-            });
-            await batch.commit();
-            functions.logger.log(`Deleted pushSubscriptions subcollection for user ${uid}.`);
-        }
+    // Delete user Firestore doc
+    await db.collection("users").doc(uid).delete();
 
-        // Step 2: Delete from Firestore
-        await db.collection('users').doc(uid).delete();
-        
-        // Step 3: Then delete from Firebase Auth
-        await admin.auth().deleteUser(uid);
-        
-        functions.logger.log(`Owner ${callerUid} has permanently deleted user ${uid}.`);
-        return { success: true };
-    } catch (error: any) {
-        functions.logger.error(`Error deleting user ${uid}:`, error);
-        throw new functions.https.HttpsError("internal", `An unexpected error occurred while deleting the user: ${error.message}`);
+    // Delete Firebase Auth user
+    await admin.auth().deleteUser(uid);
+
+    functions.logger.log(`Owner ${callerUid} deleted user ${uid}`);
+    return { success: true };
+
+  } catch (error: any) {
+    functions.logger.error(`Error deleting user ${uid}:`, error);
+
+    if (error.code === "auth/user-not-found") {
+      throw new functions.https.HttpsError("not-found", "User does not exist in Firebase Auth.");
     }
+
+    throw new functions.https.HttpsError("internal", "An unexpected error occurred while deleting the user.");
+  }
 });
