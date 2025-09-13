@@ -8,7 +8,7 @@ import { useUserProfile } from '@/hooks/use-user-profile';
 import Dashboard from '@/components/dashboard/index';
 import { Header } from '@/components/layout/header';
 import { Spinner } from '@/components/shared/spinner';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Announcement, Shift } from '@/types';
 import { UnreadAnnouncements } from '@/components/announcements/unread-announcements';
