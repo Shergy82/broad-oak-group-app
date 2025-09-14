@@ -6,7 +6,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { auth, isFirebaseConfigured } from '@/lib/firebase';
+import { auth, isFirebaseConfigured, db } from '@/lib/firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -52,32 +53,43 @@ export function SignUpForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!auth) return;
+    if (!auth || !db) return;
 
     setIsLoading(true);
     setError(null);
     setSuccess(false);
 
     try {
+      // Step 1: Create the user in Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
       
       const fullName = `${values.firstName} ${values.surname}`;
 
-      // Update the user's profile in Firebase Auth. The onUserCreate function will use this.
+      // Step 2: Update their Auth profile with their full name. 
+      // This is useful but not strictly necessary for the Cloud Function.
       await updateProfile(user, { 
         displayName: fullName,
       });
 
-      // The Cloud Function 'onUserCreate' will now handle creating the Firestore document.
-      // We no longer need to write to Firestore from the client side here.
+      // Step 3: Manually create the Firestore user document from the client.
+      // This is now necessary because the onUserCreate function is too unreliable.
+      const userDocRef = doc(db, 'users', user.uid);
+      await setDoc(userDocRef, {
+          name: fullName,
+          email: user.email,
+          phoneNumber: values.phoneNumber,
+          role: 'user', // All new sign-ups are standard users
+          status: 'pending-approval', // All new sign-ups must be approved
+          createdAt: serverTimestamp(),
+      });
 
-      setSuccess(true);
-      
-      // Sign the user out immediately after registration.
-      // They will be able to log in once an admin approves their account.
+      // Step 4: Sign the user out immediately after registration.
+      // They must be approved by an admin before they can log in.
       await auth.signOut();
       
+      // Step 5: Show success message and reset the form.
+      setSuccess(true);
       form.reset();
       
     } catch (error: any) {
