@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -9,7 +10,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Clock, Sunrise, Sunset, ThumbsUp, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Trash2, HardHat, ThumbsDown, MessageSquareText } from 'lucide-react';
+import { Clock, Sunrise, Sunset, ThumbsUp, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Trash2, HardHat, MessageSquareText } from 'lucide-react';
 import { Spinner } from '@/components/shared/spinner';
 import type { Shift, ShiftStatus } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
@@ -153,9 +154,12 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
         </CardContent>
         <CardFooter className="p-2 bg-muted/30 grid grid-cols-1 gap-2">
            {shift.status === 'pending-confirmation' && (
-             <div className="grid grid-cols-1 gap-2">
+             <div className="grid grid-cols-2 gap-2">
                 <Button onClick={() => handleUpdateStatus('confirmed')} className="w-full" disabled={isLoading}>
                     {isLoading ? <Spinner /> : <><CheckCircle2 className="mr-2 h-4 w-4" /> Accept</>}
+                </Button>
+                <Button variant="outline" onClick={() => handleUpdateStatus('rejected')} className="w-full" disabled={isLoading}>
+                    {isLoading ? <Spinner /> : <><XCircle className="mr-2 h-4 w-4" /> Reject</>}
                 </Button>
              </div>
            )}
@@ -181,7 +185,7 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
           )}
           {isHistorical && (
             <div className="grid grid-cols-2 gap-2">
-                 <Button variant="outline" onClick={() => handleUpdateStatus('on-site')} className="w-full" disabled={isLoading}>
+                 <Button variant="outline" onClick={() => handleUpdateStatus('confirmed')} className="w-full" disabled={isLoading}>
                    {isLoading ? <Spinner /> : <><RotateCcw className="mr-2 h-4 w-4" /> Re-open</>}
                 </Button>
                 {onDismiss && (

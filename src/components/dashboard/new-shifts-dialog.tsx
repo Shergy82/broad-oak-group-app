@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -18,7 +19,7 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Spinner } from '@/components/shared/spinner';
-import { Check, CheckCheck, ThumbsUp, X } from 'lucide-react';
+import { Check, CheckCheck, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 
 interface NewShiftsDialogProps {
@@ -98,6 +99,7 @@ export function NewShiftsDialog({ shifts, onClose }: NewShiftsDialogProps) {
 
   const getCardClassName = (status?: ShiftStatus) => {
       if (status === 'confirmed') return 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800';
+      if (status === 'rejected') return 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800';
       return '';
   }
 
@@ -138,8 +140,22 @@ export function NewShiftsDialog({ shifts, onClose }: NewShiftsDialogProps) {
                                 <CheckCheck className="h-4 w-4" /> Accepted
                             </div>
                         )}
+                        {status === 'rejected' && (
+                            <div className="text-sm font-semibold text-red-600 flex items-center gap-2">
+                                <X className="h-4 w-4" /> Rejected
+                            </div>
+                        )}
                         {!status && (
                           <>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleUpdate([shift], 'rejected')}
+                                disabled={isLoading}
+                                className="h-8"
+                            >
+                                <ThumbsDown className="mr-2 h-4 w-4" /> Reject
+                            </Button>
                             <Button
                                 size="sm"
                                 variant="outline"
@@ -158,7 +174,10 @@ export function NewShiftsDialog({ shifts, onClose }: NewShiftsDialogProps) {
           </div>
         </ScrollArea>
 
-        <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-end gap-2">
+        <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between gap-2">
+            <Button variant="ghost" onClick={onClose} disabled={isLoading}>
+                Remind Me Later
+            </Button>
             <Button 
                 onClick={() => handleUpdate(shiftsToProcess, 'confirmed')} 
                 disabled={isLoading || shiftsToProcess.length === 0}
@@ -167,7 +186,7 @@ export function NewShiftsDialog({ shifts, onClose }: NewShiftsDialogProps) {
                 {isLoading ? <Spinner /> : 
                 <>
                     <Check className="mr-2 h-4 w-4" />
-                    Accept All Shifts
+                    Accept All Remaining
                 </>
                 }
             </Button>

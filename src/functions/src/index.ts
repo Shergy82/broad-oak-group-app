@@ -563,15 +563,14 @@ export const deleteAllShifts = functions.region("europe-west2").https.onCall(asy
         throw new functions.https.HttpsError("permission-denied", "Only the account owner can perform this action.");
     }
     
-    functions.logger.log(`Owner ${uid} initiated deletion of all active shifts.`);
+    functions.logger.log(`Owner ${uid} initiated deletion of all shifts.`);
 
     try {
-        const activeShiftStatuses = ['pending-confirmation', 'confirmed', 'on-site', 'rejected'];
         const shiftsCollection = db.collection('shifts');
-        const snapshot = await shiftsCollection.where('status', 'in', activeShiftStatuses).get();
+        const snapshot = await shiftsCollection.get();
         
         if (snapshot.empty) {
-            return { success: true, message: "No active shifts to delete." };
+            return { success: true, message: "No shifts to delete." };
         }
 
         const batchSize = 500;
@@ -585,8 +584,8 @@ export const deleteAllShifts = functions.region("europe-west2").https.onCall(asy
 
         await Promise.all(batches);
 
-        functions.logger.log(`Successfully deleted ${snapshot.size} active shifts.`);
-        return { success: true, message: `Successfully deleted ${snapshot.size} active shifts.` };
+        functions.logger.log(`Successfully deleted ${snapshot.size} shifts.`);
+        return { success: true, message: `Successfully deleted ${snapshot.size} shifts.` };
     } catch (error) {
         functions.logger.error("Error deleting all shifts:", error);
         throw new functions.https.HttpsError("internal", "An unexpected error occurred while deleting shifts.");
