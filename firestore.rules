@@ -5,12 +5,12 @@ service cloud.firestore {
   
     // --- Users Collection ---
     // Users can read their own profile.
-    // Any authenticated user can create their own user document.
+    // Any authenticated user can create their OWN user document. This is for sign-up.
     // Users can update their own profile data.
     // Role changes are restricted and handled by Cloud Functions.
     match /users/{userId} {
       allow read, update: if request.auth.uid == userId;
-      allow create: if request.auth.uid != null;
+      allow create: if request.auth.uid == userId;
 
       // --- Push Subscriptions Subcollection ---
       // A user can manage their own push notification subscriptions.
@@ -26,8 +26,12 @@ service cloud.firestore {
     // Admins and owners can create, update, and delete any shift.
     match /shifts/{shiftId} {
       allow read: if request.auth.uid != null && (resource.data.userId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner']);
-      allow create, update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-      allow update: if request.auth.uid != null && resource.data.userId == request.auth.uid && request.resource.data.keys().hasAny(['status', 'notes']);
+      allow create, delete: if request.auth.uid != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+      // Allow user to update their own shift status/notes, and admins/owners to update anything.
+      allow update: if request.auth.uid != null && (
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner']) ||
+        (resource.data.userId == request.auth.uid && request.resource.data.keys().hasAll(['status', 'notes']))
+      );
     }
 
     // --- Projects Collection ---
@@ -40,7 +44,7 @@ service cloud.firestore {
       // --- Files Subcollection ---
       // Any authenticated user can read files.
       // Any authenticated user can upload (create) files.
-      // Deletion is restricted and handled by a Cloud Function.
+      // Deletion is restricted to uploader or admin/owner.
       match /files/{fileId} {
          allow read, create: if request.auth.uid != null;
          allow delete: if request.auth.uid != null && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'] || resource.data.uploaderId == request.auth.uid);
