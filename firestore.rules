@@ -2,63 +2,76 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-  
-    // --- Users Collection ---
-    // Users can read their own profile.
-    // Users can create their own user document during sign-up.
-    // Users can update their own profile data.
+
+    // Users Collection
     match /users/{userId} {
-      allow read, update: if request.auth.uid == userId;
-      allow create: if request.auth.uid == userId;
-
-      // --- Push Subscriptions Subcollection ---
-      // A user can manage their own push notification subscriptions.
-      match /pushSubscriptions/{subscriptionId} {
-        allow read, write, delete: if request.auth.uid == userId;
-      }
-    }
-
-    // --- Shifts Collection ---
-    // Logged-in users can see only their own shifts.
-    // Admins and owners can see all shifts.
-    // Users can update specific fields of their own shifts.
-    // Admins and owners can create, and delete any shift.
-    match /shifts/{shiftId} {
-      allow read: if request.auth.uid != null && (resource.data.userId == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner']);
-      allow create, delete: if request.auth.uid != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-      // A user can update their own shift's status, notes, or confirmedAt timestamp. Admins/owners can update any field.
-      allow update: if (request.auth.uid != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner']) ||
-                    (request.auth.uid != null && resource.data.userId == request.auth.uid && request.resource.data.keys().hasAny(['status', 'notes', 'confirmedAt']));
-    }
-
-    // --- Projects Collection ---
-    // Any authenticated user can read the list of projects and their files.
-    // Creation and deletion of projects and files are restricted to admins/owners and handled via Cloud Functions.
-    match /projects/{projectId} {
       allow read: if request.auth.uid != null;
-      allow create, update, delete: if request.auth.uid != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
-      
-      // --- Files Subcollection ---
-      // Any authenticated user can read or create files.
-      // Deletion is restricted.
-      match /files/{fileId} {
-         allow read, create: if request.auth.uid != null;
-         allow delete: if request.auth.uid != null && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'] || resource.data.uploaderId == request.auth.uid);
-      }
+      // Allow users to create their own user document during sign-up
+      allow create: if request.auth.uid == userId;
+      // Allow users to update their own profile data
+      allow update: if request.auth.uid == userId;
+      // Only the owner can delete user accounts
+      allow delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
     }
-    
-    // --- Announcements Collection ---
-    // Any authenticated user can read announcements.
-    // Admins/owners can create, update, and delete announcements.
-    match /announcements/{announcementId} {
-        allow read: if request.auth.uid != null;
-        allow write: if request.auth.uid != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'];
+    match /users/{userId}/pushSubscriptions/{subscriptionId} {
+      // Allow users to manage their own push notification subscriptions
+      allow read, write: if request.auth.uid == userId;
     }
 
-    // --- Settings Collection ---
-    // Only the owner can read or write to the settings.
-    match /settings/{settingId} {
-      allow read, write: if request.auth.uid != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+    // Settings Collection (Owner only)
+    match /settings/{docId} {
+        allow read, write: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
     }
+
+    // Shifts Collection
+    match /shifts/{shiftId} {
+      function isOwnerOrAdmin() {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['owner', 'admin'];
+      }
+      
+      allow read: if request.auth.uid != null;
+      allow create: if isOwnerOrAdmin();
+      allow delete: if isOwnerOrAdmin();
+      
+      // Allow admins/owners to update any field.
+      // Allow assigned users to update only status, notes, and confirmedAt.
+      allow update: if isOwnerOrAdmin() || 
+                       (resource.data.userId == request.auth.uid &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'notes', 'confirmedAt']));
+    }
+
+    // Projects Collection
+    match /projects/{projectId} {
+      function isOwnerOrAdmin() {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['owner', 'admin'];
+      }
+      allow read: if request.auth.uid != null;
+      allow create, update, delete: if isOwnerOrAdmin();
+    }
+    // Files Subcollection within Projects
+    match /projects/{projectId}/files/{fileId} {
+      function isOwnerOrAdmin() {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['owner', 'admin'];
+      }
+      function isUploader() {
+        return resource.data.uploaderId == request.auth.uid;
+      }
+      allow read: if request.auth.uid != null;
+      allow create: if request.auth.uid != null;
+      allow delete: if isOwnerOrAdmin() || isUploader();
+    }
+
+    // Announcements Collection
+    match /announcements/{announcementId} {
+       function isOwnerOrAdmin() {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['owner', 'admin'];
+      }
+      allow read: if request.auth.uid != null;
+      allow create, update, delete: if isOwnerOrAdmin();
+    }
+     match /announcements/{announcementId}/acknowledgedBy/{userId} {
+        allow read: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['owner', 'admin'];
+        allow create: if request.auth.uid == userId;
+     }
   }
 }

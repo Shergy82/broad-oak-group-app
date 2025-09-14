@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -10,7 +9,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Clock, Sunrise, Sunset, ThumbsUp, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Trash2, HardHat, ThumbsDown } from 'lucide-react';
+import { Clock, Sunrise, Sunset, ThumbsUp, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Trash2, HardHat, ThumbsDown, MessageSquareText } from 'lucide-react';
 import { Spinner } from '@/components/shared/spinner';
 import type { Shift, ShiftStatus } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
@@ -43,7 +42,7 @@ const statusDetails: { [key in ShiftStatus]: { label: string; variant: 'default'
   'on-site': { label: 'On Site', variant: 'default', className: 'bg-teal-500 hover:bg-teal-600', icon: HardHat },
   completed: { label: 'Completed', variant: 'default', className: 'bg-green-600 hover:bg-green-700', icon: CheckCircle2 },
   incomplete: { label: 'Incomplete', variant: 'destructive', className: 'bg-amber-600 hover:bg-amber-700 text-white border-amber-600', icon: XCircle },
-  rejected: { label: 'Rejected', variant: 'destructive', className: '', icon: ThumbsDown },
+  rejected: { label: 'Rejected', variant: 'destructive', className: '', icon: MessageSquareText },
 };
 
 export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
@@ -154,10 +153,7 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
         </CardContent>
         <CardFooter className="p-2 bg-muted/30 grid grid-cols-1 gap-2">
            {shift.status === 'pending-confirmation' && (
-             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                 <Button variant="destructive" onClick={() => setIsNoteDialogOpen(true)} className="w-full" disabled={isLoading}>
-                    {isLoading ? <Spinner /> : <><XCircle className="mr-2 h-4 w-4" /> Reject</>}
-                </Button>
+             <div className="grid grid-cols-1 gap-2">
                 <Button onClick={() => handleUpdateStatus('confirmed')} className="w-full" disabled={isLoading}>
                     {isLoading ? <Spinner /> : <><CheckCircle2 className="mr-2 h-4 w-4" /> Accept</>}
                 </Button>
@@ -217,9 +213,9 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
       <Dialog open={isNoteDialogOpen} onOpenChange={setIsNoteDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Report Issue or Reject Shift</DialogTitle>
+            <DialogTitle>Report an Issue</DialogTitle>
             <DialogDescription>
-              Please provide a reason why this shift cannot be completed as planned. This note will be visible to admins.
+              Please provide a note explaining why the shift cannot be completed as planned. This will mark the shift as 'Incomplete'.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -234,10 +230,7 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
               />
             </div>
           </div>
-          <DialogFooter className="grid grid-cols-2 gap-2">
-            <Button variant="destructive" onClick={() => handleUpdateStatus('rejected', note.trim())} disabled={isLoading} >
-                {isLoading ? <Spinner /> : 'Reject Shift'}
-            </Button>
+          <DialogFooter>
             <Button onClick={handleIncompleteSubmit} disabled={isLoading} className="bg-amber-600 hover:bg-amber-700">
                 {isLoading ? <Spinner /> : 'Mark Incomplete'}
             </Button>

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -19,60 +18,8 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Spinner } from '@/components/shared/spinner';
-import { Check, CheckCheck, ThumbsUp, ThumbsDown, X } from 'lucide-react';
+import { Check, CheckCheck, ThumbsUp, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
-import { Textarea } from '../ui/textarea';
-import { Label } from '../ui/label';
-
-interface RejectionDialogProps {
-  shift: Shift;
-  onClose: () => void;
-  onConfirm: (shift: Shift, reason: string) => void;
-}
-
-function RejectionDialog({ shift, onClose, onConfirm }: RejectionDialogProps) {
-    const [reason, setReason] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const { toast } = useToast();
-
-    const handleConfirm = () => {
-        if (!reason.trim()) {
-            toast({ variant: 'destructive', title: 'Reason Required', description: 'Please explain why you are rejecting this shift.' });
-            return;
-        }
-        setIsLoading(true);
-        onConfirm(shift, reason.trim());
-    }
-
-    return (
-        <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Reject Shift</DialogTitle>
-                    <DialogDescription>
-                        Please provide a reason for rejecting the shift: "{shift.task}" at {shift.address}.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="py-4">
-                    <Label htmlFor="rejection-reason">Reason</Label>
-                    <Textarea
-                        id="rejection-reason"
-                        value={reason}
-                        onChange={(e) => setReason(e.target.value)}
-                        placeholder="e.g., Conflicting appointment, incorrect details..."
-                        rows={4}
-                    />
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={onClose} disabled={isLoading}>Cancel</Button>
-                    <Button onClick={handleConfirm} disabled={isLoading} variant="destructive">
-                        {isLoading ? <Spinner /> : 'Confirm Rejection'}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    )
-}
 
 interface NewShiftsDialogProps {
   shifts: Shift[];
@@ -83,10 +30,9 @@ export function NewShiftsDialog({ shifts, onClose }: NewShiftsDialogProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [acknowledgedShifts, setAcknowledgedShifts] = useState<Record<string, ShiftStatus>>({});
-  const [shiftToReject, setShiftToReject] = useState<Shift | null>(null);
   const { toast } = useToast();
 
-  const handleUpdate = async (shiftsToUpdate: Shift[], newStatus: ShiftStatus, reason?: string) => {
+  const handleUpdate = async (shiftsToUpdate: Shift[], newStatus: ShiftStatus) => {
     if (shiftsToUpdate.length === 0) return;
     setIsLoading(true);
 
@@ -98,14 +44,10 @@ export function NewShiftsDialog({ shifts, onClose }: NewShiftsDialogProps) {
 
       shiftIds.forEach(shiftId => {
         const shiftRef = doc(db, 'shifts', shiftId);
-        const updateData: { status: ShiftStatus, notes?: string, confirmedAt?: any } = {
+        const updateData: { status: ShiftStatus, confirmedAt?: any } = {
           status: newStatus,
         };
         
-        if (newStatus === 'rejected' && reason) {
-            updateData.notes = reason;
-        }
-
         if (newStatus === 'confirmed') {
             updateData.confirmedAt = serverTimestamp();
         }
@@ -139,7 +81,6 @@ export function NewShiftsDialog({ shifts, onClose }: NewShiftsDialogProps) {
       });
     } finally {
       setIsLoading(false);
-      setShiftToReject(null);
     }
   };
 
@@ -157,7 +98,6 @@ export function NewShiftsDialog({ shifts, onClose }: NewShiftsDialogProps) {
 
   const getCardClassName = (status?: ShiftStatus) => {
       if (status === 'confirmed') return 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800';
-      if (status === 'rejected') return 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 opacity-70';
       return '';
   }
 
@@ -198,22 +138,8 @@ export function NewShiftsDialog({ shifts, onClose }: NewShiftsDialogProps) {
                                 <CheckCheck className="h-4 w-4" /> Accepted
                             </div>
                         )}
-                        {status === 'rejected' && (
-                            <div className="text-sm font-semibold text-destructive flex items-center gap-2">
-                                <X className="h-4 w-4" /> Rejected
-                            </div>
-                        )}
                         {!status && (
                           <>
-                            <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => setShiftToReject(shift)}
-                                disabled={isLoading}
-                                className="h-8"
-                            >
-                                <ThumbsDown className="mr-2 h-4 w-4" /> Reject
-                            </Button>
                             <Button
                                 size="sm"
                                 variant="outline"
@@ -248,13 +174,6 @@ export function NewShiftsDialog({ shifts, onClose }: NewShiftsDialogProps) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-    {shiftToReject && (
-        <RejectionDialog
-            shift={shiftToReject}
-            onClose={() => setShiftToReject(null)}
-            onConfirm={(shift, reason) => handleUpdate([shift], 'rejected', reason)}
-        />
-    )}
     </>
   );
 }
