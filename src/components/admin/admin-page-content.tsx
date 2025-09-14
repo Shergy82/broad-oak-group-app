@@ -33,6 +33,11 @@ export default function AdminPageContent() {
     setImportAttempted(true);
   };
   
+  const handleFileSelection = () => {
+    setImportAttempted(false);
+    setFailedShifts([]);
+  };
+
   const handleDownloadPdf = async () => {
     const { default: jsPDF } = await import('jspdf');
     const { default: autoTable } = await import('jspdf-autotable');
@@ -114,7 +119,7 @@ export default function AdminPageContent() {
             </div>
           </CardHeader>
           <CardContent>
-            <FileUploader onImportComplete={handleImportComplete} />
+            <FileUploader onImportComplete={handleImportComplete} onFileSelect={handleFileSelection} />
           </CardContent>
         </Card>
       )}

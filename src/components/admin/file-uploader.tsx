@@ -25,6 +25,7 @@ export interface FailedShift {
 
 interface FileUploaderProps {
     onImportComplete: (failedShifts: FailedShift[]) => void;
+    onFileSelect: () => void;
 }
 
 
@@ -135,7 +136,7 @@ const isLikelyAddress = (str: string): boolean => {
 };
 
 
-export function FileUploader({ onImportComplete }: FileUploaderProps) {
+export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,7 +148,7 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
        if (selectedFile) {
         setFile(selectedFile);
         setError(null);
-        onImportComplete([]); // Clear previous report
+        onFileSelect();
        }
     }
   };
@@ -387,6 +388,8 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
                 description: `A report has been generated below with details on the failures.`,
                 duration: 10000,
             });
+        } else {
+            onImportComplete([]); // Explicitly send empty array on success
         }
 
         setFile(null);
@@ -396,6 +399,7 @@ export function FileUploader({ onImportComplete }: FileUploaderProps) {
       } catch (err: any) {
         console.error('Import failed:', err);
         setError(err.message || 'An unexpected error occurred during import.');
+        onImportComplete([]);
       } finally {
         setIsUploading(false);
       }
