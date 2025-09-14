@@ -3,8 +3,8 @@
 
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { db } from '@/lib/firebase';
-import { collection, onSnapshot, query, addDoc, Timestamp } from 'firebase/firestore';
+import { db, functions, httpsCallable } from '@/lib/firebase';
+import { collection, onSnapshot, query, addDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import type { UserProfile } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -56,7 +56,9 @@ export function TestNotificationSender() {
         type: 'all-day',
         status: 'pending-confirmation',
         address: 'Test Address',
-        task: 'Test Notification Shift',
+        task: 'This is a test shift created to send a notification.',
+        bNumber: 'B-TEST',
+        createdAt: serverTimestamp(),
       });
       toast({ 
         title: 'Test Shift Created Successfully',
