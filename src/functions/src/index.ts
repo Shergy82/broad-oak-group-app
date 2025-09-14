@@ -107,7 +107,6 @@ export const onUserCreate = functions.region("europe-west2").auth.user().onCreat
   const userDocRef = db.collection('users').doc(user.uid);
 
   try {
-    // More robust way to check for the first user. Query for existing owners.
     const ownerQuery = db.collection('users').where('role', '==', 'owner').limit(1);
     const ownerSnapshot = await ownerQuery.get();
     const isFirstUser = ownerSnapshot.empty;
@@ -115,24 +114,21 @@ export const onUserCreate = functions.region("europe-west2").auth.user().onCreat
     const role = isFirstUser ? 'owner' : 'user';
     const status = isFirstUser ? 'active' : 'pending-approval';
     
-    // The phone number might not be immediately available in the user record,
-    // so it's better to get it from the client during sign-up if possible.
-    // We'll leave it as-is for now, but this is a potential improvement area.
     await userDocRef.set({
       name: user.displayName || 'New User',
       email: user.email,
-      phoneNumber: user.phoneNumber || '', // This may often be empty
       role: role,
       status: status,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      // The phoneNumber is collected on the client, but not reliably passed to this function.
+      // An admin can add it later if needed. The important part is creating the user document.
+      phoneNumber: '', 
     });
 
     functions.logger.log(`Successfully created Firestore document for user ${user.uid} with role '${role}' and status '${status}'.`);
 
   } catch (error) {
     functions.logger.error(`CRITICAL: Failed to create Firestore document for new user ${user.uid}.`, error);
-    // If the database write fails, we should delete the auth user to prevent an orphaned auth account.
-    // This allows the user to attempt to sign up again.
     await admin.auth().deleteUser(user.uid);
     functions.logger.log(`Cleaned up (deleted) orphaned auth user ${user.uid} after database write failure.`);
   }
@@ -794,3 +790,5 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
     throw new functions.https.HttpsError("internal", `An unexpected error occurred while deleting the user: ${error.message}`);
   }
 });
+
+    
