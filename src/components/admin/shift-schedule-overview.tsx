@@ -32,6 +32,7 @@ import { ShiftFormDialog } from './shift-form-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useRouter } from 'next/navigation';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 
 const getStatusBadge = (shift: Shift) => {
@@ -512,77 +513,94 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     if (shiftsToRender.length === 0) {
         return null;
     }
+
+    const truncate = (text: string, length = 10) => {
+        const words = text.split(' ');
+        if (words.length > length) {
+            return words.slice(0, length).join(' ') + '...';
+        }
+        return text;
+    };
     
     return (
         <>
             {/* Desktop Table View */}
             <Card className="hidden md:block mt-4">
                 <CardContent className="p-0">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="w-[180px]">Date</TableHead>
-                                { selectedUserId === 'all' && <TableHead className="w-[180px]">Operative</TableHead> }
-                                <TableHead>Task &amp; Address</TableHead>
-                                <TableHead className="text-right w-[110px]">Type</TableHead>
-                                <TableHead className="text-right w-[160px]">Status</TableHead>
-                                {isOwner && <TableHead className="text-right w-[140px]">Actions</TableHead>}
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {shiftsToRender.map(shift => (
-                                <TableRow key={shift.id}>
-                                    <TableCell className="font-medium">{format(getCorrectedLocalDate(shift.date), 'eeee, MMM d')}</TableCell>
-                                    { selectedUserId === 'all' && <TableCell>{userNameMap.get(shift.userId) || 'Unknown'}</TableCell> }
-                                    <TableCell>
-                                        <div>{shift.task}</div>
-                                        <div className="text-xs text-muted-foreground">{shift.address}</div>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <Badge
-                                            variant={shift.type === 'am' ? 'default' : shift.type === 'pm' ? 'secondary' : 'outline'}
-                                            className="capitalize text-xs"
-                                        >
-                                            {shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase()}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        {getStatusBadge(shift)}
-                                    </TableCell>
-                                    {isOwner && (
-                                        <TableCell className="text-right">
-                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditShift(shift)}>
-                                                <Edit className="h-4 w-4" />
-                                            </Button>
-                                            <AlertDialog>
-                                                <AlertDialogTrigger asChild>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10">
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </AlertDialogTrigger>
-                                                <AlertDialogContent>
-                                                    <AlertDialogHeader>
-                                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                                        <AlertDialogDescription>
-                                                            This action cannot be undone. This will permanently delete the shift for 
-                                                            <span className="font-semibold"> {shift.task}</span> at 
-                                                            <span className="font-semibold"> {shift.address}</span>.
-                                                        </AlertDialogDescription>
-                                                    </AlertDialogHeader>
-                                                    <AlertDialogFooter>
-                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                        <AlertDialogAction onClick={() => handleDeleteShift(shift)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                                            Delete
-                                                        </AlertDialogAction>
-                                                    </AlertDialogFooter>
-                                                </AlertDialogContent>
-                                            </AlertDialog>
-                                        </TableCell>
-                                    )}
+                    <TooltipProvider>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="w-[180px]">Date</TableHead>
+                                    { selectedUserId === 'all' && <TableHead className="w-[180px]">Operative</TableHead> }
+                                    <TableHead>Task &amp; Address</TableHead>
+                                    <TableHead className="text-right w-[110px]">Type</TableHead>
+                                    <TableHead className="text-right w-[160px]">Status</TableHead>
+                                    {isOwner && <TableHead className="text-right w-[140px]">Actions</TableHead>}
                                 </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {shiftsToRender.map(shift => (
+                                    <TableRow key={shift.id}>
+                                        <TableCell className="font-medium">{format(getCorrectedLocalDate(shift.date), 'eeee, MMM d')}</TableCell>
+                                        { selectedUserId === 'all' && <TableCell>{userNameMap.get(shift.userId) || 'Unknown'}</TableCell> }
+                                        <TableCell>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <div className="truncate">{truncate(shift.task)}</div>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p className="max-w-xs">{shift.task}</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                            <div className="text-xs text-muted-foreground">{shift.address}</div>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <Badge
+                                                variant={shift.type === 'am' ? 'default' : shift.type === 'pm' ? 'secondary' : 'outline'}
+                                                className="capitalize text-xs"
+                                            >
+                                                {shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase()}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            {getStatusBadge(shift)}
+                                        </TableCell>
+                                        {isOwner && (
+                                            <TableCell className="text-right">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditShift(shift)}>
+                                                    <Edit className="h-4 w-4" />
+                                                </Button>
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10">
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                                            <AlertDialogDescription>
+                                                                This action cannot be undone. This will permanently delete the shift for 
+                                                                <span className="font-semibold"> {shift.task}</span> at 
+                                                                <span className="font-semibold"> {shift.address}</span>.
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+                                                        <AlertDialogFooter>
+                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                            <AlertDialogAction onClick={() => handleDeleteShift(shift)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                                                Delete
+                                                            </AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            </TableCell>
+                                        )}
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </TooltipProvider>
                 </CardContent>
             </Card>
 
