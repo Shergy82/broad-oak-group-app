@@ -9,7 +9,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Clock, Sunrise, Sunset, ThumbsUp, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Trash2 } from 'lucide-react';
+import { Clock, Sunrise, Sunset, ThumbsUp, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Trash2, HardHat } from 'lucide-react';
 import { Spinner } from '@/components/shared/spinner';
 import type { Shift, ShiftStatus } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
@@ -39,8 +39,10 @@ const shiftTypeDetails = {
 const statusDetails: { [key in ShiftStatus]: { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; className: string; icon: React.ElementType } } = {
   'pending-confirmation': { label: 'Pending', variant: 'secondary', className: '', icon: AlertTriangle },
   confirmed: { label: 'Confirmed', variant: 'default', className: 'bg-primary hover:bg-primary/90', icon: ThumbsUp },
+  'on-site': { label: 'On Site', variant: 'default', className: 'bg-teal-500 hover:bg-teal-600', icon: HardHat },
   completed: { label: 'Completed', variant: 'default', className: 'bg-green-600 hover:bg-green-700', icon: CheckCircle2 },
   incomplete: { label: 'Incomplete', variant: 'destructive', className: 'bg-amber-600 hover:bg-amber-700 text-white border-amber-600', icon: XCircle },
+  rejected: { label: 'Rejected', variant: 'destructive', className: 'bg-destructive/80 hover:bg-destructive/90 text-white border-destructive/80', icon: XCircle },
 };
 
 export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
@@ -135,7 +137,7 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
           <p className="font-semibold text-sm">{shift.task}</p>
           <p className="text-xs text-muted-foreground">{shift.address}</p>
           {shift.bNumber && <p className="text-xs text-muted-foreground">B-Number: {shift.bNumber}</p>}
-          {shift.status === 'incomplete' && shift.notes && (
+          {(shift.status === 'incomplete' || shift.status === 'rejected') && shift.notes && (
             <div className="mt-3 p-3 bg-destructive/10 border-l-4 border-destructive rounded-r-md">
                 <p className="text-sm font-semibold text-destructive">Note:</p>
                 <p className="text-sm text-destructive/90 italic">"{shift.notes}"</p>
@@ -148,7 +150,14 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
               {isLoading ? <Spinner /> : <><ThumbsUp className="mr-2 h-4 w-4" /> Accept Shift</>}
             </Button>
           )}
+
           {shift.status === 'confirmed' && (
+             <Button onClick={() => handleUpdateStatus('on-site')} className="w-full bg-teal-500 text-white hover:bg-teal-600" disabled={isLoading}>
+                {isLoading ? <Spinner /> : <><HardHat className="mr-2 h-4 w-4" /> On Site</>}
+            </Button>
+          )}
+
+          {shift.status === 'on-site' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                  <Button onClick={() => handleUpdateStatus('completed')} className="w-full bg-green-500 text-white hover:bg-green-600" disabled={isLoading}>
                     {isLoading ? <Spinner /> : <><CheckCircle2 className="mr-2 h-4 w-4" /> Complete</>}
@@ -158,6 +167,7 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
                 </Button>
             </div>
           )}
+
           {isHistorical && (
             <div className="grid grid-cols-2 gap-2">
                  <Button variant="outline" onClick={() => handleUpdateStatus('confirmed')} className="w-full" disabled={isLoading}>
