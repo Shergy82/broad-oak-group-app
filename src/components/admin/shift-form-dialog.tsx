@@ -92,16 +92,20 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift, userProfile 
     if (!db) return;
     setIsLoading(true);
 
+    const selectedDate = values.date;
+    // Correct for timezone offset by creating a UTC date from the local date parts
+    const correctedDate = new Date(Date.UTC(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate()));
+
     const dataToSave = {
       ...values,
-      date: Timestamp.fromDate(values.date),
+      date: Timestamp.fromDate(correctedDate),
       bNumber: values.bNumber || '',
     };
     
     try {
       if (isEditing && shift) {
         const shiftRef = doc(db, 'shifts', shift.id);
-        await updateDoc(shiftRef, dataToSave);
+        await updateDoc(shiftRef, dataToSave as any);
         toast({ title: 'Success', description: 'Shift updated.' });
       } else {
         await addDoc(collection(db, 'shifts'), {

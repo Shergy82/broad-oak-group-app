@@ -102,8 +102,14 @@ const parseDate = (dateValue: any): Date | null => {
         const d = dateValue;
         return !isNaN(d.getTime()) ? new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())) : null;
     }
+    // This is the primary fix for Excel dates.
+    // It correctly handles the serial number format from Excel.
     if (typeof dateValue === 'number' && dateValue > 1) {
-        const d = new Date(Math.round((dateValue - 25569) * 864e5));
+        // Excel's epoch starts on 1900-01-01, but incorrectly treats 1900 as a leap year.
+        // The number of days between 1900-01-01 and 1970-01-01 is 25569 (25567 for real days + 2 for excel quirks).
+        const excelEpoch = new Date(1899, 11, 30);
+        const d = new Date(excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
+        if (isNaN(d.getTime())) return null;
         return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
     }
     if (typeof dateValue === 'string') {
@@ -177,7 +183,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         const data = e.target?.result;
         if (!data) throw new Error("Could not read file data.");
         
-        const workbook = XLSX.read(data, { type: 'array' });
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
         
         const usersSnapshot = await getDocs(collection(db, 'users'));
         const userMap: UserMapEntry[] = [];
