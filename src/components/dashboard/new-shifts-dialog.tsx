@@ -98,9 +98,8 @@ export function NewShiftsDialog({ shifts, onClose }: NewShiftsDialogProps) {
 
       shiftIds.forEach(shiftId => {
         const shiftRef = doc(db, 'shifts', shiftId);
-        const updateData: { status: ShiftStatus, isNew: boolean, notes?: string, confirmedAt?: any } = {
+        const updateData: { status: ShiftStatus, notes?: string, confirmedAt?: any } = {
           status: newStatus,
-          isNew: false, // Mark as not new anymore
         };
         
         if (newStatus === 'rejected' && reason) {

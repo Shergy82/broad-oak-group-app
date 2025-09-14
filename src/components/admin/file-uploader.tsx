@@ -343,8 +343,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                 const newShiftData = {
                     ...excelShift,
                     date: Timestamp.fromDate(excelShift.date),
-                    status: 'confirmed', // Create as confirmed
-                    isNew: true, // Flag for user acknowledgement
+                    status: 'pending-confirmation', // Create as pending
                     createdAt: serverTimestamp(),
                 };
                 batch.set(doc(collection(db, 'shifts')), newShiftData);

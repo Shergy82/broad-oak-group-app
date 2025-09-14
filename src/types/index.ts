@@ -15,7 +15,6 @@ export interface Shift {
   notes?: string;
   createdAt: Timestamp;
   confirmedAt?: Timestamp;
-  isNew?: boolean;
 }
 
 export interface UserProfile {

@@ -77,12 +77,11 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
     try {
       const shiftRef = doc(db, 'shifts', shift.id);
       
-      const updateData: { status: ShiftStatus; notes?: any, isNew?: boolean, confirmedAt?: any } = {
+      const updateData: { status: ShiftStatus; notes?: any, confirmedAt?: any } = {
         status: newStatus,
       };
 
       if (newStatus === 'confirmed') {
-          updateData.isNew = false;
           updateData.confirmedAt = serverTimestamp();
       }
 

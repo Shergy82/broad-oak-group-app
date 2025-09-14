@@ -106,8 +106,7 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift, userProfile 
       } else {
         await addDoc(collection(db, 'shifts'), {
           ...dataToSave,
-          status: 'confirmed',
-          isNew: true,
+          status: 'pending-confirmation',
           createdAt: serverTimestamp(),
         });
         toast({ title: 'Success', description: 'Shift created.' });
@@ -139,8 +138,7 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift, userProfile 
             userId: testUser.uid,
             date: Timestamp.fromDate(new Date()),
             type: 'all-day',
-            status: 'confirmed',
-            isNew: true,
+            status: 'pending-confirmation',
             address: 'Test Shift Address',
             task: 'This is a test shift for notification.',
             bNumber: 'B-TEST',

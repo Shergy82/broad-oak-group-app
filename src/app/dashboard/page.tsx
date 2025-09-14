@@ -8,7 +8,7 @@ import { useUserProfile } from '@/hooks/use-user-profile';
 import Dashboard from '@/components/dashboard/index';
 import { Header } from '@/components/layout/header';
 import { Spinner } from '@/components/shared/spinner';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Announcement, Shift } from '@/types';
 import { UnreadAnnouncements } from '@/components/announcements/unread-announcements';
@@ -38,7 +38,7 @@ export default function DashboardPage() {
     }
     setLoadingData(true);
 
-    const announcementsQuery = query(collection(db, 'announcements'));
+    const announcementsQuery = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
     const shiftsQuery = query(collection(db, 'shifts'), where('userId', '==', user.uid));
     
     let announcementsLoaded = false;
@@ -87,7 +87,7 @@ export default function DashboardPage() {
 
   const newShifts = useMemo(() => {
     if (!user || loadingData || allShifts.length === 0) return [];
-    return allShifts.filter(shift => shift.isNew === true);
+    return allShifts.filter(shift => shift.status === 'pending-confirmation');
   }, [allShifts, user, loadingData]);
   
   const activeShifts = useMemo(() => {
