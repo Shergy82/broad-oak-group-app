@@ -26,14 +26,14 @@ const getCorrectedLocalDate = (date: { toDate: () => Date }) => {
 export default function Dashboard({ allShifts }: { allShifts: Shift[] }) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [shifts, setShifts] = useState<Shift[]>(allShifts);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dismissedShiftIds, setDismissedShiftIds] = useState<string[]>([]);
 
   useEffect(() => {
-    setShifts(allShifts);
-    setLoading(false);
+    if (allShifts) {
+      setLoading(false);
+    }
   }, [allShifts]);
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export default function Dashboard({ allShifts }: { allShifts: Shift[] }) {
     const fourWeeksAgo = subDays(today, 28);
 
     // Filter out locally dismissed shifts first
-    const visibleShifts = shifts.filter(s => !dismissedShiftIds.includes(s.id));
+    const visibleShifts = allShifts.filter(s => !dismissedShiftIds.includes(s.id));
 
     // 1. Separate shifts into active and historical
     const activeStatuses: ShiftStatus[] = ['pending-confirmation', 'confirmed', 'on-site'];
@@ -114,9 +114,9 @@ export default function Dashboard({ allShifts }: { allShifts: Shift[] }) {
         return isSameWeek(shiftDate, startOfNextWeek, { weekStartsOn: 1 });
     });
 
-    // 3. Group all shifts for PDF using the original `shifts` array
-    const allThisWeekShiftsData = shifts.filter(s => isSameWeek(getCorrectedLocalDate(s.date), today, { weekStartsOn: 1 }));
-    const allNextWeekShiftsData = shifts.filter(s => {
+    // 3. Group all shifts for PDF using the original `allShifts` array
+    const allThisWeekShiftsData = allShifts.filter(s => isSameWeek(getCorrectedLocalDate(s.date), today, { weekStartsOn: 1 }));
+    const allNextWeekShiftsData = allShifts.filter(s => {
         const shiftDate = getCorrectedLocalDate(s.date);
         const startOfNextWeek = addDays(today, 7);
         return isSameWeek(shiftDate, startOfNextWeek, { weekStartsOn: 1 });
@@ -132,7 +132,7 @@ export default function Dashboard({ allShifts }: { allShifts: Shift[] }) {
       allThisWeekShifts: allThisWeekShiftsData,
       allNextWeekShifts: allNextWeekShiftsData,
     };
-  }, [shifts, dismissedShiftIds]);
+  }, [allShifts, dismissedShiftIds]);
 
   const handleDownloadPdf = async () => {
     const { default: jsPDF } = await import('jspdf');
