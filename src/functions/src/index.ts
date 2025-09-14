@@ -102,34 +102,42 @@ export const setNotificationStatus = functions.region("europe-west2").https.onCa
 });
 
 export const onUserCreate = functions.region("europe-west2").auth.user().onCreate(async (user) => {
-  functions.logger.log(`New user created: ${user.uid}, email: ${user.email}`);
+  functions.logger.log(`New user account created: ${user.uid}, email: ${user.email}`);
 
   const userDocRef = db.collection('users').doc(user.uid);
 
   try {
-    const usersSnapshot = await db.collection('users').limit(1).get();
-    const isFirstUser = usersSnapshot.empty;
+    // More robust way to check for the first user. Query for existing owners.
+    const ownerQuery = db.collection('users').where('role', '==', 'owner').limit(1);
+    const ownerSnapshot = await ownerQuery.get();
+    const isFirstUser = ownerSnapshot.empty;
 
     const role = isFirstUser ? 'owner' : 'user';
     const status = isFirstUser ? 'active' : 'pending-approval';
-
+    
+    // The phone number might not be immediately available in the user record,
+    // so it's better to get it from the client during sign-up if possible.
+    // We'll leave it as-is for now, but this is a potential improvement area.
     await userDocRef.set({
       name: user.displayName || 'New User',
       email: user.email,
-      phoneNumber: user.phoneNumber || '',
+      phoneNumber: user.phoneNumber || '', // This may often be empty
       role: role,
       status: status,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     functions.logger.log(`Successfully created Firestore document for user ${user.uid} with role '${role}' and status '${status}'.`);
+
   } catch (error) {
-    functions.logger.error(`Failed to create Firestore document for user ${user.uid}`, error);
-    // Optionally, delete the auth user if the DB record fails, to allow them to try signing up again.
+    functions.logger.error(`CRITICAL: Failed to create Firestore document for new user ${user.uid}.`, error);
+    // If the database write fails, we should delete the auth user to prevent an orphaned auth account.
+    // This allows the user to attempt to sign up again.
     await admin.auth().deleteUser(user.uid);
-    functions.logger.log(`Cleaned up auth user ${user.uid} after database write failure.`);
+    functions.logger.log(`Cleaned up (deleted) orphaned auth user ${user.uid} after database write failure.`);
   }
 });
+
 
 export const sendShiftNotification = functions.region("europe-west2").firestore.document("shifts/{shiftId}")
   .onWrite(async (change, context) => {
