@@ -551,11 +551,23 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     const operatives = new Set(weeklyShifts.map(s => s.userId)).size;
 
     // Man-days calculation
-    const projectAddressToManagerMap = new Map(projects.map(p => [p.address, p.manager]));
     const manDaysByManager: { [key: string]: number } = {};
 
     weeklyShifts.forEach(shift => {
-        const manager = projectAddressToManagerMap.get(shift.address) || 'Unassigned';
+        const addressLines = shift.address.split('\n');
+        let manager = 'Unassigned';
+        const managerLineIndex = addressLines.findIndex(line => line.toUpperCase().startsWith('MANAGER'));
+        if (managerLineIndex !== -1) {
+            manager = addressLines[managerLineIndex].substring('MANAGER'.length).trim();
+            // Also grab the next line if it seems to be part of the name
+            if (managerLineIndex + 1 < addressLines.length && /^[A-Z\s]+$/.test(addressLines[managerLineIndex + 1])) {
+                 const nextLineIsPartOfAddress = /LANE|ROAD|STREET|CLOSE|AVENUE|DRIVE|COURT/i.test(addressLines[managerLineIndex + 1]);
+                 if (!nextLineIsPartOfAddress) {
+                    manager += ` ${addressLines[managerLineIndex + 1].trim()}`;
+                 }
+            }
+        }
+
         if (!manDaysByManager[manager]) {
             manDaysByManager[manager] = 0;
         }
