@@ -547,7 +547,9 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     const completed = weeklyShifts.filter(s => s.status === 'completed').length;
     const pending = weeklyShifts.filter(s => s.status === 'pending-confirmation').length;
     const confirmed = weeklyShifts.filter(s => s.status === 'confirmed').length;
+    const onSite = weeklyShifts.filter(s => s.status === 'on-site').length;
     const incomplete = weeklyShifts.filter(s => s.status === 'incomplete').length;
+    const rejected = weeklyShifts.filter(s => s.status === 'rejected').length;
     const operatives = new Set(weeklyShifts.map(s => s.userId)).size;
 
     // Man-days calculation
@@ -559,7 +561,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
         let manager = 'Unassigned';
 
         for (const name of managerNames) {
-            if (combinedText.toLowerCase().includes(name.toLowerCase())) {
+             if (shift.task.toLowerCase().endsWith(name.toLowerCase()) || shift.address.toLowerCase().endsWith(name.toLowerCase())) {
                 manager = name;
                 break;
             }
@@ -600,7 +602,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
           ['Total Shifts', totalShifts],
           ['Operatives on Site', operatives],
           ['Completed Shifts', completed],
-          ['Confirmed & In Progress', confirmed + pending],
+          ['Confirmed & In Progress', confirmed + onSite],
           ['Marked Incomplete', incomplete],
       ],
       theme: 'grid',
