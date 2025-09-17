@@ -22,33 +22,9 @@ interface PerformanceMetrics {
   incomplete: number;
   completionRate: number;
   incompleteRate: number;
-  avgAcceptanceTime: string;
 }
 
 type TimeRange = 'weekly' | 'monthly' | 'all-time';
-
-// Helper to calculate difference in hours
-const diffHours = (t2: Timestamp, t1: Timestamp) => {
-    if (!t2 || !t1) return null;
-    const diff = t2.toMillis() - t1.toMillis();
-    return diff / (1000 * 60 * 60);
-}
-
-// Helper to format duration
-const formatDuration = (hours: number | null) => {
-    if (hours === null || hours < 0) return 'N/A';
-    if (hours < 1) {
-        const minutes = Math.round(hours * 60);
-        return `${minutes} min`;
-    }
-    if (hours > 24) {
-        const days = Math.floor(hours / 24);
-        const remainingHours = Math.round(hours % 24);
-        return `${days}d ${remainingHours}h`;
-    }
-    return `${Math.round(hours)}h`;
-}
-
 
 export function PerformanceDashboard() {
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -120,18 +96,6 @@ export function PerformanceDashboard() {
         const completionRate = relevantTotal > 0 ? (completed / relevantTotal) * 100 : 0;
         const incompleteRate = relevantTotal > 0 ? (incomplete / relevantTotal) * 100 : 0;
         
-        const acceptanceTimes: number[] = [];
-        userShifts.forEach(shift => {
-          if (shift.createdAt && shift.confirmedAt) {
-            const time = diffHours(shift.confirmedAt, shift.createdAt);
-            if (time !== null) acceptanceTimes.push(time);
-          }
-        });
-
-        const avgHours = acceptanceTimes.length > 0
-          ? acceptanceTimes.reduce((a, b) => a + b, 0) / acceptanceTimes.length
-          : null;
-
         return {
           userId: user.uid,
           userName: user.name,
@@ -140,7 +104,6 @@ export function PerformanceDashboard() {
           incomplete,
           completionRate,
           incompleteRate,
-          avgAcceptanceTime: formatDuration(avgHours)
         };
       })
       .filter((metric): metric is PerformanceMetrics => metric !== null); 
@@ -171,13 +134,12 @@ export function PerformanceDashboard() {
     doc.setTextColor(100);
     doc.text(`Generated on: ${format(generationDate, 'PPP p')}`, 14, 28);
     
-    const head = [['Operative', 'Total Shifts', 'Completion %', 'Incomplete %', 'Avg. Acceptance']];
+    const head = [['Operative', 'Total Shifts', 'Completion %', 'Incomplete %']];
     const body = performanceData.map(data => [
         data.userName,
         data.totalShifts.toString(),
         `${data.completionRate.toFixed(1)}%`,
         `${data.incompleteRate.toFixed(1)}%`,
-        data.avgAcceptanceTime,
     ]);
 
     autoTable(doc, {
@@ -253,8 +215,7 @@ export function PerformanceDashboard() {
                     <TableHead>Operative</TableHead>
                     <TableHead className="text-center">Total Shifts</TableHead>
                     <TableHead className="text-center">Completion Rate</TableHead>
-                    <TableHead className="text-center">Incomplete Rate</TableHead>
-                    <TableHead className="text-right">Avg. Acceptance Time</TableHead>
+                    <TableHead className="text-right">Incomplete Rate</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -263,8 +224,7 @@ export function PerformanceDashboard() {
                         <TableCell className="font-medium">{data.userName}</TableCell>
                         <TableCell className="text-center">{data.totalShifts}</TableCell>
                         <TableCell className="text-center text-green-600 font-medium">{data.completionRate.toFixed(1)}%</TableCell>
-                        <TableCell className="text-center text-amber-600 font-medium">{data.incompleteRate.toFixed(1)}%</TableCell>
-                        <TableCell className="text-right">{data.avgAcceptanceTime}</TableCell>
+                        <TableCell className="text-right text-amber-600 font-medium">{data.incompleteRate.toFixed(1)}%</TableCell>
                       </TableRow>
                     ))}
                 </TableBody>
@@ -277,16 +237,9 @@ export function PerformanceDashboard() {
                 <Card key={data.userId}>
                   <CardHeader>
                     <CardTitle className="text-base">{data.userName}</CardTitle>
-                    <CardDescription>Avg. Acceptance: {data.avgAcceptanceTime}</CardDescription>
+                    <CardDescription>Total Shifts: {data.totalShifts}</CardDescription>
                   </CardHeader>
                   <CardContent className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                    <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                            <p className="font-medium">{data.totalShifts}</p>
-                            <p className="text-muted-foreground text-xs">Total Shifts</p>
-                        </div>
-                    </div>
                      <div className="flex items-center gap-2">
                         <Percent className="h-4 w-4 text-muted-foreground" />
                         <div>
