@@ -423,6 +423,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     const completed = todaysShifts.filter(s => s.status === 'completed').length;
     const pending = todaysShifts.filter(s => s.status === 'pending-confirmation').length;
     const confirmed = todaysShifts.filter(s => s.status === 'confirmed').length;
+    const onSite = todaysShifts.filter(s => s.status === 'on-site').length;
     const incomplete = todaysShifts.filter(s => s.status === 'incomplete').length;
     const operatives = new Set(todaysShifts.map(s => s.userId)).size;
 
@@ -437,7 +438,8 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
           ['Total Shifts', totalShifts],
           ['Operatives on Site', operatives],
           ['Completed Shifts', completed],
-          ['Confirmed & In Progress', confirmed],
+          ['On Site / In Progress', onSite],
+          ['Confirmed', confirmed],
           ['Pending Confirmation', pending],
           ['Marked Incomplete', incomplete],
       ],
@@ -459,21 +461,27 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
         return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
     };
     
-    // Sort shifts by status for the report
     const statusOrder: {[key: string]: number} = {
-        'completed': 1,
-        'incomplete': 2,
-        'confirmed': 3,
-        'pending-confirmation': 4,
-        'rejected': 5,
+        'on-site': 1,
+        'confirmed': 2,
+        'pending-confirmation': 3,
+        'completed': 4,
+        'incomplete': 5,
+        'rejected': 6,
     };
     const sortedShifts = [...todaysShifts].sort((a, b) => {
         const aStatus = a.status || 'pending-confirmation';
         const bStatus = b.status || 'pending-confirmation';
-        return statusOrder[aStatus] - statusOrder[bStatus];
+        if (statusOrder[aStatus] !== statusOrder[bStatus]) {
+            return statusOrder[aStatus] - statusOrder[bStatus];
+        }
+        const nameA = userNameMap.get(a.userId) || '';
+        const nameB = userNameMap.get(b.userId) || '';
+        return nameA.localeCompare(nameB);
     });
 
     const statusColors: {[key: string]: {bg: [number, number, number], text: [number, number, number]}} = {
+      'on-site': { bg: [204, 255, 255], text: [0, 128, 128] },
       completed: { bg: [211, 255, 211], text: [0, 100, 0] },
       incomplete: { bg: [255, 239, 213], text: [139, 69, 19] },
       confirmed: { bg: [224, 236, 255], text: [0, 0, 128] },
