@@ -266,9 +266,9 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                     const namePart = parts.pop()!;
                     let task = parts.join('-').trim();
                     
-                    // Capitalize the first letter of the task
+                    // Convert the entire task to uppercase
                     if (task) {
-                        task = task.charAt(0).toUpperCase() + task.slice(1);
+                        task = task.toUpperCase();
                     }
                     
                     const nameCandidates = namePart.split(/[/&+,]/).map(name => name.trim()).filter(Boolean);
