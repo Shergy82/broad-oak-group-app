@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { BarChart, Download, Users, Percent, CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { format, startOfWeek, startOfMonth } from 'date-fns';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface PerformanceMetrics {
@@ -68,17 +68,25 @@ export function PerformanceDashboard() {
     if (loading || error) return [];
     
     const now = new Date();
-    let startDate: Date | null = null;
-    
+    let filteredShifts: Shift[];
+
     if (timeRange === 'weekly') {
-        startDate = startOfWeek(now, { weekStartsOn: 1 });
+        const start = startOfWeek(now, { weekStartsOn: 1 });
+        const end = endOfWeek(now, { weekStartsOn: 1 });
+        filteredShifts = shifts.filter(s => {
+            const shiftDate = s.date.toDate();
+            return shiftDate >= start && shiftDate <= end;
+        });
     } else if (timeRange === 'monthly') {
-        startDate = startOfMonth(now);
+        const start = startOfMonth(now);
+        const end = endOfMonth(now);
+        filteredShifts = shifts.filter(s => {
+            const shiftDate = s.date.toDate();
+            return shiftDate >= start && shiftDate <= end;
+        });
+    } else {
+        filteredShifts = shifts;
     }
-    
-    const filteredShifts = startDate 
-        ? shifts.filter(s => s.date.toDate() >= startDate!)
-        : shifts;
 
     const metrics = users
       .map(user => {
