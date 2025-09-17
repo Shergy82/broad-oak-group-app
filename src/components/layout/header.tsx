@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Logo } from '../shared/logo';
 import { Button } from '@/components/ui/button';
-import { Briefcase, Calendar, HardHat, LogOut, Megaphone, Shield, User, UserCog, Users, TrendingUp, SunMoon, HelpCircle } from 'lucide-react';
+import { Briefcase, Calendar, HardHat, LogOut, Megaphone, Shield, User, UserCog, Users, TrendingUp, SunMoon, HelpCircle, Fingerprint } from 'lucide-react';
 import { NotificationButton } from '../shared/notification-button';
 import {
   DropdownMenu,
@@ -66,6 +66,10 @@ export function Header() {
                 <DropdownMenuItem onClick={() => router.push('/dashboard')} className="cursor-pointer">
                   <Calendar className="mr-2" />
                   <span>Dashboard</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => window.open('#', '_blank')} className="cursor-pointer">
+                  <Fingerprint className="mr-2" />
+                  <span>Digital Sign in/out</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push('/announcements')} className="cursor-pointer">
                   <Megaphone className="mr-2" />
