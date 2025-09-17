@@ -551,32 +551,31 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     const operatives = new Set(weeklyShifts.map(s => s.userId)).size;
 
     // Man-days calculation
+    const managerNames = ['Andy Kent', 'Sophie Lavender', 'Russ Brett', 'Phil Shergold'];
     const manDaysByManager: { [key: string]: number } = {};
 
     weeklyShifts.forEach(shift => {
-        const addressLines = shift.address.split('\n');
+        const combinedText = `${shift.task} ${shift.address}`;
         let manager = 'Unassigned';
-        const managerLineIndex = addressLines.findIndex(line => line.toUpperCase().startsWith('MANAGER'));
-        if (managerLineIndex !== -1) {
-            manager = addressLines[managerLineIndex].substring('MANAGER'.length).trim();
-            // Also grab the next line if it seems to be part of the name
-            if (managerLineIndex + 1 < addressLines.length && /^[A-Z\s]+$/.test(addressLines[managerLineIndex + 1])) {
-                 const nextLineIsPartOfAddress = /LANE|ROAD|STREET|CLOSE|AVENUE|DRIVE|COURT/i.test(addressLines[managerLineIndex + 1]);
-                 if (!nextLineIsPartOfAddress) {
-                    manager += ` ${addressLines[managerLineIndex + 1].trim()}`;
-                 }
+
+        for (const name of managerNames) {
+            if (combinedText.toLowerCase().includes(name.toLowerCase())) {
+                manager = name;
+                break;
             }
         }
-
+        
         if (!manDaysByManager[manager]) {
             manDaysByManager[manager] = 0;
         }
+
         if (shift.type === 'all-day') {
             manDaysByManager[manager] += 1;
         } else if (shift.type === 'am' || shift.type === 'pm') {
             manDaysByManager[manager] += 0.5;
         }
     });
+
 
     doc.setFontSize(18);
     doc.text(`Weekly Report: ${format(start, 'dd MMM')} - ${format(end, 'dd MMM yyyy')}`, 14, 22);
