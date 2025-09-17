@@ -24,7 +24,7 @@ You can configure the keys from the **Admin** page in the application itself.
 2.  Locate the **VAPID Key Status** card. It will tell you if keys are already configured.
 3.  If keys are not configured, follow the step-by-step instructions in the card:
     *   **Step 1:** Install `web-push` globally using `npm`.
-    *   **Step 2:** Run `web-push generate-vapid-keys` in your terminal to create a new key pair.
+    *   **Step 2:** Run `web-push generate-vapid-keys` in your terminal to create a new key pair. Keep them safe.
     *   **Step 3:** Copy the provided Firebase CLI command from the admin panel. It will look like this: `firebase functions:params:set webpush_public_key='YOUR_PUBLIC_KEY' webpush_private_key='YOUR_PRIVATE_KEY'`. Paste your generated keys into this command.
     *   **Step 4:** Run the command in your project's root directory.
     *   **Step 5:** Redeploy your functions by running `firebase deploy --only functions`.

@@ -433,7 +433,7 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
 
   const handleDeleteAllProjects = async () => {
     if (!functions) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Firebase Functions service not available.' });
+        toast({ variant: 'destructive', title: 'Error', description: 'Firebase Functions service is not available.' });
         return;
     }
     setIsDeletingAll(true);
