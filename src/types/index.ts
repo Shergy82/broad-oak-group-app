@@ -32,7 +32,7 @@ export interface Project {
   address: string;
   bNumber?: string;
   council?: string;
-  manager?: string;
+  manager: string;
   createdAt?: Timestamp;
   createdBy?: string;
   creatorId?: string;

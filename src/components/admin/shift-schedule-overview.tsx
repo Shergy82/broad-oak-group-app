@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot, query, doc, deleteDoc, writeBatch, where, getDocs } from 'firebase/firestore';
 import { db, functions, httpsCallable } from '@/lib/firebase';
-import type { Shift, UserProfile } from '@/types';
+import type { Shift, UserProfile, Project } from '@/types';
 import { addDays, format, isSameWeek, isToday, startOfWeek, endOfWeek } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -100,6 +100,7 @@ interface ShiftScheduleOverviewProps {
 export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProps) {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -130,6 +131,15 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
       setLoading(false);
     });
 
+    const projectsQuery = query(collection(db, 'projects'));
+    const unsubscribeProjects = onSnapshot(projectsQuery, (snapshot) => {
+        setProjects(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)));
+    }, (err) => {
+        console.error("Error fetching projects: ", err);
+        setError("Could not fetch project data.");
+    });
+
+
     const shiftsQuery = query(collection(db, 'shifts'));
     const unsubscribeShifts = onSnapshot(shiftsQuery, (snapshot) => {
       const fetchedShifts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift));
@@ -150,6 +160,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     return () => {
       unsubscribeUsers();
       unsubscribeShifts();
+      unsubscribeProjects();
     };
   }, []);
 
@@ -368,7 +379,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
 
   const handleDeleteAllShifts = async () => {
     if (!functions) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Firebase Functions service not available.' });
+        toast({ variant: 'destructive', title: 'Error', description: 'Firebase Functions service is not available.' });
         return;
     }
     setIsDeleting(true);
@@ -539,13 +550,41 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     const incomplete = weeklyShifts.filter(s => s.status === 'incomplete').length;
     const operatives = new Set(weeklyShifts.map(s => s.userId)).size;
 
+    // Man-days calculation
+    const projectAddressToManagerMap = new Map(projects.map(p => [p.address, p.manager]));
+    const manDaysByManager: { [key: string]: number } = {};
+
+    weeklyShifts.forEach(shift => {
+        const manager = projectAddressToManagerMap.get(shift.address) || 'Unassigned';
+        if (!manDaysByManager[manager]) {
+            manDaysByManager[manager] = 0;
+        }
+        if (shift.type === 'all-day') {
+            manDaysByManager[manager] += 1;
+        } else if (shift.type === 'am' || shift.type === 'pm') {
+            manDaysByManager[manager] += 0.5;
+        }
+    });
+
     doc.setFontSize(18);
     doc.text(`Weekly Report: ${format(start, 'dd MMM')} - ${format(end, 'dd MMM yyyy')}`, 14, 22);
 
+    let lastY = 25;
+
     doc.setFontSize(12);
-    doc.text('Summary of Week\'s Activities:', 14, 32);
+    doc.text('Man-Days per Manager:', 14, lastY + 10);
     autoTable(doc, {
-      startY: 36,
+        startY: lastY + 14,
+        head: [['Manager', 'Total Man-Days']],
+        body: Object.entries(manDaysByManager).map(([manager, days]) => [manager, days.toFixed(1)]),
+        theme: 'striped',
+        headStyles: { fillColor: [100, 100, 100] },
+    });
+    lastY = (doc as any).lastAutoTable.finalY;
+
+    doc.text('Summary of Week\'s Activities:', 14, lastY + 10);
+    autoTable(doc, {
+      startY: lastY + 14,
       body: [
           ['Total Shifts', totalShifts],
           ['Operatives on Site', operatives],
@@ -563,7 +602,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
       }
     });
     
-    const lastY = (doc as any).lastAutoTable.finalY;
+    lastY = (doc as any).lastAutoTable.finalY;
 
     doc.text('All Shifts for This Week:', 14, lastY + 15);
 
