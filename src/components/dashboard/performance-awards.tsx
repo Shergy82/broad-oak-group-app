@@ -3,11 +3,12 @@
 
 import { useMemo } from 'react';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
-import { Award } from 'lucide-react';
+import { Award, Medal, Trophy } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import type { Shift, UserProfile } from '@/types';
-import { Trophy } from 'lucide-react';
 import { getCorrectedLocalDate, isWithin } from '@/lib/utils';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
+import { Avatar, AvatarFallback } from '../ui/avatar';
 
 
 interface PerformanceAwardsProps {
@@ -21,39 +22,78 @@ interface PerformanceMetric {
     completionRate: number;
 }
 
-const AwardCard = ({ title, user, value, icon: Icon, unit }: { title: string, user: string, value: string, icon: React.ElementType, unit?: string }) => (
-    <Card className="shadow-lg transform hover:scale-105 transition-transform duration-300">
-        <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5">
-                <Icon className="h-4 w-4 text-amber-500" />
-                {title}
-            </CardDescription>
-            <CardTitle className="text-xl truncate">{user || 'N/A'}</CardTitle>
-        </CardHeader>
-        <CardContent>
-            <p className="text-md font-bold text-muted-foreground">{value}{unit}</p>
-        </CardContent>
-    </Card>
-);
+const getInitials = (name?: string) => {
+    if (!name) return '??';
+    return name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase();
+};
+
+const LeaderboardColumn = ({ title, performers }: { title: string, performers: PerformanceMetric[] }) => {
+    const medalColors = [
+        'text-amber-500', // Gold
+        'text-slate-400', // Silver
+        'text-amber-700'  // Bronze
+    ];
+
+    return (
+        <Card className="flex flex-col">
+            <CardHeader>
+                <CardTitle className="text-lg">{title}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-grow">
+                {performers.length > 0 ? (
+                     <Table>
+                        <TableBody>
+                            {performers.map((p, index) => (
+                                <TableRow key={p.userId} className={index === 0 ? 'bg-muted/50' : ''}>
+                                    <TableCell className="w-10">
+                                        <Medal className={`h-5 w-5 ${medalColors[index] || 'text-muted-foreground'}`} />
+                                    </TableCell>
+                                    <TableCell>
+                                        <div className="flex items-center gap-3">
+                                            <Avatar className="h-8 w-8">
+                                                <AvatarFallback>{getInitials(p.userName)}</AvatarFallback>
+                                            </Avatar>
+                                            <span className="font-medium truncate">{p.userName}</span>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-right font-bold tabular-nums">
+                                        {p.completionRate.toFixed(0)}%
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                ) : (
+                    <p className="text-sm text-muted-foreground text-center pt-8">No data for this period.</p>
+                )}
+            </CardContent>
+        </Card>
+    )
+};
 
 export function PerformanceAwards({ allShifts, allUsers }: PerformanceAwardsProps) {
 
-    const calculateTopPerformer = (shifts: Shift[], users: UserProfile[]): PerformanceMetric | null => {
+    const calculateTopPerformers = (shifts: Shift[], users: UserProfile[]): PerformanceMetric[] => {
         const userProfiles = users.filter(u => u.role === 'user');
-        if (userProfiles.length === 0 || shifts.length === 0) return null;
+        if (userProfiles.length === 0 || shifts.length === 0) return [];
 
         const metrics = userProfiles.map(user => {
             const userShifts = shifts.filter(s => s.userId === user.uid);
-            const totalShifts = userShifts.length;
+            const totalShifts = userShifts.filter(s => s.status === 'completed' || s.status === 'incomplete').length;
             const completed = userShifts.filter(s => s.status === 'completed').length;
-            const completionRate = totalShifts > 0 ? (completed / totalShifts) * 100 : 0;
+            
+            if (totalShifts === 0) return null;
+
+            const completionRate = (completed / totalShifts) * 100;
 
             return { userId: user.uid, userName: user.name, completionRate };
-        }).filter(m => m.completionRate > 0);
+        }).filter((m): m is PerformanceMetric => m !== null && m.completionRate > 0);
         
-        if (metrics.length === 0) return null;
-
-        return metrics.reduce((prev, current) => (prev.completionRate >= current.completionRate) ? prev : current);
+        return metrics.sort((a, b) => b.completionRate - a.completionRate).slice(0, 3);
     };
 
     const { weeklyTop, monthlyTop, allTimeTop } = useMemo(() => {
@@ -74,9 +114,9 @@ export function PerformanceAwards({ allShifts, allUsers }: PerformanceAwardsProp
         });
 
         return {
-            weeklyTop: calculateTopPerformer(weeklyShifts, allUsers),
-            monthlyTop: calculateTopPerformer(monthlyShifts, allUsers),
-            allTimeTop: calculateTopPerformer(allShifts, allUsers),
+            weeklyTop: calculateTopPerformers(weeklyShifts, allUsers),
+            monthlyTop: calculateTopPerformers(monthlyShifts, allUsers),
+            allTimeTop: calculateTopPerformers(allShifts, allUsers),
         };
     }, [allShifts, allUsers]);
 
@@ -105,28 +145,10 @@ export function PerformanceAwards({ allShifts, allUsers }: PerformanceAwardsProp
                 <CardDescription>Recognizing the top performers on the team based on shift completion rates.</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="grid gap-4 md:grid-cols-3">
-                    <AwardCard
-                        title="Top Performer (Weekly)"
-                        user={weeklyTop?.userName ?? 'N/A'}
-                        value={weeklyTop ? `${weeklyTop.completionRate.toFixed(0)}` : '0'}
-                        unit="%"
-                        icon={Award}
-                    />
-                    <AwardCard
-                        title="Top Performer (Monthly)"
-                        user={monthlyTop?.userName ?? 'N/A'}
-                        value={monthlyTop ? `${monthlyTop.completionRate.toFixed(0)}` : '0'}
-                        unit="%"
-                        icon={Award}
-                    />
-                    <AwardCard
-                        title="Top Performer (All Time)"
-                        user={allTimeTop?.userName ?? 'N/A'}
-                        value={allTimeTop ? `${allTimeTop.completionRate.toFixed(0)}` : '0'}
-                        unit="%"
-                        icon={Award}
-                    />
+                <div className="grid gap-6 md:grid-cols-3">
+                    <LeaderboardColumn title="Weekly Top 3" performers={weeklyTop} />
+                    <LeaderboardColumn title="Monthly Top 3" performers={monthlyTop} />
+                    <LeaderboardColumn title="All-Time Top 3" performers={allTimeTop} />
                 </div>
             </CardContent>
         </Card>
