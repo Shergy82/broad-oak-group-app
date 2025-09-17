@@ -6,13 +6,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot, query, doc, deleteDoc, writeBatch, where, getDocs } from 'firebase/firestore';
 import { db, functions, httpsCallable } from '@/lib/firebase';
 import type { Shift, UserProfile } from '@/types';
-import { addDays, format, isSameWeek, isToday, startOfWeek } from 'date-fns';
+import { addDays, format, isSameWeek, isToday, startOfWeek, endOfWeek } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Terminal, MessageSquareText, PlusCircle, Edit, Trash2, Download, History, Trash, Users2, Building, BarChart2, HardHat, ThumbsDown, CircleEllipsis } from 'lucide-react';
+import { Terminal, MessageSquareText, PlusCircle, Edit, Trash2, Download, History, Trash, Users2, Building, BarChart2, HardHat, ThumbsDown, CircleEllipsis, Calendar } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -507,7 +507,97 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     });
 
     doc.save(`daily_report_${format(today, 'yyyy-MM-dd')}.pdf`);
-};
+  };
+
+  const handleDownloadWeeklyReport = async () => {
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+
+    const today = new Date();
+    const start = startOfWeek(today, { weekStartsOn: 1 });
+    const end = endOfWeek(today, { weekStartsOn: 1 });
+    const weeklyShifts = shifts.filter(s => {
+        const shiftDate = getCorrectedLocalDate(s.date);
+        return shiftDate >= start && shiftDate <= end;
+    });
+
+    if (weeklyShifts.length === 0) {
+        toast({
+            title: 'No Shifts This Week',
+            description: 'There are no shifts scheduled for the current week to generate a report.',
+        });
+        return;
+    }
+
+    const doc = new jsPDF();
+    
+    // Stats
+    const totalShifts = weeklyShifts.length;
+    const completed = weeklyShifts.filter(s => s.status === 'completed').length;
+    const pending = weeklyShifts.filter(s => s.status === 'pending-confirmation').length;
+    const confirmed = weeklyShifts.filter(s => s.status === 'confirmed').length;
+    const incomplete = weeklyShifts.filter(s => s.status === 'incomplete').length;
+    const operatives = new Set(weeklyShifts.map(s => s.userId)).size;
+
+    doc.setFontSize(18);
+    doc.text(`Weekly Report: ${format(start, 'dd MMM')} - ${format(end, 'dd MMM yyyy')}`, 14, 22);
+
+    doc.setFontSize(12);
+    doc.text('Summary of Week\'s Activities:', 14, 32);
+    autoTable(doc, {
+      startY: 36,
+      body: [
+          ['Total Shifts', totalShifts],
+          ['Operatives on Site', operatives],
+          ['Completed Shifts', completed],
+          ['Confirmed & In Progress', confirmed + pending],
+          ['Marked Incomplete', incomplete],
+      ],
+      theme: 'grid',
+      styles: {
+          fontStyle: 'bold',
+      },
+      columnStyles: {
+          0: { cellWidth: 50 },
+          1: { cellWidth: 'auto', halign: 'center' },
+      }
+    });
+    
+    const lastY = (doc as any).lastAutoTable.finalY;
+
+    doc.text('All Shifts for This Week:', 14, lastY + 15);
+
+    // Sort shifts by date, then by user
+    const sortedShifts = [...weeklyShifts].sort((a, b) => {
+        const dateA = getCorrectedLocalDate(a.date).getTime();
+        const dateB = getCorrectedLocalDate(b.date).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+        const nameA = userNameMap.get(a.userId) || '';
+        const nameB = userNameMap.get(b.userId) || '';
+        return nameA.localeCompare(nameB);
+    });
+
+    autoTable(doc, {
+        startY: lastY + 19,
+        head: [['Date', 'Operative', 'Task', 'Address', 'Status']],
+        body: sortedShifts.map(shift => [
+            format(getCorrectedLocalDate(shift.date), 'EEE, dd/MM'),
+            userNameMap.get(shift.userId) || 'Unknown',
+            shift.task,
+            shift.address,
+            shift.status.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+        ]),
+        headStyles: { fillColor: [6, 95, 212] },
+        styles: {
+            cellPadding: 2,
+            fontSize: 8,
+            valign: 'middle',
+        },
+        rowPageBreak: 'auto',
+    });
+
+    doc.save(`weekly_report_${format(today, 'yyyy-MM-dd')}.pdf`);
+  };
 
   const renderShiftList = (shiftsToRender: Shift[]) => {
     if (shiftsToRender.length === 0) {
@@ -747,6 +837,10 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                     <Button variant="outline" size="sm" onClick={handleDownloadDailyReport}>
                         <BarChart2 className="mr-2 h-4 w-4" />
                         Daily Report
+                    </Button>
+                     <Button variant="outline" size="sm" onClick={handleDownloadWeeklyReport}>
+                        <Calendar className="mr-2 h-4 w-4" />
+                        Weekly Report
                     </Button>
                     {isOwner && (
                        <div className="flex items-center gap-2">
