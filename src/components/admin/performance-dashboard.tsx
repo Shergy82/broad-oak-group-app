@@ -99,9 +99,14 @@ export function PerformanceDashboard() {
         const completed = userShifts.filter(s => s.status === 'completed').length;
         const incomplete = userShifts.filter(s => s.status === 'incomplete').length;
         
-        const relevantTotal = completed + incomplete;
-        const completionRate = relevantTotal > 0 ? (completed / relevantTotal) * 100 : 0;
-        const incompleteRate = relevantTotal > 0 ? (incomplete / relevantTotal) * 100 : 0;
+        // The total number of shifts that are no longer active
+        const relevantTotal = userShifts.filter(s => s.status === 'completed' || s.status === 'incomplete').length;
+        
+        // Calculate rate against all assigned shifts in the period, except those still pending first confirmation
+        const rateCalculationTotal = userShifts.filter(s => s.status !== 'pending-confirmation').length;
+
+        const completionRate = rateCalculationTotal > 0 ? (completed / rateCalculationTotal) * 100 : 0;
+        const incompleteRate = rateCalculationTotal > 0 ? (incomplete / rateCalculationTotal) * 100 : 0;
         
         return {
           userId: user.uid,
@@ -278,5 +283,7 @@ export function PerformanceDashboard() {
     </Card>
   );
 }
+
+    
 
     
