@@ -25,6 +25,7 @@ export interface UserProfile {
   role: 'user' | 'admin' | 'owner';
   createdAt?: Timestamp;
   status?: 'active' | 'suspended' | 'pending-approval';
+  employmentType?: 'direct' | 'subbie';
 }
 
 export interface Project {
@@ -78,3 +79,5 @@ export interface Acknowledgement {
     userName: string;
     acknowledgedAt: Timestamp;
 }
+
+    

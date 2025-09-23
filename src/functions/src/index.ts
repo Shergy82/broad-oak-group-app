@@ -341,6 +341,92 @@ export const projectReviewNotifier = functions
     }
   });
 
+export const pendingShiftNotifier = functions
+  .region("europe-west2")
+  .pubsub.schedule("every 1 hours")
+  .onRun(async (context) => {
+    functions.logger.log("Running hourly pending shift notifier.");
+
+    const settingsRef = db.collection('settings').doc('notifications');
+    const settingsDoc = await settingsRef.get();
+    if (settingsDoc.exists() && settingsDoc.data()?.enabled === false) {
+      functions.logger.log('Global notifications are disabled by the owner. Aborting pending shift notifier.');
+      return;
+    }
+
+    const config = functions.config();
+    const publicKey = config.webpush?.public_key;
+    const privateKey = config.webpush?.private_key;
+
+    if (!publicKey || !privateKey) {
+      functions.logger.error("CRITICAL: VAPID keys are not configured. Cannot send pending shift reminders.");
+      return;
+    }
+
+    webPush.setVapidDetails("mailto:example@your-project.com", publicKey, privateKey);
+
+    try {
+      const pendingShiftsQuery = db.collection("shifts").where("status", "==", "pending-confirmation");
+      const querySnapshot = await pendingShiftsQuery.get();
+
+      if (querySnapshot.empty) {
+        functions.logger.log("No pending shifts found.");
+        return;
+      }
+
+      const shiftsByUser = new Map<string, any[]>();
+      querySnapshot.forEach(doc => {
+        const shift = doc.data();
+        if (shift.userId) {
+          if (!shiftsByUser.has(shift.userId)) {
+            shiftsByUser.set(shift.userId, []);
+          }
+          shiftsByUser.get(shift.userId)!.push(shift);
+        }
+      });
+
+      for (const [userId, userShifts] of shiftsByUser.entries()) {
+        const subscriptionsSnapshot = await db
+          .collection("users")
+          .doc(userId)
+          .collection("pushSubscriptions")
+          .withConverter(pushSubscriptionConverter)
+          .get();
+
+        if (subscriptionsSnapshot.empty) {
+          functions.logger.warn(`User ${userId} has ${userShifts.length} pending shift(s) but no push subscriptions.`);
+          continue;
+        }
+
+        const notificationPayload = JSON.stringify({
+          title: "Pending Shifts Reminder",
+          body: `You have ${userShifts.length} shift(s) awaiting your confirmation. Please review them in the app.`,
+          data: { url: "/dashboard" },
+        });
+
+        functions.logger.log(`Sending reminder to user ${userId} for ${userShifts.length} pending shift(s).`);
+
+        const sendPromises = subscriptionsSnapshot.docs.map(subDoc => {
+          const subscription = subDoc.data();
+          return webPush.sendNotification(subscription, notificationPayload).catch((error: any) => {
+            functions.logger.error(`Error sending notification to user ${userId}:`, error);
+            if (error.statusCode === 410 || error.statusCode === 404) {
+              functions.logger.log(`Deleting invalid subscription for user ${userId}.`);
+              return subDoc.ref.delete();
+            }
+            return null;
+          });
+        });
+
+        await Promise.all(sendPromises);
+      }
+
+      functions.logger.log("Finished processing pending shift reminders.");
+    } catch (error) {
+      functions.logger.error("Error running pendingShiftNotifier:", error);
+    }
+  });
+
 export const deleteProjectAndFiles = functions.region("europe-west2").https.onCall(async (data, context) => {
     functions.logger.log("Received request to delete project:", data.projectId);
 
@@ -476,14 +562,15 @@ export const deleteAllShifts = functions.region("europe-west2").https.onCall(asy
         throw new functions.https.HttpsError("permission-denied", "Only the account owner can perform this action.");
     }
     
-    functions.logger.log(`Owner ${uid} initiated deletion of all shifts.`);
+    functions.logger.log(`Owner ${uid} initiated deletion of all active shifts.`);
 
     try {
+        const activeShiftStatuses = ['pending-confirmation', 'confirmed', 'on-site', 'rejected'];
         const shiftsCollection = db.collection('shifts');
-        const snapshot = await shiftsCollection.get();
+        const snapshot = await shiftsCollection.where('status', 'in', activeShiftStatuses).get();
         
         if (snapshot.empty) {
-            return { success: true, message: "No shifts to delete." };
+            return { success: true, message: "No active shifts to delete." };
         }
 
         const batchSize = 500;
@@ -497,8 +584,8 @@ export const deleteAllShifts = functions.region("europe-west2").https.onCall(asy
 
         await Promise.all(batches);
 
-        functions.logger.log(`Successfully deleted ${snapshot.size} shifts.`);
-        return { success: true, message: `Successfully deleted ${snapshot.size} shifts.` };
+        functions.logger.log(`Successfully deleted ${snapshot.size} active shifts.`);
+        return { success: true, message: `Successfully deleted ${snapshot.size} active shifts.` };
     } catch (error) {
         functions.logger.error("Error deleting all shifts:", error);
         throw new functions.https.HttpsError("internal", "An unexpected error occurred while deleting shifts.");
@@ -564,3 +651,149 @@ export const deleteAllProjects = functions.region("europe-west2").https.onCall(a
         throw new functions.https.HttpsError("internal", "An error occurred while deleting all projects. Please check the function logs.");
     }
 });
+
+
+export const setUserStatus = functions.region("europe-west2").https.onCall(async (data, context) => {
+    // 1. Authentication & Authorization
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
+    }
+    const callerUid = context.auth.uid;
+    const callerDoc = await db.collection("users").doc(callerUid).get();
+    const callerProfile = callerDoc.data();
+
+    if (!callerProfile || callerProfile.role !== 'owner') {
+        throw new functions.https.HttpsError("permission-denied", "Only the account owner can change user status.");
+    }
+    
+    // 2. Validation
+    const { uid, disabled, newStatus } = data;
+    const validStatuses = ['active', 'suspended', 'pending-approval'];
+
+    if (typeof uid !== 'string' || typeof disabled !== 'boolean' || !validStatuses.includes(newStatus)) {
+        throw new functions.https.HttpsError("invalid-argument", `Invalid arguments provided. 'uid' must be a string, 'disabled' a boolean, and 'newStatus' must be one of ${validStatuses.join(', ')}.`);
+    }
+
+    if (uid === callerUid) {
+        throw new functions.https.HttpsError("permission-denied", "The account owner cannot suspend their own account.");
+    }
+    
+    // 3. Execution
+    try {
+        await admin.auth().updateUser(uid, { disabled });
+        
+        const userDocRef = db.collection('users').doc(uid);
+        await userDocRef.update({ status: newStatus });
+        
+        functions.logger.log(`Owner ${callerUid} has set user ${uid} to status: ${newStatus} (Auth disabled: ${disabled}).`);
+
+        return { success: true };
+    } catch (error: any) {
+        functions.logger.error(`Error updating status for user ${uid}:`, error);
+        throw new functions.https.HttpsError("internal", `An unexpected error occurred while updating user status: ${error.message}`);
+    }
+});
+
+
+export const deleteUser = functions.region("europe-west2").https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
+  }
+
+  const callerUid = context.auth.uid;
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  const callerProfile = callerDoc.data() as { role: string } | undefined;
+
+  if (!callerProfile || callerProfile.role !== 'owner') {
+    throw new functions.https.HttpsError("permission-denied", "Only the account owner can delete users.");
+  }
+
+  const { uid } = data;
+  if (typeof uid !== "string") {
+    throw new functions.https.HttpsError("invalid-argument", "The function requires a 'uid' (string) argument.");
+  }
+  if (uid === callerUid) {
+    throw new functions.https.HttpsError("permission-denied", "The account owner cannot delete their own account.");
+  }
+
+  try {
+    // Step 1: Delete all documents from the 'pushSubscriptions' subcollection.
+    const subscriptionsRef = db.collection("users").doc(uid).collection("pushSubscriptions");
+    const subscriptionsSnapshot = await subscriptionsRef.get();
+    if (!subscriptionsSnapshot.empty) {
+      const batch = db.batch();
+      subscriptionsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit(); 
+      functions.logger.log(`Deleted ${subscriptionsSnapshot.size} push subscriptions for user ${uid}.`);
+    }
+
+    // Step 2: Delete the main user document from Firestore.
+    await db.collection("users").doc(uid).delete();
+    functions.logger.log(`Deleted Firestore document for user ${uid}.`);
+
+    // Step 3: Delete the user from Firebase Authentication.
+    await admin.auth().deleteUser(uid);
+    functions.logger.log(`Deleted Firebase Auth user ${uid}.`);
+
+    functions.logger.log(`Owner ${callerUid} successfully deleted user ${uid}`);
+    return { success: true };
+
+  } catch (error: any) {
+    functions.logger.error(`Error deleting user ${uid}:`, error);
+
+    // This is the critical change: if the user is already gone from Auth,
+    // we log it and proceed as if successful, because the end state is the same.
+    if (error.code === "auth/user-not-found") {
+      functions.logger.warn(`User ${uid} was already deleted from Firebase Auth. Continuing cleanup.`);
+      // We can return success here because the main goal is to ensure the user is gone.
+      // If the Auth user is already gone, we've achieved part of the goal.
+      // The Firestore deletes would have already run.
+      return { success: true, message: "User was already deleted from Authentication. Cleanup finished." };
+    }
+    
+    // For other errors, re-throw a clear error message.
+    throw new functions.https.HttpsError("internal", `An unexpected error occurred while deleting the user: ${error.message}`);
+  }
+});
+
+
+export const setUserEmploymentType = functions.region("europe-west2").https.onCall(async (data, context) => {
+    // 1. Authentication & Authorization
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
+    }
+    const callerUid = context.auth.uid;
+    const callerDoc = await db.collection("users").doc(callerUid).get();
+    const callerProfile = callerDoc.data();
+
+    if (!callerProfile || callerProfile.role !== 'owner') {
+        throw new functions.https.HttpsError("permission-denied", "Only the account owner can change a user's employment type.");
+    }
+    
+    // 2. Validation
+    const { uid, employmentType } = data;
+    const validTypes = ['direct', 'subbie'];
+
+    if (typeof uid !== 'string' || !validTypes.includes(employmentType)) {
+        throw new functions.https.HttpsError("invalid-argument", `Invalid arguments provided. 'uid' must be a string and 'employmentType' must be one of ${validTypes.join(', ')}.`);
+    }
+
+    if (uid === callerUid) {
+        throw new functions.https.HttpsError("invalid-argument", "The account owner's employment type cannot be set.");
+    }
+    
+    // 3. Execution
+    try {
+        const userDocRef = db.collection('users').doc(uid);
+        await userDocRef.update({ employmentType: employmentType });
+        
+        functions.logger.log(`Owner ${callerUid} has set user ${uid} employment type to: ${employmentType}.`);
+        return { success: true };
+
+    } catch (error: any) {
+        functions.logger.error(`Error updating employment type for user ${uid}:`, error);
+        throw new functions.https.HttpsError("internal", `An unexpected error occurred while updating the user: ${error.message}`);
+    }
+});
+
+    

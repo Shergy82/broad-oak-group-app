@@ -2,8 +2,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, query } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { collection, onSnapshot, query, doc, updateDoc } from 'firebase/firestore';
+import { db, isFirebaseConfigured, functions, httpsCallable } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useToast } from '@/hooks/use-toast';
@@ -19,10 +19,11 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ExternalLink } from 'lucide-react';
+import { Download, ExternalLink, Users } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { format } from 'date-fns';
 
-const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -80,36 +81,94 @@ export default function UserManagementPage() {
     return `https://console.firebase.google.com/project/${projectId}/firestore/data/~2Fusers~2F${uid}`;
   }
 
-  const renderManageButton = (user: UserProfile) => {
-     if (isOwner && user.uid !== currentUserProfile?.uid && isFirebaseConfigured) {
-       return (
-         <TooltipProvider>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" asChild>
-                    <a href={generateConsoleLink(user.uid)} target="_blank" rel="noopener noreferrer">
-                    Manage
-                    <ExternalLink className="ml-2 h-4 w-4" />
-                    </a>
-                </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                <p>Open user record in Firebase Console</p>
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
-       )
-     }
-     return null;
-  }
+  const handleTypeChange = async (uid: string, newType: 'direct' | 'subbie') => {
+    if (!functions) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Functions service not available.' });
+      return;
+    }
+
+    toast({ title: 'Updating...', description: `Setting user type to ${newType}.` });
+
+    try {
+        const setUserEmploymentType = httpsCallable(functions, 'setUserEmploymentType');
+        await setUserEmploymentType({ uid, employmentType: newType });
+        
+        toast({ title: 'Success', description: 'User employment type updated.' });
+
+        // Optimistically update the UI
+        setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, employmentType: newType } : u));
+    } catch (error: any) {
+        console.error('Error updating employment type:', error);
+        toast({
+            variant: 'destructive',
+            title: 'Update Failed',
+            description: error.message || 'Could not update employment type.',
+        });
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+
+    const doc = new jsPDF();
+    const generationDate = new Date();
+    
+    doc.setFontSize(18);
+    doc.text(`User Directory`, 14, 22);
+    doc.setFontSize(11);
+    doc.setTextColor(100);
+    doc.text(`Generated on: ${format(generationDate, 'PPP p')}`, 14, 28);
+    
+    let finalY = 35;
+
+    const generateTableForType = (title: string, userList: UserProfile[]) => {
+      if (userList.length === 0) return;
+      
+      doc.setFontSize(16);
+      doc.text(title, 14, finalY);
+      finalY += 8;
+
+      autoTable(doc, {
+        head: [['Name', 'Email', 'Phone Number']],
+        body: userList.map(u => [u.name, u.email, u.phoneNumber]),
+        startY: finalY,
+        headStyles: { fillColor: [6, 95, 212] },
+        didDrawPage: (data) => {
+            finalY = data.cursor?.y || 0;
+        }
+      });
+      finalY = (doc as any).lastAutoTable.finalY + 15;
+    };
+
+    const directUsers = users.filter(u => u.employmentType === 'direct');
+    const subbieUsers = users.filter(u => u.employmentType === 'subbie');
+    const unassignedUsers = users.filter(u => !u.employmentType);
+
+    generateTableForType('Direct Employees', directUsers);
+    generateTableForType('Subcontractors (Subbies)', subbieUsers);
+    generateTableForType('Unassigned', unassignedUsers);
+    
+    doc.save(`user_directory_${format(generationDate, 'yyyy-MM-dd')}.pdf`);
+  };
+  
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>User Management</CardTitle>
-        <CardDescription>
-            View all users and their assigned roles. {isOwner ? "As the owner, you can use the 'Manage' button to open a user's record in the Firebase Console to modify or delete it." : "Only the account owner can manage users."}
-        </CardDescription>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+                <CardTitle>User Management</CardTitle>
+                <CardDescription>
+                    View and manage all users. {isOwner ? "As the owner, you can set employment types and manage users via the Firebase Console." : "Only the account owner can manage users."}
+                </CardDescription>
+            </div>
+            <Button variant="outline" onClick={handleDownloadPdf} disabled={loading || users.length === 0}>
+                <Download className="mr-2 h-4 w-4" />
+                Download Directory PDF
+            </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -117,6 +176,14 @@ export default function UserManagementPage() {
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
+            </div>
+        ) : users.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
+              <Users className="mx-auto h-12 w-12 text-muted-foreground" />
+              <h3 className="mt-4 text-lg font-semibold">No Users Found</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                No users have been created yet.
+              </p>
             </div>
         ) : (
           <>
@@ -126,11 +193,10 @@ export default function UserManagementPage() {
                 <TableHeader>
                     <TableRow>
                     <TableHead>Name</TableHead>
-                    <TableHead>Date Joined</TableHead>
                     <TableHead>Email</TableHead>
-                    <TableHead>Phone Number</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
+                    {isOwner && <TableHead>Type</TableHead>}
                     {isOwner && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                 </TableHeader>
@@ -138,9 +204,7 @@ export default function UserManagementPage() {
                     {users.map((user) => (
                         <TableRow key={user.uid} className={user.status === 'suspended' ? 'bg-muted/30' : ''}>
                         <TableCell className="font-medium">{user.name}</TableCell>
-                        <TableCell>{user.createdAt?.toDate().toLocaleDateString() ?? 'N/A'}</TableCell>
                         <TableCell>{user.email}</TableCell>
-                        <TableCell>{user.phoneNumber}</TableCell>
                         <TableCell>
                             <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
                                 {user.role}
@@ -149,8 +213,42 @@ export default function UserManagementPage() {
                         <TableCell>
                             {getStatusBadge(user.status)}
                         </TableCell>
+                        {isOwner && (
+                            <TableCell>
+                                {user.role !== 'owner' ? (
+                                    <Select
+                                        value={user.employmentType || ''}
+                                        onValueChange={(value: 'direct' | 'subbie') => handleTypeChange(user.uid, value)}
+                                    >
+                                        <SelectTrigger className="w-[120px]">
+                                            <SelectValue placeholder="Set Type" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="direct">Direct</SelectItem>
+                                            <SelectItem value="subbie">Subbie</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                ) : <Badge variant="outline">N/A</Badge>}
+                            </TableCell>
+                        )}
                         <TableCell className="text-right">
-                           {renderManageButton(user)}
+                            {isOwner && user.uid !== currentUserProfile?.uid && isFirebaseConfigured && (
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                        <Button variant="outline" size="sm" asChild>
+                                            <a href={generateConsoleLink(user.uid)} target="_blank" rel="noopener noreferrer">
+                                            Manage
+                                            <ExternalLink className="ml-2 h-4 w-4" />
+                                            </a>
+                                        </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                        <p>Open user record in Firebase Console</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            )}
                         </TableCell>
                         </TableRow>
                     ))}
@@ -169,14 +267,35 @@ export default function UserManagementPage() {
                     </div>
                     <CardDescription>{user.email}</CardDescription>
                   </CardHeader>
-                  <CardContent className="text-sm space-y-2">
+                  <CardContent className="text-sm space-y-3">
                      <p><strong>Phone:</strong> {user.phoneNumber || 'N/A'}</p>
-                     <p><strong>Joined:</strong> {user.createdAt?.toDate().toLocaleDateString() ?? 'N/A'}</p>
-                      <p className="flex items-center gap-2"><strong>Role:</strong> <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">{user.role}</Badge></p>
+                     <p className="flex items-center gap-2"><strong>Role:</strong> <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">{user.role}</Badge></p>
+                     {isOwner && user.role !== 'owner' && (
+                        <div className="flex items-center gap-2 pt-2">
+                          <strong className="shrink-0">Type:</strong>
+                          <Select
+                            value={user.employmentType || ''}
+                            onValueChange={(value: 'direct' | 'subbie') => handleTypeChange(user.uid, value)}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Set Type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="direct">Direct</SelectItem>
+                              <SelectItem value="subbie">Subbie</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                     )}
                   </CardContent>
                   {isOwner && user.uid !== currentUserProfile?.uid && (
                     <CardFooter className="p-2 bg-muted/20">
-                      {renderManageButton(user)}
+                      <Button variant="outline" size="sm" asChild>
+                          <a href={generateConsoleLink(user.uid)} target="_blank" rel="noopener noreferrer" className="w-full">
+                              Manage User in Console
+                              <ExternalLink className="ml-2 h-4 w-4" />
+                          </a>
+                      </Button>
                     </CardFooter>
                   )}
                 </Card>
@@ -188,3 +307,5 @@ export default function UserManagementPage() {
     </Card>
   );
 }
+
+    
