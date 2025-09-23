@@ -26,6 +26,7 @@ export interface UserProfile {
   createdAt?: Timestamp;
   status?: 'active' | 'suspended' | 'pending-approval';
   employmentType?: 'direct' | 'subbie';
+  operativeId?: string;
 }
 
 export interface Project {

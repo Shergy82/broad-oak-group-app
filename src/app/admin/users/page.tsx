@@ -2,8 +2,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, query } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { collection, onSnapshot, query, doc, updateDoc } from 'firebase/firestore';
+import { db, isFirebaseConfigured, functions, httpsCallable } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useToast } from '@/hooks/use-toast';
@@ -23,6 +23,8 @@ import { Download, ExternalLink, Users } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
+import { Input } from '@/components/ui/input';
+import { Spinner } from '../shared/spinner';
 
 const LOCAL_STORAGE_KEY = 'userEmploymentTypes';
 
@@ -105,6 +107,36 @@ export default function UserManagementPage() {
 
     toast({ title: 'Success', description: 'User employment type updated and saved in your browser.' });
   };
+  
+  const handleOperativeIdChange = async (uid: string, operativeId: string) => {
+    if (!functions) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Functions service is not available.' });
+      return;
+    }
+    
+    try {
+      const setUserOperativeIdFn = httpsCallable(functions, 'setUserOperativeId');
+      await setUserOperativeIdFn({ uid, operativeId });
+      
+      setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, operativeId } : u));
+      
+      toast({ title: 'Success', description: "Operative ID updated." });
+    } catch (error: any) {
+      console.error("Error updating operative ID:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Update Failed',
+        description: error.message || "Could not update the operative ID.",
+      });
+      // Revert UI change on failure
+      const userDoc = await doc(db, 'users', uid).get();
+      if (userDoc.exists()) {
+        const originalId = userDoc.data().operativeId;
+        setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, operativeId: originalId } : u));
+      }
+    }
+  };
+
 
   const handleDownloadPdf = async () => {
     const { default: jsPDF } = await import('jspdf');
@@ -129,8 +161,8 @@ export default function UserManagementPage() {
       finalY += 8;
 
       autoTable(doc, {
-        head: [['Name', 'Email', 'Phone Number']],
-        body: userList.map(u => [u.name, u.email, u.phoneNumber]),
+        head: [['ID', 'Name', 'Email', 'Phone Number']],
+        body: userList.map(u => [u.operativeId || 'N/A', u.name, u.email, u.phoneNumber]),
         startY: finalY,
         headStyles: { fillColor: [6, 95, 212] },
         didDrawPage: (data) => {
@@ -162,7 +194,7 @@ export default function UserManagementPage() {
             <div>
                 <CardTitle>User Management</CardTitle>
                 <CardDescription>
-                    View and manage all users. {isOwner ? "As the owner, you can set employment types and manage users via the Firebase Console." : "Only the account owner can manage users."}
+                    View and manage all users. {isOwner ? "As the owner, you can set employment types, IDs and manage users via the Firebase Console." : "Only the account owner can manage users."}
                 </CardDescription>
             </div>
             <Button variant="outline" onClick={handleDownloadPdf} disabled={loading || users.length === 0}>
@@ -194,6 +226,7 @@ export default function UserManagementPage() {
                 <TableHeader>
                     <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead>Operative ID</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
@@ -204,53 +237,65 @@ export default function UserManagementPage() {
                 <TableBody>
                     {users.map((user) => (
                         <TableRow key={user.uid} className={user.status === 'suspended' ? 'bg-muted/30' : ''}>
-                        <TableCell className="font-medium">{user.name}</TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>
-                            <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
-                                {user.role}
-                            </Badge>
-                        </TableCell>
-                        <TableCell>
-                            {getStatusBadge(user.status)}
-                        </TableCell>
-                        {isOwner && (
-                            <TableCell>
-                                {user.role !== 'owner' ? (
-                                    <Select
-                                        value={user.employmentType || ''}
-                                        onValueChange={(value: 'direct' | 'subbie') => handleTypeChange(user.uid, value)}
-                                    >
-                                        <SelectTrigger className="w-[120px]">
-                                            <SelectValue placeholder="Set Type" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="direct">Direct</SelectItem>
-                                            <SelectItem value="subbie">Subbie</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                ) : <Badge variant="outline">N/A</Badge>}
-                            </TableCell>
-                        )}
-                        <TableCell className="text-right">
-                            {isOwner && user.uid !== currentUserProfile?.uid && isFirebaseConfigured && (
-                                <TooltipProvider>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                        <Button variant="outline" size="sm" asChild>
-                                            <a href={generateConsoleLink(user.uid)} target="_blank" rel="noopener noreferrer">
-                                            Manage
-                                            <ExternalLink className="ml-2 h-4 w-4" />
-                                            </a>
-                                        </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                        <p>Open user record in Firebase Console</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
+                          <TableCell className="font-medium">{user.name}</TableCell>
+                          <TableCell>
+                            {isOwner && user.role !== 'owner' ? (
+                              <Input
+                                defaultValue={user.operativeId || ''}
+                                onBlur={(e) => handleOperativeIdChange(user.uid, e.target.value)}
+                                className="h-8 w-24"
+                                placeholder="Set ID"
+                              />
+                            ) : (
+                              user.operativeId || <Badge variant="outline">N/A</Badge>
                             )}
-                        </TableCell>
+                          </TableCell>
+                          <TableCell>{user.email}</TableCell>
+                          <TableCell>
+                              <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
+                                  {user.role}
+                              </Badge>
+                          </TableCell>
+                          <TableCell>
+                              {getStatusBadge(user.status)}
+                          </TableCell>
+                          {isOwner && (
+                              <TableCell>
+                                  {user.role !== 'owner' ? (
+                                      <Select
+                                          value={user.employmentType || ''}
+                                          onValueChange={(value: 'direct' | 'subbie') => handleTypeChange(user.uid, value)}
+                                      >
+                                          <SelectTrigger className="w-[120px]">
+                                              <SelectValue placeholder="Set Type" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                              <SelectItem value="direct">Direct</SelectItem>
+                                              <SelectItem value="subbie">Subbie</SelectItem>
+                                          </SelectContent>
+                                      </Select>
+                                  ) : <Badge variant="outline">N/A</Badge>}
+                              </TableCell>
+                          )}
+                          <TableCell className="text-right">
+                              {isOwner && user.uid !== currentUserProfile?.uid && isFirebaseConfigured && (
+                                  <TooltipProvider>
+                                      <Tooltip>
+                                          <TooltipTrigger asChild>
+                                          <Button variant="outline" size="sm" asChild>
+                                              <a href={generateConsoleLink(user.uid)} target="_blank" rel="noopener noreferrer">
+                                              Manage
+                                              <ExternalLink className="ml-2 h-4 w-4" />
+                                              </a>
+                                          </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                          <p>Open user record in Firebase Console</p>
+                                          </TooltipContent>
+                                      </Tooltip>
+                                  </TooltipProvider>
+                              )}
+                          </TableCell>
                         </TableRow>
                     ))}
                 </TableBody>
@@ -271,22 +316,34 @@ export default function UserManagementPage() {
                   <CardContent className="text-sm space-y-3">
                      <p><strong>Phone:</strong> {user.phoneNumber || 'N/A'}</p>
                      <p className="flex items-center gap-2"><strong>Role:</strong> <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">{user.role}</Badge></p>
+                     
                      {isOwner && user.role !== 'owner' && (
-                        <div className="flex items-center gap-2 pt-2">
-                          <strong className="shrink-0">Type:</strong>
-                          <Select
-                            value={user.employmentType || ''}
-                            onValueChange={(value: 'direct' | 'subbie') => handleTypeChange(user.uid, value)}
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Set Type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="direct">Direct</SelectItem>
-                              <SelectItem value="subbie">Subbie</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        <>
+                          <div className="flex items-center gap-2 pt-2">
+                            <strong className="shrink-0">ID:</strong>
+                            <Input
+                                defaultValue={user.operativeId || ''}
+                                onBlur={(e) => handleOperativeIdChange(user.uid, e.target.value)}
+                                className="h-8"
+                                placeholder="Set ID"
+                              />
+                          </div>
+                          <div className="flex items-center gap-2 pt-2">
+                            <strong className="shrink-0">Type:</strong>
+                            <Select
+                              value={user.employmentType || ''}
+                              onValueChange={(value: 'direct' | 'subbie') => handleTypeChange(user.uid, value)}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Set Type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="direct">Direct</SelectItem>
+                                <SelectItem value="subbie">Subbie</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </>
                      )}
                   </CardContent>
                   {isOwner && user.uid !== currentUserProfile?.uid && (
