@@ -1,8 +1,9 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, doc, updateDoc } from 'firebase/firestore';
-import { db, isFirebaseConfigured, functions, httpsCallable } from '@/lib/firebase';
+import { collection, onSnapshot, query } from 'firebase/firestore';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useToast } from '@/hooks/use-toast';
@@ -80,30 +81,10 @@ export default function UserManagementPage() {
     return `https://console.firebase.google.com/project/${projectId}/firestore/data/~2Fusers~2F${uid}`;
   }
 
-  const handleTypeChange = async (uid: string, newType: 'direct' | 'subbie') => {
-    if (!functions) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Functions service not available.' });
-      return;
-    }
-
-    toast({ title: 'Updating...', description: `Setting user type to ${newType}.` });
-
-    try {
-        const setUserEmploymentType = httpsCallable(functions, 'setUserEmploymentType');
-        await setUserEmploymentType({ uid, employmentType: newType });
-        
-        toast({ title: 'Success', description: 'User employment type updated.' });
-
-        // Optimistically update the UI
-        setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, employmentType: newType } : u));
-    } catch (error: any) {
-        console.error('Error updating employment type:', error);
-        toast({
-            variant: 'destructive',
-            title: 'Update Failed',
-            description: error.message || 'Could not update employment type.',
-        });
-    }
+  const handleTypeChange = (uid: string, newType: 'direct' | 'subbie') => {
+    // Client-side update
+    setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, employmentType: newType } : u));
+    toast({ title: 'Success', description: 'User employment type updated for this session.' });
   };
 
   const handleDownloadPdf = async () => {
