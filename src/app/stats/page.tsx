@@ -36,18 +36,36 @@ export default function StatsPage() {
     const shiftsQuery = query(collection(db, 'shifts'));
     const usersQuery = query(collection(db, 'users'));
 
+    let shiftsLoaded = false;
+    let usersLoaded = false;
+
+    const checkAllDataLoaded = () => {
+        if (shiftsLoaded && usersLoaded) {
+            setLoadingData(false);
+        }
+    };
+
     const unsubShifts = onSnapshot(shiftsQuery, (snapshot) => {
         setAllShifts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift)));
-    }, (error) => console.error("Error fetching shifts:", error));
+        shiftsLoaded = true;
+        checkAllDataLoaded();
+    }, (error) => {
+        console.error("Error fetching shifts:", error);
+        shiftsLoaded = true;
+        checkAllDataLoaded();
+    });
 
     const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
         setAllUsers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
-    }, (error) => console.error("Error fetching users:", error));
-
-    const timer = setTimeout(() => setLoadingData(false), 1500); // Give a moment for data to load
+        usersLoaded = true;
+        checkAllDataLoaded();
+    }, (error) => {
+        console.error("Error fetching users:", error);
+        usersLoaded = true;
+        checkAllDataLoaded();
+    });
 
     return () => {
-      clearTimeout(timer);
       unsubShifts();
       unsubUsers();
     };
