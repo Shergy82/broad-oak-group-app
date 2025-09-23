@@ -718,7 +718,7 @@ export const setUserOperativeId = functions.region("europe-west2").https.onCall(
     try {
         const userDocRef = db.collection('users').doc(uid);
         await userDocRef.update({ operativeId: operativeId });
-        functions.logger.log(`Admin ${callerUid} set operative ID for user ${uid} to "${operativeId}".`);
+        functions.logger.log(`Admin/Owner ${callerUid} set operative ID for user ${uid} to "${operativeId}".`);
         return { success: true };
     } catch (error: any) {
         functions.logger.error(`Error updating operative ID for user ${uid}:`, error);
@@ -786,3 +786,5 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
     throw new functions.https.HttpsError("internal", `An unexpected error occurred while deleting the user: ${error.message}`);
   }
 });
+
+    

@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, updateDoc } from 'firebase/firestore';
 import { db, isFirebaseConfigured, functions, httpsCallable } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { useUserProfile } from '@/hooks/use-user-profile';
@@ -24,7 +24,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
-import { Spinner } from '../shared/spinner';
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -85,22 +84,28 @@ export default function UserManagementPage() {
   }
 
   const handleTypeChange = async (uid: string, newType: 'direct' | 'subbie') => {
-    if (!functions) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Functions service not available.' });
+    if (!db) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Database service not available.' });
       return;
     }
-
+  
     const originalUsers = [...users];
+    // Optimistically update UI
     setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, employmentType: newType } : u));
-
+  
     try {
-      const setUserEmploymentType = httpsCallable(functions, 'setUserEmploymentType');
-      await setUserEmploymentType({ uid, employmentType: newType });
+      const userDocRef = doc(db, 'users', uid);
+      await updateDoc(userDocRef, { employmentType: newType });
       toast({ title: 'Success', description: 'User employment type updated.' });
     } catch (error: any) {
       console.error("Error updating employment type:", error);
-      toast({ variant: 'destructive', title: 'Update Failed', description: error.message || 'Could not save to database.' });
-      setUsers(originalUsers); // Revert UI change on failure
+      let errorMessage = error.message || 'Could not save to database.';
+      if (error.code === 'permission-denied') {
+          errorMessage = "Permission denied. Please check Firestore rules.";
+      }
+      toast({ variant: 'destructive', title: 'Update Failed', description: errorMessage });
+      // Revert UI change on failure
+      setUsers(originalUsers);
     }
   };
   
@@ -231,6 +236,7 @@ export default function UserManagementPage() {
                                 onBlur={(e) => handleOperativeIdChange(user.uid, e.target.value)}
                                 className="h-8 w-24"
                                 placeholder="Set ID"
+                                disabled={!isOwner && user.role === 'owner'}
                               />
                             ) : (
                               user.operativeId || <Badge variant="outline">N/A</Badge>
@@ -310,6 +316,7 @@ export default function UserManagementPage() {
                                 onBlur={(e) => handleOperativeIdChange(user.uid, e.target.value)}
                                 className="h-8"
                                 placeholder="Set ID"
+                                disabled={!isOwner && user.role === 'owner'}
                               />
                           </div>
                           <div className="flex items-center gap-2 pt-2">
@@ -349,3 +356,5 @@ export default function UserManagementPage() {
     </Card>
   );
 }
+
+    
