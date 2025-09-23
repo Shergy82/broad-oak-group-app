@@ -757,7 +757,6 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
   }
 });
 
-
 export const setUserEmploymentType = functions.region("europe-west2").https.onCall(async (data, context) => {
     // 1. Authentication & Authorization
     if (!context.auth) {
