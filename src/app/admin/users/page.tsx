@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { useUserProfile } from '@/hooks/use-user-profile';
@@ -90,22 +90,13 @@ export default function UserManagementPage() {
       toast({ variant: 'destructive', title: 'Error', description: 'Database service not available.' });
       return;
     }
-
     const userRef = doc(db, 'users', uid);
-
     try {
       await updateDoc(userRef, { operativeId });
       toast({ title: 'Success', description: "Operative ID updated." });
     } catch (error: any) {
       console.error("Error updating operative ID:", error);
-      toast({ variant: 'destructive', title: "Update Failed", description: "Could not save to database. Check Firestore rules." });
-      
-      // Revert UI change on failure
-      const userDoc = await getDoc(userRef);
-      if (userDoc.exists()) {
-        const originalId = userDoc.data().operativeId;
-        setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, operativeId: originalId } : u));
-      }
+      toast({ variant: 'destructive', title: "Update Failed", description: error.message || "Could not save to database. Check Firestore rules." });
     }
   };
 
@@ -115,20 +106,12 @@ export default function UserManagementPage() {
       return;
     }
     const userRef = doc(db, 'users', uid);
-    
     try {
       await updateDoc(userRef, { employmentType });
       toast({ title: 'Success', description: "Employment type updated." });
     } catch (error: any) {
       console.error("Error updating employment type:", error);
-      toast({ variant: 'destructive', title: 'Update Failed', description: "Could not save to database. Check Firestore rules." });
-
-      // Revert UI change on failure
-      const userDoc = await getDoc(userRef);
-      if (userDoc.exists()) {
-          const originalType = userDoc.data().employmentType;
-          setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, employmentType: originalType } : u));
-      }
+      toast({ variant: 'destructive', title: 'Update Failed', description: error.message || "Could not save to database. Check Firestore rules." });
     }
   };
   
@@ -364,4 +347,3 @@ export default function UserManagementPage() {
     </Card>
   );
 }
-

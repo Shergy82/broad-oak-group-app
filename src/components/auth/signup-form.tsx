@@ -82,6 +82,8 @@ export function SignUpForm() {
           role: userRole,
           status: 'active', // Set user to active immediately
           createdAt: serverTimestamp(),
+          operativeId: '', // Add empty operativeId field
+          employmentType: '', // Add empty employmentType field
       });
       
       toast({
