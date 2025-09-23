@@ -2,8 +2,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db, functions, httpsCallable } from '@/lib/firebase';
+import { collection, onSnapshot, query, doc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useToast } from '@/hooks/use-toast';
@@ -86,45 +86,37 @@ export default function UserManagementPage() {
   }
 
   const handleOperativeIdChange = async (uid: string, operativeId: string) => {
-    if (!functions) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Functions service not available.' });
-        return;
+    if (!db) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Database service not available.' });
+      return;
     }
 
-    // Optimistically update the UI
-    const originalUsers = users;
-    setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, operativeId } : u));
+    const userRef = doc(db, 'users', uid);
 
     try {
-        const setUserOperativeIdFn = httpsCallable(functions, 'setUserOperativeId');
-        await setUserOperativeIdFn({ uid, operativeId });
-        toast({ title: 'Success', description: "Operative ID updated." });
+      await updateDoc(userRef, { operativeId });
+      toast({ title: 'Success', description: "Operative ID updated." });
+      setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, operativeId } : u));
     } catch (error: any) {
-        console.error("Error updating operative ID:", error);
-        toast({ variant: 'destructive', title: "Update Failed", description: error.message || "An internal error occurred." });
-        // Revert UI change on failure
-        setUsers(originalUsers);
+      console.error("Error updating operative ID:", error);
+      toast({ variant: 'destructive', title: "Update Failed", description: "Could not save to database. Check Firestore rules." });
     }
   };
 
   const handleEmploymentTypeChange = async (uid: string, employmentType: 'direct' | 'subbie') => {
-    if (!functions) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Functions service not available.' });
+    if (!db) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Database service not available.' });
       return;
     }
-
-    // Optimistic UI update
-    const originalUsers = users;
-    setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, employmentType } : u));
+    const userRef = doc(db, 'users', uid);
     
     try {
-      const setUserEmploymentTypeFn = httpsCallable(functions, 'setUserEmploymentType');
-      await setUserEmploymentTypeFn({ uid, employmentType });
+      await updateDoc(userRef, { employmentType });
       toast({ title: 'Success', description: "Employment type updated." });
+      setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, employmentType } : u));
     } catch (error: any) {
       console.error("Error updating employment type:", error);
-      toast({ variant: 'destructive', title: 'Update Failed', description: error.message || "An internal error occurred." });
-      setUsers(originalUsers);
+      toast({ variant: 'destructive', title: 'Update Failed', description: "Could not save to database. Check Firestore rules." });
     }
   };
   
@@ -238,7 +230,7 @@ export default function UserManagementPage() {
                                 onBlur={(e) => handleOperativeIdChange(user.uid, e.target.value)}
                                 className="h-8 w-24"
                                 placeholder="Set ID"
-                                disabled={!isOwner && !isPrivilegedUser}
+                                disabled={!isPrivilegedUser}
                               />
                             ) : (
                               user.operativeId || <Badge variant="outline">N/A</Badge>
@@ -360,3 +352,5 @@ export default function UserManagementPage() {
     </Card>
   );
 }
+
+    
