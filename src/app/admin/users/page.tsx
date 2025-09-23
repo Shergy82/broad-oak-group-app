@@ -2,8 +2,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, doc, getDoc } from 'firebase/firestore';
-import { db, isFirebaseConfigured, functions } from '@/lib/firebase';
+import { collection, onSnapshot, query } from 'firebase/firestore';
+import { db, isFirebaseConfigured, functions, httpsCallable } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useToast } from '@/hooks/use-toast';
@@ -24,11 +24,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
-import { Spinner } from '@/components/shared/spinner';
-
-const LOCAL_STORAGE_KEY_TYPE = 'userEmploymentTypes';
-const LOCAL_STORAGE_KEY_ID = 'userOperativeIds';
-
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -52,22 +47,7 @@ export default function UserManagementPage() {
       querySnapshot.forEach((doc) => {
         fetchedUsers.push({ uid: doc.id, ...doc.data() } as UserProfile);
       });
-
-      // Load saved types and IDs from localStorage
-      const savedTypesRaw = localStorage.getItem(LOCAL_STORAGE_KEY_TYPE);
-      const savedTypes = savedTypesRaw ? JSON.parse(savedTypesRaw) : {};
-      const savedIdsRaw = localStorage.getItem(LOCAL_STORAGE_KEY_ID);
-      const savedIds = savedIdsRaw ? JSON.parse(savedIdsRaw) : {};
-
-
-      // Merge saved data into the user profiles
-      const usersWithLocalData = fetchedUsers.map(user => ({
-        ...user,
-        employmentType: savedTypes[user.uid] || user.employmentType,
-        operativeId: savedIds[user.uid] || user.operativeId,
-      }));
-
-      setUsers(usersWithLocalData.sort((a, b) => a.name.localeCompare(b.name)));
+      setUsers(fetchedUsers.sort((a, b) => a.name.localeCompare(b.name)));
       setLoading(false);
     }, (error) => {
       console.error("Error fetching users: ", error);
@@ -101,30 +81,43 @@ export default function UserManagementPage() {
     return `https://console.firebase.google.com/project/${projectId}/firestore/data/~2Fusers~2F${uid}`;
   }
 
-  const handleTypeChange = (uid: string, newType: 'direct' | 'subbie') => {
-    // 1. Update client-side state
-    setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, employmentType: newType } : u));
-    
-    // 2. Save to localStorage for persistence
-    const savedTypesRaw = localStorage.getItem(LOCAL_STORAGE_KEY_TYPE);
-    const savedTypes = savedTypesRaw ? JSON.parse(savedTypesRaw) : {};
-    savedTypes[uid] = newType;
-    localStorage.setItem(LOCAL_STORAGE_KEY_TYPE, JSON.stringify(savedTypes));
+  const handleTypeChange = async (uid: string, newType: 'direct' | 'subbie') => {
+    if (!functions) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Functions service not available.'});
+        return;
+    }
 
-    toast({ title: 'Success', description: 'User employment type updated and saved in your browser.' });
+    const originalUsers = [...users];
+    setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, employmentType: newType } : u));
+
+    try {
+        const setUserEmploymentType = httpsCallable(functions, 'setUserEmploymentType');
+        await setUserEmploymentType({ uid, employmentType: newType });
+        toast({ title: 'Success', description: 'User employment type updated.' });
+    } catch (error: any) {
+        console.error("Error updating employment type:", error);
+        toast({ variant: 'destructive', title: 'Update Failed', description: error.message || "An internal error occurred." });
+        setUsers(originalUsers); // Revert UI change on failure
+    }
   };
   
-  const handleOperativeIdChange = (uid: string, operativeId: string) => {
-    // 1. Update client-side state
+  const handleOperativeIdChange = async (uid: string, operativeId: string) => {
+     if (!functions) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Functions service not available.'});
+        return;
+    }
+    const originalUsers = [...users];
     setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, operativeId } : u));
-
-    // 2. Save to localStorage for persistence
-    const savedIdsRaw = localStorage.getItem(LOCAL_STORAGE_KEY_ID);
-    const savedIds = savedIdsRaw ? JSON.parse(savedIdsRaw) : {};
-    savedIds[uid] = operativeId;
-    localStorage.setItem(LOCAL_STORAGE_KEY_ID, JSON.stringify(savedIds));
     
-    toast({ title: 'Success', description: "Operative ID updated and saved in your browser." });
+    try {
+        const setUserOperativeId = httpsCallable(functions, 'setUserOperativeId');
+        await setUserOperativeId({ uid, operativeId });
+        toast({ title: 'Success', description: "Operative ID updated successfully." });
+    } catch (error: any) {
+        console.error("Error updating operative ID:", error);
+        toast({ variant: 'destructive', title: 'Update Failed', description: error.message || "An internal error occurred." });
+        setUsers(originalUsers); // Revert UI change on failure
+    }
   };
 
 
@@ -251,20 +244,18 @@ export default function UserManagementPage() {
                           </TableCell>
                           {isOwner && (
                               <TableCell>
-                                  {user.role !== 'owner' ? (
-                                      <Select
-                                          value={user.employmentType || ''}
-                                          onValueChange={(value: 'direct' | 'subbie') => handleTypeChange(user.uid, value)}
-                                      >
-                                          <SelectTrigger className="w-[120px]">
-                                              <SelectValue placeholder="Set Type" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                              <SelectItem value="direct">Direct</SelectItem>
-                                              <SelectItem value="subbie">Subbie</SelectItem>
-                                          </SelectContent>
-                                      </Select>
-                                  ) : <Badge variant="outline">N/A</Badge>}
+                                  <Select
+                                      value={user.employmentType || ''}
+                                      onValueChange={(value: 'direct' | 'subbie') => handleTypeChange(user.uid, value)}
+                                  >
+                                      <SelectTrigger className="w-[120px]">
+                                          <SelectValue placeholder="Set Type" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                          <SelectItem value="direct">Direct</SelectItem>
+                                          <SelectItem value="subbie">Subbie</SelectItem>
+                                      </SelectContent>
+                                  </Select>
                               </TableCell>
                           )}
                           <TableCell className="text-right">
@@ -318,23 +309,21 @@ export default function UserManagementPage() {
                                 placeholder="Set ID"
                               />
                           </div>
-                          { user.role !== 'owner' && (
-                            <div className="flex items-center gap-2 pt-2">
-                              <strong className="shrink-0">Type:</strong>
-                              <Select
-                                value={user.employmentType || ''}
-                                onValueChange={(value: 'direct' | 'subbie') => handleTypeChange(user.uid, value)}
-                              >
-                                <SelectTrigger className="w-full">
-                                  <SelectValue placeholder="Set Type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="direct">Direct</SelectItem>
-                                  <SelectItem value="subbie">Subbie</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                           )}
+                          <div className="flex items-center gap-2 pt-2">
+                            <strong className="shrink-0">Type:</strong>
+                            <Select
+                              value={user.employmentType || ''}
+                              onValueChange={(value: 'direct' | 'subbie') => handleTypeChange(user.uid, value)}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Set Type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="direct">Direct</SelectItem>
+                                <SelectItem value="subbie">Subbie</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </>
                      )}
                   </CardContent>

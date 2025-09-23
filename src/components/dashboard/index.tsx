@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/hooks/use-auth';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import { ShiftCard } from '@/components/dashboard/shift-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,26 +17,18 @@ import { useToast } from '@/hooks/use-toast';
 import { getCorrectedLocalDate } from '@/lib/utils';
 import { Badge } from '../ui/badge';
 
-const LOCAL_STORAGE_KEY_ID = 'userOperativeIds';
-
 
 export default function Dashboard({ userShifts, loading }: { userShifts: Shift[], loading: boolean }) {
   const { user } = useAuth();
+  const { userProfile } = useUserProfile();
   const { toast } = useToast();
   const [dismissedShiftIds, setDismissedShiftIds] = useState<string[]>([]);
-  const [operativeId, setOperativeId] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
         const storedDismissedIds = localStorage.getItem(`dismissedShifts_${user.uid}`);
         if (storedDismissedIds) {
             setDismissedShiftIds(JSON.parse(storedDismissedIds));
-        }
-        
-        const savedIdsRaw = localStorage.getItem(LOCAL_STORAGE_KEY_ID);
-        const savedIds = savedIdsRaw ? JSON.parse(savedIdsRaw) : {};
-        if (savedIds[user.uid]) {
-            setOperativeId(savedIds[user.uid]);
         }
     }
   }, [user]);
@@ -261,7 +254,7 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
               <h2 className="text-xl md:text-2xl font-semibold tracking-tight">
                 Hi, {user.displayName.split(' ')[0]}
               </h2>
-              {operativeId && <Badge variant="secondary">ID: {operativeId}</Badge>}
+              {userProfile?.operativeId && <Badge variant="secondary">ID: {userProfile.operativeId}</Badge>}
             </div>
             <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={loading}>
               <Download className="mr-2 h-4 w-4" />
@@ -344,3 +337,5 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
     </div>
   );
 }
+
+    
