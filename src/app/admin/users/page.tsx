@@ -99,18 +99,16 @@ export default function UserManagementPage() {
     }
   };
 
-  const handleEmploymentTypeChange = async (uid: string, employmentType: 'direct' | 'subbie') => {
-    if (!isPrivilegedUser) {
-        toast({ variant: "destructive", title: "Permission Denied", description: "You cannot change the employment type." });
-        return;
-    }
-    const userDocRef = doc(db, 'users', uid);
-    try {
-        await updateDoc(userDocRef, { employmentType });
-        toast({ title: "Success", description: "Employment type updated." });
-    } catch (error: any) {
-        toast({ variant: "destructive", title: "Update Failed", description: error.message || "Could not update employment type." });
-    }
+  const handleEmploymentTypeChange = (uid: string, employmentType: 'direct' | 'subbie') => {
+    setUsers(currentUsers =>
+      currentUsers.map(user =>
+        user.uid === uid ? { ...user, employmentType: employmentType } : user
+      )
+    );
+    toast({
+        title: "Type Set (Locally)",
+        description: "The employment type has been updated for this session. It will not be saved permanently."
+    })
   };
   
   const handleDownloadPdf = async () => {
