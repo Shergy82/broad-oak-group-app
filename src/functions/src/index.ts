@@ -795,5 +795,3 @@ export const setUserEmploymentType = functions.region("europe-west2").https.onCa
         throw new functions.https.HttpsError("internal", `An unexpected error occurred while updating the user: ${error.message}`);
     }
 });
-
-    
