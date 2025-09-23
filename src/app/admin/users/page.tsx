@@ -46,9 +46,22 @@ export default function UserManagementPage() {
     const q = query(usersCollection);
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      let employmentTypes: { [key: string]: 'direct' | 'subbie' } = {};
+      if (typeof window !== 'undefined') {
+        const storedTypes = localStorage.getItem('employmentTypes');
+        if (storedTypes) {
+          employmentTypes = JSON.parse(storedTypes);
+        }
+      }
+
       const fetchedUsers: UserProfile[] = [];
       querySnapshot.forEach((doc) => {
-        fetchedUsers.push({ uid: doc.id, ...doc.data() } as UserProfile);
+        const user = { uid: doc.id, ...doc.data() } as UserProfile;
+        // Apply locally stored type if it exists
+        if (employmentTypes[user.uid]) {
+            user.employmentType = employmentTypes[user.uid];
+        }
+        fetchedUsers.push(user);
       });
       setUsers(fetchedUsers.sort((a, b) => a.name.localeCompare(b.name)));
       setLoading(false);
@@ -100,15 +113,25 @@ export default function UserManagementPage() {
   };
 
   const handleEmploymentTypeChange = (uid: string, employmentType: 'direct' | 'subbie') => {
+    // Update the state for immediate UI feedback
     setUsers(currentUsers =>
       currentUsers.map(user =>
         user.uid === uid ? { ...user, employmentType: employmentType } : user
       )
     );
+
+    // Persist to localStorage
+    if (typeof window !== 'undefined') {
+        const storedTypes = localStorage.getItem('employmentTypes');
+        const employmentTypes = storedTypes ? JSON.parse(storedTypes) : {};
+        employmentTypes[uid] = employmentType;
+        localStorage.setItem('employmentTypes', JSON.stringify(employmentTypes));
+    }
+    
     toast({
-        title: "Type Set (Locally)",
-        description: "The employment type has been updated for this session. It will not be saved permanently."
-    })
+        title: "Employment Type Saved (Locally)",
+        description: "This choice is saved in your browser and will be remembered."
+    });
   };
   
   const handleDownloadPdf = async () => {
