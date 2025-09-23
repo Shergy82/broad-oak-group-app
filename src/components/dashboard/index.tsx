@@ -252,7 +252,7 @@ export default function Dashboard({ userShifts, loading, operativeId }: { userSh
               <h2 className="text-xl md:text-2xl font-semibold tracking-tight">
                 Hi, {user.displayName.split(' ')[0]}
               </h2>
-              {operativeId && <Badge variant="outline">ID: {operativeId}</Badge>}
+              {operativeId && <Badge variant="secondary">ID: {operativeId}</Badge>}
             </div>
             <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={loading}>
               <Download className="mr-2 h-4 w-4" />
