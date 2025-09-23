@@ -714,5 +714,3 @@ exports.deleteUser = functions.region("europe-west2").https.onCall(async (data, 
     }
 });
 //# sourceMappingURL=index.js.map
-
-    
