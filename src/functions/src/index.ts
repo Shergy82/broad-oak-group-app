@@ -695,7 +695,6 @@ export const setUserStatus = functions.region("europe-west2").https.onCall(async
     }
 });
 
-
 export const deleteUser = functions.region("europe-west2").https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");

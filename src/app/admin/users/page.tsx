@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, doc, getDoc } from 'firebase/firestore';
-import { db, isFirebaseConfigured, functions, httpsCallable } from '@/lib/firebase';
+import { db, isFirebaseConfigured, functions } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useToast } from '@/hooks/use-toast';
@@ -24,9 +24,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
-import { Spinner } from '../shared/spinner';
+import { Spinner } from '@/components/shared/spinner';
 
-const LOCAL_STORAGE_KEY = 'userEmploymentTypes';
+const LOCAL_STORAGE_KEY_TYPE = 'userEmploymentTypes';
+const LOCAL_STORAGE_KEY_ID = 'userOperativeIds';
+
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -51,17 +53,21 @@ export default function UserManagementPage() {
         fetchedUsers.push({ uid: doc.id, ...doc.data() } as UserProfile);
       });
 
-      // Load saved types from localStorage
-      const savedTypesRaw = localStorage.getItem(LOCAL_STORAGE_KEY);
+      // Load saved types and IDs from localStorage
+      const savedTypesRaw = localStorage.getItem(LOCAL_STORAGE_KEY_TYPE);
       const savedTypes = savedTypesRaw ? JSON.parse(savedTypesRaw) : {};
+      const savedIdsRaw = localStorage.getItem(LOCAL_STORAGE_KEY_ID);
+      const savedIds = savedIdsRaw ? JSON.parse(savedIdsRaw) : {};
 
-      // Merge saved types into the user profiles
-      const usersWithTypes = fetchedUsers.map(user => ({
+
+      // Merge saved data into the user profiles
+      const usersWithLocalData = fetchedUsers.map(user => ({
         ...user,
         employmentType: savedTypes[user.uid] || user.employmentType,
+        operativeId: savedIds[user.uid] || user.operativeId,
       }));
 
-      setUsers(usersWithTypes.sort((a, b) => a.name.localeCompare(b.name)));
+      setUsers(usersWithLocalData.sort((a, b) => a.name.localeCompare(b.name)));
       setLoading(false);
     }, (error) => {
       console.error("Error fetching users: ", error);
@@ -100,42 +106,25 @@ export default function UserManagementPage() {
     setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, employmentType: newType } : u));
     
     // 2. Save to localStorage for persistence
-    const savedTypesRaw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const savedTypesRaw = localStorage.getItem(LOCAL_STORAGE_KEY_TYPE);
     const savedTypes = savedTypesRaw ? JSON.parse(savedTypesRaw) : {};
     savedTypes[uid] = newType;
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(savedTypes));
+    localStorage.setItem(LOCAL_STORAGE_KEY_TYPE, JSON.stringify(savedTypes));
 
     toast({ title: 'Success', description: 'User employment type updated and saved in your browser.' });
   };
   
-  const handleOperativeIdChange = async (uid: string, operativeId: string) => {
-    if (!functions) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Functions service is not available.' });
-      return;
-    }
+  const handleOperativeIdChange = (uid: string, operativeId: string) => {
+    // 1. Update client-side state
+    setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, operativeId } : u));
+
+    // 2. Save to localStorage for persistence
+    const savedIdsRaw = localStorage.getItem(LOCAL_STORAGE_KEY_ID);
+    const savedIds = savedIdsRaw ? JSON.parse(savedIdsRaw) : {};
+    savedIds[uid] = operativeId;
+    localStorage.setItem(LOCAL_STORAGE_KEY_ID, JSON.stringify(savedIds));
     
-    try {
-      const setUserOperativeIdFn = httpsCallable(functions, 'setUserOperativeId');
-      await setUserOperativeIdFn({ uid, operativeId });
-      
-      setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, operativeId } : u));
-      
-      toast({ title: 'Success', description: "Operative ID updated." });
-    } catch (error: any) {
-      console.error("Error updating operative ID:", error);
-      toast({
-        variant: 'destructive',
-        title: 'Update Failed',
-        description: error.message || "Could not update the operative ID.",
-      });
-      // Revert UI change on failure
-      const userDocRef = doc(db, 'users', uid);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists()) {
-        const originalId = userDoc.data().operativeId;
-        setUsers(prevUsers => prevUsers.map(u => u.uid === uid ? { ...u, operativeId: originalId } : u));
-      }
-    }
+    toast({ title: 'Success', description: "Operative ID updated and saved in your browser." });
   };
 
 
