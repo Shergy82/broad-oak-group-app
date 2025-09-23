@@ -14,9 +14,10 @@ import { Clock, Download, Sunrise, Sunset, Terminal, History } from 'lucide-reac
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { getCorrectedLocalDate } from '@/lib/utils';
+import { Badge } from '../ui/badge';
 
 
-export default function Dashboard({ userShifts, loading }: { userShifts: Shift[], loading: boolean }) {
+export default function Dashboard({ userShifts, loading, operativeId }: { userShifts: Shift[], loading: boolean, operativeId: string | null }) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [dismissedShiftIds, setDismissedShiftIds] = useState<string[]>([]);
@@ -247,9 +248,12 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
     <div className="w-full space-y-8">
       {user?.displayName && (
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <h2 className="text-xl md:text-2xl font-semibold tracking-tight">
-              Hi, {user.displayName.split(' ')[0]}
-            </h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl md:text-2xl font-semibold tracking-tight">
+                Hi, {user.displayName.split(' ')[0]}
+              </h2>
+              {operativeId && <Badge variant="outline">ID: {operativeId}</Badge>}
+            </div>
             <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={loading}>
               <Download className="mr-2 h-4 w-4" />
               Download Schedule
