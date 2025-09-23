@@ -1,4 +1,5 @@
 
+'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as webPush from "web-push";
@@ -159,22 +160,22 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
         functions.logger.log("Shift update detected, but data is missing. No notification sent.");
         return;
       }
-
+      
       // --- Robust comparison logic ---
       const changedFields: string[] = [];
 
       // 1. Compare string values, tolerant of whitespace and null/undefined differences.
       if ((before.task || "").trim() !== (after.task || "").trim()) {
-        changedFields.push('task');
+          changedFields.push('task');
       }
       if ((before.address || "").trim() !== (after.address || "").trim()) {
-        changedFields.push('location');
+          changedFields.push('location');
       }
       if ((before.bNumber || "").trim() !== (after.bNumber || "").trim()) {
-        changedFields.push('B Number');
+          changedFields.push('B Number');
       }
       if (before.type !== after.type) {
-        changedFields.push('time (AM/PM)');
+          changedFields.push('time (AM/PM)');
       }
 
       // 2. Compare dates with day-level precision, ignoring time-of-day.
@@ -184,21 +185,21 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
 
       // 3. Determine if any meaningful change occurred and build the notification.
       if (changedFields.length > 0) {
-        userId = after.userId;
+          userId = after.userId;
 
-        const changes = changedFields.join(' & ');
-        const body = `The ${changes} for one of your shifts has been updated.`;
+          const changes = changedFields.join(' & ');
+          const body = `The ${changes} for one of your shifts has been updated.`;
 
-        payload = {
-          title: "Your Shift Has Been Updated",
-          body: body,
-          data: { url: `/dashboard` },
-        };
-        functions.logger.log(`Meaningful change detected for shift ${shiftId}. Changes: ${changes}. Sending notification.`);
+          payload = {
+            title: "Your Shift Has Been Updated",
+            body: body,
+            data: { url: `/dashboard` },
+          };
+          functions.logger.log(`Meaningful change detected for shift ${shiftId}. Changes: ${changes}. Sending notification.`);
       } else {
-        // This is the crucial part: No meaningful change was detected, so no notification will be sent.
-        functions.logger.log(`Shift ${shiftId} was updated, but no significant fields changed. No notification sent.`);
-        return;
+          // This is the crucial part: No meaningful change was detected, so no notification will be sent.
+          functions.logger.log(`Shift ${shiftId} was updated, but no significant fields changed. No notification sent.`);
+          return;
       }
     } else {
       functions.logger.log(`Shift ${shiftId} write event occurred, but it was not a create, update, or delete. No notification sent.`);
