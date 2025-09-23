@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -85,19 +86,31 @@ export default function UserManagementPage() {
   }
 
   const handleOperativeIdChange = async (uid: string, operativeId: string) => {
-    // This is intentionally left blank for now to prevent errors.
-    // To implement, this would require a direct DB write or a cloud function.
-    setUsers(prevUsers => 
-      prevUsers.map(u => u.uid === uid ? { ...u, operativeId } : u)
-    );
+    if (!isPrivilegedUser) {
+        toast({ variant: "destructive", title: "Permission Denied", description: "You cannot change the Operative ID." });
+        return;
+    }
+    const userDocRef = doc(db, 'users', uid);
+    try {
+        await updateDoc(userDocRef, { operativeId });
+        toast({ title: "Success", description: "Operative ID updated." });
+    } catch (error: any) {
+        toast({ variant: "destructive", title: "Update Failed", description: error.message || "Could not update Operative ID." });
+    }
   };
 
   const handleEmploymentTypeChange = async (uid: string, employmentType: 'direct' | 'subbie') => {
-    // Update local state to reflect UI change immediately without saving to DB.
-    // This prevents the permission error toast.
-    setUsers(prevUsers => 
-      prevUsers.map(u => u.uid === uid ? { ...u, employmentType } : u)
-    );
+    if (!isPrivilegedUser) {
+        toast({ variant: "destructive", title: "Permission Denied", description: "You cannot change the employment type." });
+        return;
+    }
+    const userDocRef = doc(db, 'users', uid);
+    try {
+        await updateDoc(userDocRef, { employmentType });
+        toast({ title: "Success", description: "Employment type updated." });
+    } catch (error: any) {
+        toast({ variant: "destructive", title: "Update Failed", description: error.message || "Could not update employment type." });
+    }
   };
   
   const handleDownloadPdf = async () => {

@@ -1,61 +1,90 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-  
-    function isOwner(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.role == 'owner';
-    }
-    
-    function isAdmin(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.role == 'admin';
+
+    // Helper function to check if a user is an admin or owner
+    function isPrivileged(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.role in ['admin', 'owner'];
     }
 
+    // --- Users Collection ---
     match /users/{userId} {
-      allow read;
+      // Anyone can create their own user document (on sign-up)
       allow create: if request.auth.uid == userId;
-      // Allow 'admin' or 'owner' to update any user document
-      allow update: if request.auth.uid == userId || isAdmin(request.auth.uid) || isOwner(request.auth.uid);
-      allow delete: if isOwner(request.auth.uid);
-    }
-    
-    match /users/{userId}/pushSubscriptions/{subscriptionId} {
-        allow read, write: if request.auth.uid == userId;
-    }
-    
-    match /settings/notifications {
-        allow read: if isOwner(request.auth.uid);
-        allow write: if isOwner(request.auth.uid);
+
+      // Only the user themselves can read their own document
+      // Admins and Owners can read any user's document
+      allow read: if request.auth.uid == userId || isPrivileged(request.auth.uid);
+
+      // Only Admins and Owners can update a user's document
+      allow update: if isPrivileged(request.auth.uid);
+
+      // Only Owners can delete a user (this is handled by a Cloud Function for safety)
+      allow delete: if false;
+
+      // --- Push Subscriptions Subcollection ---
+      match /pushSubscriptions/{subscriptionId} {
+        // A user can only manage their own push subscriptions
+        allow read, write, delete: if request.auth.uid == userId;
+      }
     }
 
+    // --- Shifts Collection ---
     match /shifts/{shiftId} {
-      allow read: if request.auth != null;
-      allow create: if isAdmin(request.auth.uid) || isOwner(request.auth.uid);
-      allow update: if request.auth != null;
-      allow delete: if isAdmin(request.auth.uid) || isOwner(request.auth.uid);
+      // Only Admins and Owners can create, update, or delete shifts
+      allow create, delete: if isPrivileged(request.auth.uid);
+      
+      // Allow update for different roles based on status
+      allow update: if 
+        // Admins/Owners can always update
+        isPrivileged(request.auth.uid) ||
+        // The assigned user can update the status/notes, but cannot change other fields
+        (request.auth.uid == resource.data.userId && !(
+          'userId' in request.resource.data && request.resource.data.userId != resource.data.userId ||
+          'date' in request.resource.data && request.resource.data.date != resource.data.date ||
+          'type' in request.resource.data && request.resource.data.type != resource.data.type ||
+          'address' in request.resource.data && request.resource.data.address != resource.data.address ||
+          'task' in request.resource.data && request.resource.data.task != resource.data.task
+        ));
+      
+      // Admins, Owners, and the assigned user can read the shift
+      allow read: if isPrivileged(request.auth.uid) || request.auth.uid == resource.data.userId;
     }
 
-    match /announcements/{announcementId} {
-      allow read: if request.auth != null;
-      allow create, update, delete: if isAdmin(request.auth.uid) || isOwner(request.auth.uid);
-    }
-    
-    match /announcements/{announcementId}/acknowledgedBy/{userId} {
-        allow read: if isAdmin(request.auth.uid) || isOwner(request.auth.uid);
-        allow write: if request.auth.uid == userId;
-    }
-    
+    // --- Projects Collection ---
     match /projects/{projectId} {
-        allow read: if request.auth != null;
-        allow create, update: if isAdmin(request.auth.uid) || isOwner(request.auth.uid);
-        allow delete: if isOwner(request.auth.uid);
+      // Any authenticated user can read project details
+      allow read: if request.auth.uid != null;
+      // Only Admins and Owners can create or delete projects
+      allow create, delete: if isPrivileged(request.auth.uid);
+      // Only Admins and Owners can update project details
+      allow update: if isPrivileged(request.auth.uid);
+
+      // --- Files Subcollection ---
+      match /files/{fileId} {
+        // Any authenticated user can read/download file metadata
+        allow read: if request.auth.uid != null;
+        // Any authenticated user can create (upload) a file
+        allow create: if request.auth.uid != null;
+        // Only the uploader, an admin, or an owner can delete a file
+        allow delete: if isPrivileged(request.auth.uid) || request.auth.uid == resource.data.uploaderId;
+      }
+    }
+
+    // --- Announcements Collection ---
+    match /announcements/{announcementId} {
+        // Any authenticated user can read announcements
+        allow read: if request.auth.uid != null;
+        // Only Admins and Owners can create, update, or delete announcements
+        allow create, update, delete: if isPrivileged(request.auth.uid);
     }
     
-    match /projects/{projectId}/files/{fileId} {
-        allow read: if request.auth != null;
-        allow create: if request.auth != null;
-        // Deletion is handled by a Cloud Function for security
-        allow delete: if false; 
+    // --- Settings Collection (for notification toggle) ---
+    match /settings/notifications {
+      // Only the Owner can read or write to the global notification setting
+      allow read, write: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
     }
   }
 }
