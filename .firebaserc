@@ -1,13 +1,5 @@
 {
   "projects": {
-    "1": "broad-oak-build-live",
-    "Live": "broad-oak-build-live",
-    "Live Version": "broad-oak-build-live-ei0z5",
-    "BroadOak": "broad-oak-build-live-ei0z5",
-    "BO live": "broad-oak-build-live",
-    "Broad Oak": "broad-oak-build-live",
-    "live": "broad-oak-build-live"
-  },
-  "targets": {},
-  "etags": {}
+    "default": "group-build-29768421-feed1"
+  }
 }
