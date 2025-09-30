@@ -1,4 +1,3 @@
-
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
@@ -9,12 +8,12 @@ import { getFunctions, httpsCallable, type Functions } from "firebase/functions"
 
 // Your Firebase project configuration.
 const firebaseConfig = {
-  apiKey: "AIzaSyAdYOSzCJAN8iKphycmgoUwUwjCZyJ9T-U",
-  authDomain: "group-build-29768421-feed1.firebaseapp.com",
-  projectId: "group-build-29768421-feed1",
-  storageBucket: "group-build-29768421-feed1.firebasestorage.app",
-  messagingSenderId: "380758139603",
-  appId: "1:380758139603:web:8ff0eab0c5a109436eaa26"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
 // A flag to check if Firebase is configured
