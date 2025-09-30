@@ -1,90 +1,87 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check if a user is an admin or owner
-    function isPrivileged(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.role in ['admin', 'owner'];
-    }
-
-    // --- Users Collection ---
-    match /users/{userId} {
-      // Anyone can create their own user document (on sign-up)
-      allow create: if request.auth.uid == userId;
-
-      // Only the user themselves can read their own document
-      // Admins and Owners can read any user's document
-      allow read: if request.auth.uid == userId || isPrivileged(request.auth.uid);
-
-      // Only Admins and Owners can update a user's document
-      allow update: if isPrivileged(request.auth.uid);
-
-      // Only Owners can delete a user (this is handled by a Cloud Function for safety)
-      allow delete: if false;
-
-      // --- Push Subscriptions Subcollection ---
-      match /pushSubscriptions/{subscriptionId} {
-        // A user can only manage their own push subscriptions
-        allow read, write, delete: if request.auth.uid == userId;
-      }
-    }
-
-    // --- Shifts Collection ---
-    match /shifts/{shiftId} {
-      // Only Admins and Owners can create, update, or delete shifts
-      allow create, delete: if isPrivileged(request.auth.uid);
-      
-      // Allow update for different roles based on status
-      allow update: if 
-        // Admins/Owners can always update
-        isPrivileged(request.auth.uid) ||
-        // The assigned user can update the status/notes, but cannot change other fields
-        (request.auth.uid == resource.data.userId && !(
-          'userId' in request.resource.data && request.resource.data.userId != resource.data.userId ||
-          'date' in request.resource.data && request.resource.data.date != resource.data.date ||
-          'type' in request.resource.data && request.resource.data.type != resource.data.type ||
-          'address' in request.resource.data && request.resource.data.address != resource.data.address ||
-          'task' in request.resource.data && request.resource.data.task != resource.data.task
-        ));
-      
-      // Admins, Owners, and the assigned user can read the shift
-      allow read: if isPrivileged(request.auth.uid) || request.auth.uid == resource.data.userId;
-    }
-
-    // --- Projects Collection ---
-    match /projects/{projectId} {
-      // Any authenticated user can read project details
-      allow read: if request.auth.uid != null;
-      // Only Admins and Owners can create or delete projects
-      allow create, delete: if isPrivileged(request.auth.uid);
-      // Only Admins and Owners can update project details
-      allow update: if isPrivileged(request.auth.uid);
-
-      // --- Files Subcollection ---
-      match /files/{fileId} {
-        // Any authenticated user can read/download file metadata
-        allow read: if request.auth.uid != null;
-        // Any authenticated user can create (upload) a file
-        allow create: if request.auth.uid != null;
-        // Only the uploader, an admin, or an owner can delete a file
-        allow delete: if isPrivileged(request.auth.uid) || request.auth.uid == resource.data.uploaderId;
-      }
-    }
-
-    // --- Announcements Collection ---
-    match /announcements/{announcementId} {
-        // Any authenticated user can read announcements
-        allow read: if request.auth.uid != null;
-        // Only Admins and Owners can create, update, or delete announcements
-        allow create, update, delete: if isPrivileged(request.auth.uid);
+    // Helper function to check if a user has a specific role.
+    function isRole(uid, role) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.role == role;
     }
     
-    // --- Settings Collection (for notification toggle) ---
+    // Helper function to check if a user is an admin or owner.
+    function isPrivilegedUser(uid) {
+      let userRole = get(/databases/$(database)/documents/users/$(uid)).data.role;
+      return userRole == 'admin' || userRole == 'owner';
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      // Allow user creation (signup) for anyone.
+      allow create: if request.auth.uid == userId;
+      
+      // Allow users to read their own profile. Admins/owners can read anyone's.
+      allow read: if request.auth.uid == userId || isPrivilegedUser(request.auth.uid);
+      
+      // Allow users to update their own profile. Admins/owners can update anyone's.
+      allow update: if request.auth.uid == userId || isPrivilegedUser(request.auth.uid);
+      
+      // Only the owner can delete a user record.
+      allow delete: if isRole(request.auth.uid, 'owner');
+    }
+    
+    match /users/{userId}/pushSubscriptions/{subscriptionId} {
+        // Allow users to manage their own push notification subscriptions.
+        allow read, write, delete: if request.auth.uid == userId;
+    }
+
+    // Shifts Collection
+    match /shifts/{shiftId} {
+      // Any logged-in user can read all shifts.
+      allow read: if request.auth != null;
+      
+      // Only privileged users (admins/owners) can create shifts.
+      allow create: if isPrivilegedUser(request.auth.uid);
+
+      // Users can update their own shifts (e.g., change status), and admins/owners can update any.
+      allow update: if resource.data.userId == request.auth.uid || isPrivilegedUser(request.auth.uid);
+      
+      // Only privileged users can delete shifts.
+      allow delete: if isPrivilegedUser(request.auth.uid);
+    }
+
+    // Projects Collection and Files Subcollection
+    match /projects/{projectId} {
+      // Any logged-in user can read project details.
+      allow read: if request.auth != null;
+      
+      // Only privileged users can create, update, or delete projects.
+      allow create, update, delete: if isPrivilegedUser(request.auth.uid);
+
+      match /files/{fileId} {
+        // Any logged-in user can read file details.
+        allow read: if request.auth != null;
+        
+        // Any logged-in user can create (upload) files.
+        allow create: if request.auth != null;
+        
+        // Only privileged users or the original uploader can delete a file.
+        allow delete: if isPrivilegedUser(request.auth.uid) || resource.data.uploaderId == request.auth.uid;
+      }
+    }
+    
+    // Announcements Collection
+    match /announcements/{announcementId} {
+      // Any logged-in user can read announcements.
+      allow read: if request.auth != null;
+      
+      // Only privileged users can create, update, or delete announcements.
+      allow create, update, delete: if isPrivilegedUser(request.auth.uid);
+    }
+    
+    // Settings Collection (for notification toggle)
     match /settings/notifications {
-      // Only the Owner can read or write to the global notification setting
-      allow read, write: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+        // Only the owner can read or write to the global notification setting.
+        allow read, write: if isRole(request.auth.uid, 'owner');
     }
   }
 }
