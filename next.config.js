@@ -1,4 +1,3 @@
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
@@ -17,12 +16,7 @@ const nextConfig = {
       },
     ],
   },
-  experimental: {
-    // This is the fix for the cross-origin request warning.
-    allowedDevOrigins: [
-      'https://6000-firebase-studio-1750626806884.cluster-oayqgyglpfgseqclbygurw4xd4.cloudworkstations.dev',
-    ],
-  },
+  // Remove invalid experimental options
 };
 
 module.exports = nextConfig;
