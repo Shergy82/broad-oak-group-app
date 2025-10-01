@@ -6,7 +6,6 @@ import * as webPush from "web-push";
 admin.initializeApp();
 const db = admin.firestore();
 
-// Define a converter for the PushSubscription type for robust data handling.
 const pushSubscriptionConverter = {
     toFirestore(subscription: webPush.PushSubscription): admin.firestore.DocumentData {
         return { endpoint: subscription.endpoint, keys: subscription.keys };
@@ -26,7 +25,6 @@ const pushSubscriptionConverter = {
     }
 };
 
-// Callable function to securely provide the VAPID public key to the client.
 export const getVapidPublicKey = functions.region("europe-west2").https.onCall((data, context) => {
     const publicKey = functions.config().webpush?.public_key;
     if (!publicKey) {
@@ -36,7 +34,6 @@ export const getVapidPublicKey = functions.region("europe-west2").https.onCall((
     return { publicKey };
 });
 
-// Callable function for the owner to check the global notification status.
 export const getNotificationStatus = functions.region("europe-west2").https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
@@ -50,7 +47,6 @@ export const getNotificationStatus = functions.region("europe-west2").https.onCa
     return { enabled: settingsDoc.exists && settingsDoc.data()?.enabled !== false };
 });
 
-// Callable function for the owner to enable/disable all notifications globally.
 export const setNotificationStatus = functions.region("europe-west2").https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
@@ -68,19 +64,16 @@ export const setNotificationStatus = functions.region("europe-west2").https.onCa
     return { success: true };
 });
 
-// Firestore trigger that sends a push notification when a shift is created, updated, or deleted.
 export const sendShiftNotification = functions.region("europe-west2").firestore.document("shifts/{shiftId}")
   .onWrite(async (change, context) => {
     const shiftId = context.params.shiftId;
     
-    // Check master toggle first
     const settingsDoc = await db.collection('settings').doc('notifications').get();
     if (settingsDoc.exists() && settingsDoc.data()?.enabled === false) {
       functions.logger.log('Global notifications are disabled. Aborting.');
       return;
     }
 
-    // Configure web-push with VAPID keys from function config
     const config = functions.config();
     const publicKey = config.webpush?.public_key;
     const privateKey = config.webpush?.private_key;
@@ -96,7 +89,6 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
     let userId: string | null = null;
     let payload: object | null = null;
 
-    // Case 1: New shift created
     if (afterData && !beforeData) {
         userId = afterData.userId;
         payload = {
@@ -105,7 +97,6 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
             data: { url: `/dashboard` },
         };
     } 
-    // Case 2: Shift deleted
     else if (!afterData && beforeData) {
         userId = beforeData.userId;
         payload = {
@@ -114,7 +105,6 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
             data: { url: `/dashboard` },
         };
     } 
-    // Case 3: Shift updated
     else if (beforeData && afterData) {
         const changedFields: string[] = [];
         if ((beforeData.task || "").trim() !== (afterData.task || "").trim()) changedFields.push('task');
@@ -136,7 +126,7 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
             return;
         }
     } else {
-        return; // No relevant change
+        return; 
     }
 
     if (!userId || !payload) return;
@@ -154,7 +144,7 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
         const subscription = subDoc.data();
         return webPush.sendNotification(subscription, JSON.stringify(payload)).catch((error: any) => {
             if (error.statusCode === 410 || error.statusCode === 404) {
-                return subDoc.ref.delete(); // Prune expired subscription
+                return subDoc.ref.delete();
             }
             functions.logger.error(`Error sending notification to user ${userId}:`, error);
             return null;
@@ -165,21 +155,13 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
     functions.logger.log(`Finished sending notifications for shift ${shiftId}.`);
 });
 
-// Scheduled function to remind project creators to review old projects.
 export const projectReviewNotifier = functions.region("europe-west2").pubsub.schedule("every 24 hours")
   .onRun(async (context) => {
-    // Similar checks for notification settings and VAPID keys as above...
-    // [Implementation logic to query old projects and notify creators]
-});
+  });
 
-// Scheduled function to remind users of shifts pending their confirmation.
 export const pendingShiftNotifier = functions.region("europe-west2").pubsub.schedule("every 1 hours")
   .onRun(async (context) => {
-    // Similar checks for notification settings and VAPID keys as above...
-    // [Implementation logic to query pending shifts and notify users]
-});
-
-// Admin callable functions for user and project management.
+  });
 
 export const deleteProjectAndFiles = functions.region("europe-west2").https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Authentication required.");
