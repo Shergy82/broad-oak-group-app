@@ -16,7 +16,6 @@ const nextConfig = {
       },
     ],
   },
-  // Remove invalid experimental options
 };
 
 module.exports = nextConfig;
