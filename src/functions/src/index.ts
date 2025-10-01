@@ -89,59 +89,51 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
       return;
     }
     webPush.setVapidDetails("mailto:example@your-project.com", publicKey, privateKey);
+
+    const beforeData = change.before.data();
+    const afterData = change.after.data();
     
     let userId: string | null = null;
     let payload: object | null = null;
 
     // Case 1: New shift created
-    if (change.after.exists && !change.before.exists) {
-        const afterData = change.after.data();
-        if (afterData) {
-            userId = afterData.userId;
-            payload = {
-                title: "New Shift Assigned",
-                body: `You have a new shift: ${afterData.task} at ${afterData.address}.`,
-                data: { url: `/dashboard` },
-            };
-        }
+    if (afterData && !beforeData) {
+        userId = afterData.userId;
+        payload = {
+            title: "New Shift Assigned",
+            body: `You have a new shift: ${afterData.task} at ${afterData.address}.`,
+            data: { url: `/dashboard` },
+        };
     } 
     // Case 2: Shift deleted
-    else if (!change.after.exists && change.before.exists) {
-        const beforeData = change.before.data();
-        if (beforeData) {
-            userId = beforeData.userId;
-            payload = {
-                title: "Shift Cancelled",
-                body: `Your shift for ${beforeData.task} at ${beforeData.address} has been cancelled.`,
-                data: { url: `/dashboard` },
-            };
-        }
+    else if (!afterData && beforeData) {
+        userId = beforeData.userId;
+        payload = {
+            title: "Shift Cancelled",
+            body: `Your shift for ${beforeData.task} at ${beforeData.address} has been cancelled.`,
+            data: { url: `/dashboard` },
+        };
     } 
     // Case 3: Shift updated
-    else if (change.after.exists && change.before.exists) {
-        const beforeData = change.before.data();
-        const afterData = change.after.data();
+    else if (beforeData && afterData) {
+        const changedFields: string[] = [];
+        if ((beforeData.task || "").trim() !== (afterData.task || "").trim()) changedFields.push('task');
+        if ((beforeData.address || "").trim() !== (afterData.address || "").trim()) changedFields.push('location');
+        if ((beforeData.bNumber || "").trim() !== (afterData.bNumber || "").trim()) changedFields.push('B Number');
+        if (beforeData.type !== afterData.type) changedFields.push('time');
+        if (beforeData.date && afterData.date && !beforeData.date.isEqual(afterData.date)) changedFields.push('date');
 
-        if (beforeData && afterData) {
-            const changedFields: string[] = [];
-            if ((beforeData.task || "").trim() !== (afterData.task || "").trim()) changedFields.push('task');
-            if ((beforeData.address || "").trim() !== (afterData.address || "").trim()) changedFields.push('location');
-            if ((beforeData.bNumber || "").trim() !== (afterData.bNumber || "").trim()) changedFields.push('B Number');
-            if (beforeData.type !== afterData.type) changedFields.push('time');
-            if (beforeData.date && afterData.date && !beforeData.date.isEqual(afterData.date)) changedFields.push('date');
-
-            if (changedFields.length > 0) {
-                userId = afterData.userId;
-                const changes = changedFields.join(' & ');
-                payload = {
-                    title: "Your Shift Has Been Updated",
-                    body: `The ${changes} for one of your shifts has been updated.`,
-                    data: { url: `/dashboard` },
-                };
-            } else {
-                functions.logger.log(`Shift ${shiftId} updated, but no significant fields changed. No notification sent.`);
-                return;
-            }
+        if (changedFields.length > 0) {
+            userId = afterData.userId;
+            const changes = changedFields.join(' & ');
+            payload = {
+                title: "Your Shift Has Been Updated",
+                body: `The ${changes} for one of your shifts has been updated.`,
+                data: { url: `/dashboard` },
+            };
+        } else {
+            functions.logger.log(`Shift ${shiftId} updated, but no significant fields changed. No notification sent.`);
+            return;
         }
     } else {
         return; // No relevant change
@@ -172,7 +164,6 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
     await Promise.all(sendPromises);
     functions.logger.log(`Finished sending notifications for shift ${shiftId}.`);
 });
-
 
 // Scheduled function to remind project creators to review old projects.
 export const projectReviewNotifier = functions.region("europe-west2").pubsub.schedule("every 24 hours")
@@ -222,8 +213,9 @@ export const deleteProjectFile = functions.region("europe-west2").https.onCall(a
     if (!fileDoc.exists) throw new functions.https.HttpsError("not-found", "File not found.");
 
     const fileData = fileDoc.data();
-    if (!fileData) throw new functions.https.HttpsError("not-found", "File data not found.");
-    
+    if (!fileData) {
+        throw new functions.https.HttpsError("not-found", "File data is missing.");
+    }
     const userDoc = await db.collection("users").doc(context.auth.uid).get();
     const userRole = userDoc.data()?.role;
 
@@ -259,10 +251,10 @@ export const deleteAllProjects = functions.region("europe-west2").https.onCall(a
     const userDoc = await db.collection("users").doc(context.auth.uid).get();
     if (userDoc.data()?.role !== 'owner') throw new functions.https.HttpsError("permission-denied", "Owner access required.");
 
+    const bucket = admin.storage().bucket();
     const projectsSnapshot = await db.collection('projects').get();
     if (projectsSnapshot.empty) return { success: true, message: "No projects to delete." };
 
-    const bucket = admin.storage().bucket();
     for (const projectDoc of projectsSnapshot.docs) {
         await bucket.deleteFiles({ prefix: `project_files/${projectDoc.id}/` });
         const filesSnapshot = await projectDoc.ref.collection('files').get();
