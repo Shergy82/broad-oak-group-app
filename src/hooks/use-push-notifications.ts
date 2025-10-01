@@ -59,8 +59,7 @@ export function usePushNotifications() {
         if (error.code === 'not-found') {
           description = 'The backend notification service has not been deployed yet. The account owner can find setup instructions in the Admin panel.';
         }
-        
-        // We don't show a toast here anymore to avoid the intermittent error message.
+        // Do not show a toast here to avoid intermittent error messages on load.
         // The button will just not render if the key isn't found.
       } finally {
           setIsKeyLoading(false);
@@ -74,8 +73,8 @@ export function usePushNotifications() {
     const checkSubscription = async () => {
       if (!isSupported || !user || !vapidKey) return;
       
-      const swRegistration = await navigator.serviceWorker.ready;
       try {
+        const swRegistration = await navigator.serviceWorker.ready;
         const subscription = await swRegistration.pushManager.getSubscription();
         setIsSubscribed(!!subscription);
       } catch (e) {
@@ -116,7 +115,9 @@ export function usePushNotifications() {
       }
       if (!db) throw new Error("Firestore is not initialized");
 
-      await setDoc(doc(db, `users/${user.uid}/pushSubscriptions`, btoa(subscriptionJson.endpoint)), subscriptionJson);
+      // We will use the endpoint as the document ID after base64 encoding it
+      const subscriptionId = btoa(subscriptionJson.endpoint);
+      await setDoc(doc(db, `users/${user.uid}/pushSubscriptions`, subscriptionId), subscriptionJson);
 
       setIsSubscribed(true);
       toast({
@@ -146,11 +147,11 @@ export function usePushNotifications() {
       const subscription = await swRegistration.pushManager.getSubscription();
 
       if (subscription) {
-        await subscription.unsubscribe();
         if (!db) throw new Error("Firestore is not initialized");
         
-        const endpointB64 = btoa(subscription.endpoint);
-        await deleteDoc(doc(db, `users/${user.uid}/pushSubscriptions`, endpointB64));
+        const subscriptionId = btoa(subscription.endpoint);
+        await deleteDoc(doc(db, `users/${user.uid}/pushSubscriptions`, subscriptionId));
+        await subscription.unsubscribe();
       }
       setIsSubscribed(false);
       setPermission('prompt');
