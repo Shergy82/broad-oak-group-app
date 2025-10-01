@@ -263,7 +263,7 @@ export default function UserManagementPage() {
                               <TableCell>
                                   <Select
                                       value={user.employmentType || ''}
-                                      onValueChange={(value: 'direct' | 'subbie') => handleEmploymentTypeChange(user.uid, value)}
+                                      onValueChange={(value) => handleEmploymentTypeChange(user.uid, value as 'direct' | 'subbie')}
                                       disabled={!isPrivilegedUser}
                                   >
                                       <SelectTrigger className="w-[120px]">
@@ -331,7 +331,7 @@ export default function UserManagementPage() {
                             <strong className="shrink-0">Type:</strong>
                             <Select
                               value={user.employmentType || ''}
-                              onValueChange={(value: 'direct' | 'subbie') => handleEmploymentTypeChange(user.uid, value)}
+                              onValueChange={(value) => handleEmploymentTypeChange(user.uid, value as 'direct' | 'subbie')}
                               disabled={!isPrivilegedUser}
                             >
                               <SelectTrigger className="w-full">

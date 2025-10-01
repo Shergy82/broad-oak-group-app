@@ -321,5 +321,3 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
     throw new functions.https.HttpsError("internal", `An unexpected error occurred: ${error.message}`);
   }
 });
-
-    
