@@ -3,7 +3,8 @@
 
 import { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, doc, updateDoc } from 'firebase/firestore';
-import { db, functions, httpsCallable } from '@/lib/firebase';
+import { db, functions } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import type { UserProfile } from '@/types';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useToast } from '@/hooks/use-toast';
@@ -19,11 +20,12 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Download, ExternalLink, Users } from 'lucide-react';
+import { Download, ExternalLink, Users, Trash2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 
 export default function UserManagementPage() {
@@ -90,12 +92,6 @@ export default function UserManagementPage() {
           default:
               return <Badge variant="outline">Unknown</Badge>
       }
-  }
-
-  const generateConsoleLink = (uid: string) => {
-    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-    if (!projectId) return '#';
-    return `https://console.firebase.google.com/project/${projectId}/auth/users`;
   }
 
   const handleOperativeIdChange = async (uid: string, operativeId: string) => {
@@ -184,6 +180,55 @@ export default function UserManagementPage() {
     generateTableForType('Unassigned', unassignedUsers);
     
     doc.save(`user_directory_${format(generationDate, 'yyyy-MM-dd')}.pdf`);
+  };
+
+  const handleUserStatusChange = async (uid: string, currentStatus: 'active' | 'suspended' | 'pending-approval' = 'pending-approval') => {
+      if (!isOwner) {
+          toast({ variant: "destructive", title: "Permission Denied", description: "Only the owner can change user status." });
+          return;
+      }
+      if (uid === currentUserProfile?.uid) {
+          toast({ variant: "destructive", title: "Invalid Action", description: "Owner cannot change their own status." });
+          return;
+      }
+
+      let newStatus: 'active' | 'suspended';
+      let disabled: boolean;
+
+      if (currentStatus === 'suspended' || currentStatus === 'pending-approval') {
+          newStatus = 'active';
+          disabled = false;
+      } else {
+          newStatus = 'suspended';
+          disabled = true;
+      }
+
+      toast({ title: "Updating Status...", description: `Please wait.` });
+
+      try {
+          if (!functions) throw new Error("Firebase Functions not available");
+          const setUserStatusFn = httpsCallable(functions, 'setUserStatus');
+          await setUserStatusFn({ uid, disabled, newStatus });
+          toast({ title: "Success", description: `User status changed to ${newStatus}.` });
+      } catch (error: any) {
+          console.error("Error updating user status:", error);
+          toast({ variant: "destructive", title: "Update Failed", description: error.message || "Could not update user status." });
+      }
+  };
+
+  const handleDeleteUser = async (uid: string) => {
+      if (!isOwner) {
+          toast({ variant: "destructive", title: "Permission Denied" });
+          return;
+      }
+       if (!functions) throw new Error("Firebase Functions not available");
+      try {
+        const deleteUserFn = httpsCallable(functions, 'deleteUser');
+        await deleteUserFn({ uid });
+        toast({ title: 'User Deleted', description: 'The user has been permanently deleted.' });
+      } catch (error: any) {
+        toast({ variant: 'destructive', title: 'Error', description: error.message || 'Failed to delete user.' });
+      }
   };
   
   return (
@@ -278,21 +323,26 @@ export default function UserManagementPage() {
                           )}
                           <TableCell className="text-right">
                               {isOwner && user.uid !== currentUserProfile?.uid && (
-                                  <TooltipProvider>
-                                      <Tooltip>
-                                          <TooltipTrigger asChild>
-                                          <Button variant="outline" size="sm" asChild>
-                                              <a href={generateConsoleLink(user.uid)} target="_blank" rel="noopener noreferrer">
-                                              Manage
-                                              <ExternalLink className="ml-2 h-4 w-4" />
-                                              </a>
-                                          </Button>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                          <p>Open user record in Firebase Auth Console</p>
-                                          </TooltipContent>
-                                      </Tooltip>
-                                  </TooltipProvider>
+                                <div className="flex gap-2 justify-end">
+                                  <Button variant="outline" size="sm" onClick={() => handleUserStatusChange(user.uid, user.status)}>
+                                      {user.status === 'suspended' || user.status === 'pending-approval' ? 'Activate' : 'Suspend'}
+                                  </Button>
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button variant="destructive" size="sm"><Trash2 className="h-4 w-4" /></Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                        <AlertDialogDescription>This will permanently delete the user "{user.name}". This action cannot be undone.</AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => handleDeleteUser(user.uid)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                </div>
                               )}
                           </TableCell>
                         </TableRow>
@@ -347,13 +397,22 @@ export default function UserManagementPage() {
                      )}
                   </CardContent>
                   {isOwner && user.uid !== currentUserProfile?.uid && (
-                    <CardFooter className="p-2 bg-muted/20">
-                      <Button variant="outline" size="sm" asChild>
-                          <a href={generateConsoleLink(user.uid)} target="_blank" rel="noopener noreferrer" className="w-full">
-                              Manage User in Console
-                              <ExternalLink className="ml-2 h-4 w-4" />
-                          </a>
+                    <CardFooter className="grid grid-cols-2 gap-2 p-2 bg-muted/20">
+                      <Button variant="outline" size="sm" onClick={() => handleUserStatusChange(user.uid, user.status)} className="w-full">
+                          {user.status === 'suspended' || user.status === 'pending-approval' ? 'Activate' : 'Suspend'}
                       </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="sm" className="w-full"><Trash2 className="mr-2 h-4 w-4" /> Delete</Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete "{user.name}".</AlertDialogDescription></AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeleteUser(user.uid)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </CardFooter>
                   )}
                 </Card>
