@@ -20,8 +20,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Download, ExternalLink, Users, Trash2 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Download, Users, Trash2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
