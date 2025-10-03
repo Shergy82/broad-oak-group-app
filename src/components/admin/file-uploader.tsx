@@ -119,11 +119,14 @@ const parseDate = (dateValue: any): Date | null => {
                  return new Date(Date.UTC(year, monthIndex, day));
             }
         }
-        const parts = dateValue.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+        const parts = dateValue.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4}|\d{2})$/);
         if (parts) {
-            const day = parseInt(parts[1], 10);
+            let year = parseInt(parts[3], 10);
+            if (year < 100) {
+                year += 2000;
+            }
             const month = parseInt(parts[2], 10) - 1;
-            const year = parseInt(parts[3], 10);
+            const day = parseInt(parts[1], 10);
             if (year > 1900 && month >= 0 && month < 12 && day > 0 && day <= 31) {
                 return new Date(Date.UTC(year, month, day));
             }
@@ -204,7 +207,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             for (let i = 0; i < jsonData.length; i++) {
                 const row = jsonData[i] || [];
                 const validDateCount = row.filter(cell => cell && parseDate(cell) !== null).length;
-                if (validDateCount > 2) {
+                if (validDateCount > 2) { // A row with more than 2 valid dates is likely the date row
                     dateRowIndex = i;
                     sheetDates = row.map(parseDate);
                     sheetDates.forEach(d => d && allDatesFound.push(d));
@@ -212,84 +215,80 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                 }
             }
             if (dateRowIndex === -1) continue;
-
-            const projectBlocks: { start: number, end: number, manager: string }[] = [];
+            
+            // Find project blocks
+            const projectBlocks: { start: number, end: number}[] = [];
             jsonData.forEach((row, i) => {
                 const cellA = (row[0] || '').toString();
                 if (cellA.toLowerCase().startsWith('job manager:')) {
-                    const managerName = (jsonData[i+1]?.[0] || '').toString().trim();
                     if (projectBlocks.length > 0) {
                         projectBlocks[projectBlocks.length - 1].end = i - 1;
                     }
-                    projectBlocks.push({ start: i, end: jsonData.length -1, manager: managerName });
+                    projectBlocks.push({ start: i, end: jsonData.length -1 });
                 }
             });
-             if (projectBlocks.length > 0) {
-                projectBlocks[projectBlocks.length - 1].end = jsonData.length - 1;
-            }
-
 
             for (const block of projectBlocks) {
                 let projectAddress = '';
                 let bNumber = '';
+                let manager = '';
 
-                // Find address within the block
+                // Extract project info from the block
                 for (let i = block.start; i <= block.end; i++) {
-                    const cellA = (jsonData[i]?.[0] || '').toString();
-                    if (cellA && cellA.includes('\n')) {
-                        const addressParts = cellA.split('\n');
-                        projectAddress = addressParts.slice(1).join(', ').trim();
-                        bNumber = (addressParts[0] || '').trim();
-                        break;
-                    }
+                     const cellA = (jsonData[i]?.[0] || '').toString();
+                     if (cellA.toLowerCase().startsWith('job manager:')) {
+                         manager = (jsonData[i+1]?.[0] || '').toString().trim();
+                     }
+                     if (cellA && cellA.includes('\n')) {
+                        const parts = cellA.split('\n');
+                        bNumber = parts[0].trim();
+                        projectAddress = parts.slice(1).join(', ').trim();
+                     }
                 }
                 
                 if (!projectAddress) continue;
 
+                // Iterate through columns (dates)
                 for (let c = 1; c < sheetDates.length; c++) {
                     const shiftDate = sheetDates[c];
                     if (!shiftDate) continue;
 
+                    // Iterate through rows in the block to find operatives
                     for (let r = block.start; r <= block.end; r++) {
-                        const cellValue = jsonData[r]?.[c]?.toString().trim();
-                        if (!cellValue) continue;
+                        const operativeCell = (jsonData[r]?.[c] || '').toString().trim();
+                        if (!operativeCell) continue;
 
-                        const nameCandidates = cellValue.split(/&|,|\n/).map(name => name.trim()).filter(Boolean);
+                        const nameCandidates = operativeCell.split(/&|,|\n/).map(name => name.trim()).filter(Boolean);
                         
-                        let task = '';
-                        for (let lookUpRow = r - 1; lookUpRow >= block.start; lookUpRow--) {
-                            const taskCandidate = jsonData[lookUpRow]?.[c]?.toString().trim();
-                            if (taskCandidate) {
-                                task = taskCandidate.toUpperCase();
-                                break;
-                            }
-                        }
-
-                        if (!task) {
-                            for (let lookUpCol = c - 1; lookUpCol >= 1; lookUpCol--) {
-                                const taskCandidate = jsonData[r]?.[lookUpCol]?.toString().trim();
-                                if(taskCandidate) {
-                                    task = taskCandidate.toUpperCase();
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (!task) continue;
+                        // Find the task for this operative
+                        const taskCell = (jsonData[r-1]?.[c] || '').toString().trim();
+                        if (!taskCell) continue;
 
                         for (const name of nameCandidates) {
                             const foundUser = findUser(name, userMap);
                             if (foundUser) {
                                 let type: 'am' | 'pm' | 'all-day' = 'all-day';
-                                let processedTask = task;
-                                const amPmMatch = task.match(/\b(AM|PM)\b/i);
+                                let processedTask = taskCell.toUpperCase();
+                                const amPmMatch = taskCell.match(/\b(AM|PM)\b/i);
                                 if (amPmMatch) {
                                     type = amPmMatch[0].toLowerCase() as 'am' | 'pm';
-                                    processedTask = task.replace(new RegExp(`\\s*\\b${amPmMatch[0]}\\b`, 'i'), '').trim();
+                                    processedTask = taskCell.replace(new RegExp(`\\s*\\b${amPmMatch[0]}\\b`, 'i'), '').trim();
                                 }
-                                shiftsFromExcel.push({ task: processedTask, userId: foundUser.uid, type, date: shiftDate, address: projectAddress, bNumber: bNumber });
+                                shiftsFromExcel.push({ 
+                                    task: processedTask, 
+                                    userId: foundUser.uid, 
+                                    type, 
+                                    date: shiftDate, 
+                                    address: projectAddress, 
+                                    bNumber: bNumber 
+                                });
                             } else if (shiftDate >= today) {
-                                failedShifts.push({ date: shiftDate, projectAddress, cellContent: cellValue, reason: `Unrecognized Operative: "${name}"` });
+                                failedShifts.push({ 
+                                    date: shiftDate, 
+                                    projectAddress, 
+                                    cellContent: operativeCell, 
+                                    reason: `Unrecognized Operative: "${name}"` 
+                                });
                             }
                         }
                     }
@@ -333,14 +332,17 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             const existingShift = existingShiftsMap.get(key);
 
             if (existingShift) {
+                // If shift exists, check if it needs an update.
                 if (existingShift.task !== excelShift.task || existingShift.bNumber !== (excelShift.bNumber || '')) {
                      if (!protectedStatuses.includes(existingShift.status)) {
                         batch.update(doc(db, 'shifts', existingShift.id), { task: excelShift.task, bNumber: excelShift.bNumber || '' });
                         shiftsUpdated++;
                      }
                 }
+                // Remove from map so it's not deleted later
                 existingShiftsMap.delete(key);
             } else {
+                // If shift does not exist, create it.
                 const newShiftData = {
                     ...excelShift,
                     date: Timestamp.fromDate(excelShift.date),
@@ -352,6 +354,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             }
         }
 
+        // Any remaining shifts in existingShiftsMap were in DB but not in Excel, so delete them.
         for (const [key, shiftToDelete] of existingShiftsMap.entries()) {
              if (!protectedStatuses.includes(shiftToDelete.status)) {
                 batch.delete(doc(db, 'shifts', shiftToDelete.id));
@@ -436,5 +439,3 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
     </div>
   );
 }
-
-    
