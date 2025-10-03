@@ -75,6 +75,7 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
         const nameParts = user.originalName.split(' ');
         const firstNameNormalized = nameParts.length > 0 ? normalizeText(nameParts[0]) : '';
         
+        // Prioritize matches where the input is a substring of the full name or first name
         if (user.normalizedName.includes(normalizedName) || (firstNameNormalized && firstNameNormalized.includes(normalizedName))) {
             if (distance < minDistance) {
                 minDistance = distance;
@@ -82,6 +83,7 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
             }
         }
         
+        // General fuzzy match with a threshold
         const threshold = Math.max(1, Math.floor(normalizedName.length / 4));
         if (distance <= threshold && distance < minDistance) {
             minDistance = distance;
@@ -89,6 +91,7 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
         }
     }
     
+    // Be more confident with shorter distances
     if (bestMatch && minDistance < 3) {
             return bestMatch;
     }
@@ -98,34 +101,44 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
 
 const parseDate = (dateValue: any): Date | null => {
     if (!dateValue) return null;
+    // XLSX can parse dates as Date objects if cellDates is true
     if (dateValue instanceof Date) {
         const d = dateValue;
-        return !isNaN(d.getTime()) ? new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())) : null;
+        // Check for invalid date
+        if (!isNaN(d.getTime())) {
+            // Standardize to UTC midnight to avoid timezone issues
+            return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        }
     }
+    // Or as numbers (Excel's date serial number)
     if (typeof dateValue === 'number' && dateValue > 1) {
+        // Excel's epoch starts on 1899-12-30 for compatibility with Lotus 1-2-3
         const excelEpoch = new Date(1899, 11, 30);
         const d = new Date(excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
         if (isNaN(d.getTime())) return null;
         return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
     }
+    // Or as strings
     if (typeof dateValue === 'string') {
-        const dateMatch = dateValue.match(/(\d{1,2})[a-z]{2}\s+([A-Za-z]+)/);
+        // Try parsing '26-Sep' format
+        const dateMatch = dateValue.match(/(\d{1,2})[ -]+([A-Za-z]+)/);
         if (dateMatch) {
             const day = parseInt(dateMatch[1], 10);
             const monthStr = dateMatch[2];
             const monthIndex = new Date(Date.parse(monthStr +" 1, 2012")).getMonth();
-            if (day && monthIndex !== -1) {
+            if (!isNaN(day) && monthIndex !== -1) {
                  const year = new Date().getFullYear(); // Assume current year
                  return new Date(Date.UTC(year, monthIndex, day));
             }
         }
+        // Try parsing 'dd/mm/yyyy' or 'dd-mm-yy'
         const parts = dateValue.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4}|\d{2})$/);
         if (parts) {
             let year = parseInt(parts[3], 10);
             if (year < 100) {
                 year += 2000;
             }
-            const month = parseInt(parts[2], 10) - 1;
+            const month = parseInt(parts[2], 10) - 1; // Month is 0-indexed
             const day = parseInt(parts[1], 10);
             if (year > 1900 && month >= 0 && month < 12 && day > 0 && day <= 31) {
                 return new Date(Date.UTC(year, month, day));
@@ -156,7 +169,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
   const getShiftKey = (shift: { userId: string; date: Date | Timestamp; type: 'am' | 'pm' | 'all-day'; task: string; address: string }): string => {
     const d = (shift.date as any).toDate ? (shift.date as Timestamp).toDate() : (shift.date as Date);
     const normalizedDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    return `${normalizedDate.toISOString().slice(0, 10)}-${shift.userId}-${shift.address.trim().toLowerCase()}-${shift.task.trim().toLowerCase()}`;
+    return `${normalizedDate.toISOString().slice(0, 10)}-${shift.userId}-${normalizeText(shift.address)}-${normalizeText(shift.task)}`;
   };
 
 
@@ -176,7 +189,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         const data = e.target?.result;
         if (!data) throw new Error("Could not read file data.");
         
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellStyles: true });
         
         const usersSnapshot = await getDocs(collection(db, 'users'));
         const userMap: UserMapEntry[] = [];
@@ -202,94 +215,114 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, blankrows: false, defval: null });
 
             let dateRowIndex = -1;
-            let sheetDates: (Date | null)[] = [];
+            let dateRow: (Date | null)[] = [];
 
-            for (let i = 0; i < jsonData.length; i++) {
+            // Find the date row (e.g., Row 3 in the image)
+            for (let i = 0; i < Math.min(jsonData.length, 10); i++) {
                 const row = jsonData[i] || [];
-                const validDateCount = row.filter(cell => cell && parseDate(cell) !== null).length;
-                if (validDateCount > 2) { // A row with more than 2 valid dates is likely the date row
+                const validDateCount = row.slice(4).filter(cell => cell && parseDate(cell) !== null).length;
+                if (validDateCount > 2) { // A row with more than 2 valid dates after col D is the one
                     dateRowIndex = i;
-                    sheetDates = row.map(parseDate);
-                    sheetDates.forEach(d => d && allDatesFound.push(d));
+                    dateRow = row.map(parseDate);
+                    dateRow.forEach(d => d && allDatesFound.push(d));
                     break;
                 }
             }
             if (dateRowIndex === -1) continue;
             
-            // Find project blocks
-            const projectBlocks: { start: number, end: number}[] = [];
+            // Find project blocks by looking for "JOB MANAGER"
+            const projectBlockStarts: number[] = [];
             jsonData.forEach((row, i) => {
-                const cellA = (row[0] || '').toString();
-                if (cellA.toLowerCase().startsWith('job manager:')) {
-                    if (projectBlocks.length > 0) {
-                        projectBlocks[projectBlocks.length - 1].end = i - 1;
-                    }
-                    projectBlocks.push({ start: i, end: jsonData.length -1 });
+                const cellA = (row[0] || '').toString().toUpperCase();
+                if (cellA === 'JOB MANAGER') {
+                    projectBlockStarts.push(i);
                 }
             });
 
-            for (const block of projectBlocks) {
-                let projectAddress = '';
-                let bNumber = '';
-                let manager = '';
+            for (let i = 0; i < projectBlockStarts.length; i++) {
+                const blockStart = projectBlockStarts[i];
+                const blockEnd = i + 1 < projectBlockStarts.length ? projectBlockStarts[i+1] : jsonData.length;
 
-                // Extract project info from the block
-                for (let i = block.start; i <= block.end; i++) {
-                     const cellA = (jsonData[i]?.[0] || '').toString();
-                     if (cellA.toLowerCase().startsWith('job manager:')) {
-                         manager = (jsonData[i+1]?.[0] || '').toString().trim();
-                     }
-                     if (cellA && cellA.includes('\n')) {
+                let manager = (jsonData[blockStart + 1]?.[0] || '').toString().trim();
+                let address = '';
+                let bNumber = '';
+
+                // Find address/bNumber within the block
+                for (let r = blockStart; r < blockEnd; r++) {
+                    const cellA = (jsonData[r]?.[0] || '').toString();
+                    if (cellA.match(/^[A-Z]{1,2}\d{4,}/)) { // Heuristic for B-Number
                         const parts = cellA.split('\n');
                         bNumber = parts[0].trim();
-                        projectAddress = parts.slice(1).join(', ').trim();
-                     }
+                        address = parts.slice(1).join(', ').trim();
+                        break;
+                    }
                 }
                 
-                if (!projectAddress) continue;
+                if (!address) continue;
 
-                // Iterate through columns (dates)
-                for (let c = 1; c < sheetDates.length; c++) {
-                    const shiftDate = sheetDates[c];
+                // Iterate through date columns for this block
+                for (let c = 4; c < dateRow.length; c++) { // Start after column D
+                    const shiftDate = dateRow[c];
                     if (!shiftDate) continue;
 
-                    // Iterate through rows in the block to find operatives
-                    for (let r = block.start; r <= block.end; r++) {
-                        const operativeCell = (jsonData[r]?.[c] || '').toString().trim();
-                        if (!operativeCell) continue;
+                    let lastTask: string | null = null;
+                    
+                    // Iterate through rows in the block
+                    for (let r = blockStart; r < blockEnd; r++) {
+                        const cellRef = XLSX.utils.encode_cell({c, r});
+                        const cellStyle = worksheet[cellRef]?.s;
+                        const cellColor = cellStyle?.fgColor?.rgb;
 
-                        const nameCandidates = operativeCell.split(/&|,|\n/).map(name => name.trim()).filter(Boolean);
+                        // Deep purple in hex is approx 800080. XLSX may give it as FF800080 (with alpha) or just 800080.
+                        if (cellColor && (cellColor === 'FF800080' || cellColor === '800080')) {
+                            continue; // Skip deep purple cells
+                        }
+
+                        const cellContent = (jsonData[r]?.[c] || '').toString().trim();
+                        if (!cellContent) {
+                            lastTask = null; // Reset task if there's a blank row
+                            continue;
+                        };
                         
-                        // Find the task for this operative
-                        const taskCell = (jsonData[r-1]?.[c] || '').toString().trim();
-                        if (!taskCell) continue;
+                        // Attempt to find a user in the cell
+                        const nameCandidates = cellContent.split(/&|,|\n/).map(name => name.trim()).filter(Boolean);
+                        const foundUsers = nameCandidates.map(name => findUser(name, userMap)).filter(Boolean);
 
-                        for (const name of nameCandidates) {
-                            const foundUser = findUser(name, userMap);
-                            if (foundUser) {
-                                let type: 'am' | 'pm' | 'all-day' = 'all-day';
-                                let processedTask = taskCell.toUpperCase();
-                                const amPmMatch = taskCell.match(/\b(AM|PM)\b/i);
-                                if (amPmMatch) {
-                                    type = amPmMatch[0].toLowerCase() as 'am' | 'pm';
-                                    processedTask = taskCell.replace(new RegExp(`\\s*\\b${amPmMatch[0]}\\b`, 'i'), '').trim();
+                        if (foundUsers.length > 0) {
+                            // This cell contains user(s). The task should be in the cell above.
+                            const taskCellContent = (jsonData[r-1]?.[c] || '').toString().trim();
+                            const task = taskCellContent || lastTask;
+
+                            if (task) {
+                                for (const user of foundUsers) {
+                                     let type: 'am' | 'pm' | 'all-day' = 'all-day';
+                                     let processedTask = task.toUpperCase();
+                                     const amPmMatch = task.match(/\b(AM|PM)\b/i);
+                                     if (amPmMatch) {
+                                         type = amPmMatch[0].toLowerCase() as 'am' | 'pm';
+                                         processedTask = task.replace(new RegExp(`\\s*\\b${amPmMatch[0]}\\b`, 'i'), '').trim();
+                                     }
+                                     shiftsFromExcel.push({ 
+                                         task: processedTask, 
+                                         userId: user!.uid, 
+                                         type, 
+                                         date: shiftDate, 
+                                         address: address, 
+                                         bNumber: bNumber 
+                                     });
                                 }
-                                shiftsFromExcel.push({ 
-                                    task: processedTask, 
-                                    userId: foundUser.uid, 
-                                    type, 
-                                    date: shiftDate, 
-                                    address: projectAddress, 
-                                    bNumber: bNumber 
-                                });
                             } else if (shiftDate >= today) {
+                                // Failed to find a task for this user.
                                 failedShifts.push({ 
                                     date: shiftDate, 
-                                    projectAddress, 
-                                    cellContent: operativeCell, 
-                                    reason: `Unrecognized Operative: "${name}"` 
+                                    projectAddress: address, 
+                                    cellContent: cellContent, 
+                                    reason: `Operative found, but no task was found in the cell above.` 
                                 });
                             }
+                        } else {
+                            // This cell does not contain a user, so it might be a task.
+                            lastTask = cellContent;
                         }
                     }
                 }
@@ -297,7 +330,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         }
         
         if (allDatesFound.length === 0) {
-            throw new Error("No valid shifts found. Check for a valid date row in the Excel sheet.");
+            throw new Error("No valid shifts found. Check for a valid date row in the Excel sheet (e.g., in Row 3).");
         }
 
         const minDate = new Date(Math.min(...allDatesFound.map(d => d.getTime())));
@@ -328,18 +361,25 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
 
         const protectedStatuses: ShiftStatus[] = ['completed', 'incomplete'];
 
+        // Add or update shifts from Excel
         for (const [key, excelShift] of excelShiftsMap.entries()) {
             const existingShift = existingShiftsMap.get(key);
 
             if (existingShift) {
-                // If shift exists, check if it needs an update.
-                if (existingShift.task !== excelShift.task || existingShift.bNumber !== (excelShift.bNumber || '')) {
+                // If shift exists, check for updates (e.g., bNumber, type)
+                if (
+                    existingShift.bNumber !== (excelShift.bNumber || '') || 
+                    existingShift.type !== excelShift.type
+                ) {
                      if (!protectedStatuses.includes(existingShift.status)) {
-                        batch.update(doc(db, 'shifts', existingShift.id), { task: excelShift.task, bNumber: excelShift.bNumber || '' });
+                        batch.update(doc(db, 'shifts', existingShift.id), { 
+                            bNumber: excelShift.bNumber || '',
+                            type: excelShift.type,
+                        });
                         shiftsUpdated++;
                      }
                 }
-                // Remove from map so it's not deleted later
+                // Remove from map so it's not considered for deletion
                 existingShiftsMap.delete(key);
             } else {
                 // If shift does not exist, create it.
@@ -354,7 +394,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             }
         }
 
-        // Any remaining shifts in existingShiftsMap were in DB but not in Excel, so delete them.
+        // Delete shifts that are in DB but not in Excel (for the given date range)
         for (const [key, shiftToDelete] of existingShiftsMap.entries()) {
              if (!protectedStatuses.includes(shiftToDelete.status)) {
                 batch.delete(doc(db, 'shifts', shiftToDelete.id));
