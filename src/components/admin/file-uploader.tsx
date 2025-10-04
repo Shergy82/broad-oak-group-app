@@ -10,13 +10,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/shared/spinner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Upload, FileWarning, TestTube2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, FileWarning, TestTube2 } from 'lucide-react';
 import type { Shift, UserProfile, ShiftStatus } from '@/types';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
-import { format } from 'date-fns';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../ui/card';
 
 type ParsedShift = Omit<Shift, 'id' | 'status' | 'date' | 'createdAt'> & { date: Date };
 type UserMapEntry = { uid: string; normalizedName: string; originalName: string; };
@@ -75,9 +72,10 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
         // Direct match is best
         if (user.normalizedName === normalizedName) return user;
         
+        const distance = levenshtein(normalizedName, user.normalizedName);
+
         // Full name contains the search term (e.g., "rory" in "roryskinner")
         if (user.normalizedName.includes(normalizedName)) {
-            const distance = levenshtein(normalizedName, user.normalizedName);
              if (distance < minDistance) {
                 minDistance = distance;
                 bestMatch = user;
@@ -87,16 +85,15 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
         // Check first name match
         const firstNameNormalized = normalizeText(user.originalName.split(' ')[0]);
         if (firstNameNormalized === normalizedName) {
-             const distance = levenshtein(normalizedName, firstNameNormalized);
-             if (distance < minDistance) {
-                minDistance = distance;
+             const firstNameDistance = levenshtein(normalizedName, firstNameNormalized);
+              if (firstNameDistance < minDistance) {
+                minDistance = firstNameDistance;
                 bestMatch = user;
             }
         }
 
         // Levenshtein distance for typo tolerance
-        const distance = levenshtein(normalizedName, user.normalizedName);
-        const threshold = Math.max(1, Math.floor(normalizedName.length / 4));
+        const threshold = Math.max(1, Math.floor(normalizedName.length / 3));
         if (distance <= threshold && distance < minDistance) {
             minDistance = distance;
             bestMatch = user;
@@ -104,7 +101,7 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
     }
     
     // Only return a fuzzy match if it's reasonably close
-    if (bestMatch && minDistance <= 2) {
+    if (bestMatch && minDistance <= 3) {
         return bestMatch;
     }
 
@@ -123,14 +120,18 @@ const parseDate = (dateValue: any): Date | null => {
     }
     // Handle string dates (e.g., "03-Oct" or "03/10/2025")
     if (typeof dateValue === 'string') {
-        const dateMatch = dateValue.match(/(\d{1,2})[ -/]+([A-Za-z0-9]+)/);
-        if (dateMatch) {
-            const day = parseInt(dateMatch[1], 10);
-            const monthStr = dateMatch[2];
-            const monthIndex = new Date(Date.parse(monthStr +" 1, 2012")).getMonth();
-            if (!isNaN(day) && monthIndex !== -1) {
-                 const year = new Date().getFullYear();
-                 return new Date(Date.UTC(year, monthIndex, day));
+        const lowerCell = dateValue.toLowerCase();
+        const monthAbbrs = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+        if (monthAbbrs.some(abbr => lowerCell.includes(abbr))) {
+            const dateMatch = dateValue.match(/(\d{1,2})[ -/]+([A-Za-z]+)/);
+            if (dateMatch) {
+                const day = parseInt(dateMatch[1], 10);
+                const monthStr = dateMatch[2];
+                const monthIndex = new Date(Date.parse(monthStr +" 1, 2012")).getMonth();
+                if (!isNaN(day) && monthIndex !== -1) {
+                     const year = new Date().getFullYear();
+                     return new Date(Date.UTC(year, monthIndex, day));
+                }
             }
         }
         // Handle dd/mm/yy or dd-mm-yy
@@ -186,7 +187,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
 
     setIsUploading(true);
     setError(null);
-    onImportComplete([]);
+    onImportComplete([], { found: [], failed: [] });
 
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -211,12 +212,10 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         
         const shiftsFromExcel: ParsedShift[] = [];
         const failedShifts: FailedShift[] = [];
-        const allDatesFound: Date[] = [];
         
         // --- Step 1: Find the global Date Row ---
         let dateRowIndex = -1;
         let dateRow: (Date | null)[] = [];
-        const monthAbbrs = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         const dayAbbrs = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
         for (let i = 0; i < Math.min(jsonData.length, 10); i++) {
@@ -227,9 +226,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                     dateCellCount++;
                 } else if (typeof cell === 'string') {
                     const lowerCell = cell.toLowerCase();
-                    if (monthAbbrs.some(abbr => lowerCell.includes(abbr.toLowerCase())) || dayAbbrs.some(day => lowerCell.startsWith(day))) {
-                        dateCellCount++;
-                    } else if (lowerCell.match(/\d{1,2}[-/]\d{1,2}[-/]\d{2,4}/)) {
+                    if (dayAbbrs.some(day => lowerCell.startsWith(day)) || lowerCell.match(/\d{1,2}[-/][a-z]{3}/)) {
                         dateCellCount++;
                     }
                 }
@@ -238,34 +235,41 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             if (dateCellCount > 2) { 
                 dateRowIndex = i;
                 dateRow = row.map(cell => parseDate(cell));
-                dateRow.forEach(d => d && allDatesFound.push(d));
                 break;
             }
         }
         
         if (dateRowIndex === -1) {
-            throw new Error("Could not find the date row. Please ensure dates are in a recognizable format (e.g., '03-Oct' or 'dd/mm/yyyy') in one of the first 10 rows.");
+            throw new Error("Could not find the date row. Please ensure dates are in a recognizable format (e.g., '03-Oct' or 'Mon 26-Sep') in one of the first 10 rows of the file.");
         }
+        const allDatesFound = dateRow.filter((d): d is Date => d !== null);
 
 
         // --- Step 2: Find project blocks and parse shifts ---
-        const projectBlockStarts: number[] = [];
+        const projectBlockStartRows: number[] = [];
         jsonData.forEach((row, i) => {
             const cellA = (row[0] || '').toString().trim().toUpperCase();
             if (cellA.includes('JOB MANAGER')) {
-                projectBlockStarts.push(i);
+                projectBlockStartRows.push(i);
             }
         });
         
-        for (let i = 0; i < projectBlockStarts.length; i++) {
-            const blockStartRow = projectBlockStarts[i];
-            const blockEndRow = i + 1 < projectBlockStarts.length ? projectBlockStarts[i+1] : jsonData.length;
+        if (projectBlockStartRows.length === 0) {
+            throw new Error("No projects found. Could not find any rows with 'JOB MANAGER' in the first column.");
+        }
+
+        for (let i = 0; i < projectBlockStartRows.length; i++) {
+            const blockStartRowIndex = projectBlockStartRows[i];
+            const blockEndRowIndex = i + 1 < projectBlockStartRows.length ? projectBlockStartRows[i+1] : jsonData.length;
             
+            // --- Extract Project Details ---
+            let manager = jsonData[blockStartRowIndex + 1]?.[0] || 'Unknown Manager';
             let address = '';
             let bNumber = '';
 
-            for (let r = blockStartRow; r < blockEndRow; r++) {
-                 const cellValue = jsonData[r][0];
+            // Find address cell (first multi-line cell in column A after manager)
+            for (let r = blockStartRowIndex + 2; r < blockEndRowIndex; r++) {
+                 const cellValue = jsonData[r]?.[0];
                 if (cellValue && typeof cellValue === 'string' && cellValue.includes('\n')) {
                     const parts = cellValue.split('\n');
                     bNumber = parts[0].trim().length < 15 && parts[0].trim().startsWith('E') ? parts[0].trim() : '';
@@ -275,12 +279,12 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             }
 
             if (!address) {
-                 failedShifts.push({ date: null, projectAddress: `Block starting at row ${blockStartRow + 1}`, cellContent: '', reason: 'Could not find a valid Address cell in Column A for this project block.' });
+                 failedShifts.push({ date: null, projectAddress: `Block starting at row ${blockStartRowIndex + 1}`, cellContent: '', reason: 'Could not find a valid Address cell in Column A for this project block.' });
                  continue; // Skip this block if no address is found
             }
 
             // --- Step 3: Parse shifts for the current project block ---
-            for (let r = blockStartRow; r < blockEndRow; r++) {
+            for (let r = blockStartRowIndex; r < blockEndRowIndex; r++) {
                 for (let c = 1; c < dateRow.length; c++) { 
                     const shiftDate = dateRow[c];
                     if (!shiftDate) continue;
@@ -497,7 +501,5 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
     </div>
   );
 }
-
-    
 
     
