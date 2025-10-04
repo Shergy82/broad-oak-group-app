@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -227,29 +228,23 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             const blockStartRowIndex = projectBlockStartRows[i];
             const blockEndRowIndex = i + 1 < projectBlockStartRows.length ? projectBlockStartRows[i+1] : jsonData.length;
             
-            // --- Logic for finding details WITHIN the current block ---
             let manager = jsonData[blockStartRowIndex + 1]?.[0] || 'Unknown Manager';
             let address = '';
             let bNumber = '';
             let dateRow: (Date | null)[] = [];
             let dateRowIndex = -1;
 
-            // Find address, bNumber, and date row for the current block
             const addressKeywords = ['road', 'street', 'avenue', 'lane', 'drive', 'court', 'close', 'crescent'];
-            const dayAbbrs = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-            const monthAbbrs = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-
             for (let r = blockStartRowIndex; r < blockEndRowIndex; r++) {
                 const row = jsonData[r] || [];
                 const cellAValue = row[0];
 
-                // Find Address
                 if (cellAValue && typeof cellAValue === 'string') {
                     const lowerCellValue = cellAValue.toLowerCase();
                     if (addressKeywords.some(keyword => lowerCellValue.includes(keyword))) {
                         const parts = cellAValue.split('\n');
                         const firstLine = parts[0].trim();
-                        if (firstLine.length < 15 && firstLine.match(/^[a-zA-Z]\d+/)) {
+                        if (firstLine.length < 15 && firstLine.match(/^[a-zA-Z]?\d+/)) {
                             bNumber = firstLine;
                             address = parts.slice(1).join(', ').trim();
                         } else {
@@ -258,7 +253,8 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                     }
                 }
                 
-                // Find Date Row for this block
+                const dayAbbrs = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+                const monthAbbrs = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
                 let dateCellCount = 0;
                 row.forEach(cell => {
                     if (cell instanceof Date) dateCellCount++;
@@ -279,14 +275,13 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
 
             if (!address) {
                  failedShifts.push({ date: null, projectAddress: `Block at row ${blockStartRowIndex + 1}`, cellContent: '', reason: 'Could not find a valid Address cell in Column A for this project block.' });
-                 continue; // Skip this block if no address is found
+                 continue;
             }
              if (dateRowIndex === -1) {
                 failedShifts.push({ date: null, projectAddress: address, cellContent: '', reason: 'Could not find a valid Date Row within this project block.' });
-                continue; // Skip block if no date row found
+                continue;
             }
 
-            // --- Parse shifts for the current project block using its own date row ---
             for (let r = blockStartRowIndex; r < blockEndRowIndex; r++) {
                 for (let c = 1; c < dateRow.length; c++) { 
                     const shiftDate = dateRow[c];
@@ -301,7 +296,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                     const cellContent = cellContentRaw.replace(/\s+/g, ' ').trim();
                     const bgColor = cell?.s?.fgColor?.rgb;
                     if (bgColor === 'FF800080' || bgColor === '800080') { 
-                        continue; // Skip deep purple informational cells
+                        continue;
                     }
                     
                     const parts = cellContent.split('-').map(p => p.trim());
@@ -318,10 +313,11 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                                     shiftsFromExcel.push({ 
                                         task: task, 
                                         userId: user.uid, 
-                                        type: 'all-day', // Defaulting to all-day as per new understanding
+                                        type: 'all-day',
                                         date: shiftDate, 
                                         address: address, 
-                                        bNumber: bNumber 
+                                        bNumber: bNumber,
+                                        manager: manager,
                                     });
                                 } else {
                                     failedShifts.push({
@@ -398,12 +394,14 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             if (existingShift) {
                 if (
                     existingShift.bNumber !== (excelShift.bNumber || '') || 
-                    existingShift.type !== excelShift.type
+                    existingShift.type !== excelShift.type ||
+                    existingShift.manager !== (excelShift.manager || '')
                 ) {
                      if (!protectedStatuses.includes(existingShift.status)) {
                         batch.update(doc(db, 'shifts', existingShift.id), { 
                             bNumber: excelShift.bNumber || '',
                             type: excelShift.type,
+                            manager: excelShift.manager || '',
                         });
                         shiftsUpdated++;
                      }

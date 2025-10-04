@@ -12,6 +12,7 @@ export interface Shift {
   address: string;
   task: string;
   bNumber?: string;
+  manager?: string;
   notes?: string;
   createdAt: Timestamp;
   confirmedAt?: Timestamp;

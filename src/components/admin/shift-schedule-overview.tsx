@@ -684,6 +684,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                                     <TableHead className="w-[180px]">Date</TableHead>
                                     { selectedUserId === 'all' && <TableHead className="w-[180px]">Operative</TableHead> }
                                     <TableHead>Task &amp; Address</TableHead>
+                                    <TableHead>Manager</TableHead>
                                     <TableHead className="text-right w-[110px]">Type</TableHead>
                                     <TableHead className="text-right w-[160px]">Status</TableHead>
                                     {isOwner && <TableHead className="text-right w-[140px]">Actions</TableHead>}
@@ -705,6 +706,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                                             </Tooltip>
                                             <div className="text-xs text-muted-foreground">{shift.address}</div>
                                         </TableCell>
+                                        <TableCell className="text-xs text-muted-foreground">{shift.manager || 'N/A'}</TableCell>
                                         <TableCell className="text-right">
                                             <Badge
                                                 variant={shift.type === 'am' ? 'default' : shift.type === 'pm' ? 'secondary' : 'outline'}
@@ -772,6 +774,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                         <CardContent className="text-sm text-muted-foreground space-y-1">
                             { selectedUserId === 'all' && <div><strong>Operative:</strong> {userNameMap.get(shift.userId) || 'Unknown'}</div> }
                             <div><strong>Date:</strong> {format(getCorrectedLocalDate(shift.date), 'eeee, MMM d')}</div>
+                             {shift.manager && <div><strong>Manager:</strong> {shift.manager}</div>}
                         </CardContent>
                         <CardFooter className="p-2 bg-muted/30 flex justify-between items-center">
                             {getStatusBadge(shift)}
