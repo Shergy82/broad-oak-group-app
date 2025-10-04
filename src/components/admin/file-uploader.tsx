@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/shared/spinner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Upload, FileWarning, CheckCircle, TestTube2 } from 'lucide-react';
+import { Upload, FileWarning, TestTube2 } from 'lucide-react';
 import type { Shift, UserProfile, ShiftStatus } from '@/types';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
@@ -84,7 +84,11 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
         // Check first name match
         const firstNameNormalized = normalizeText(user.originalName.split(' ')[0]);
         if (firstNameNormalized === normalizedName) {
-            return user;
+             const distance = levenshtein(normalizedName, firstNameNormalized);
+             if (distance < minDistance) {
+                minDistance = distance;
+                bestMatch = user;
+            }
         }
 
         // Levenshtein distance for typo tolerance
@@ -188,7 +192,10 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         if (!data) throw new Error("Could not read file data.");
         
         const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellStyles: true });
-        
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, blankrows: false, defval: null });
+
         const usersSnapshot = await getDocs(collection(db, 'users'));
         const userMap: UserMapEntry[] = usersSnapshot.docs.map(doc => {
             const user = doc.data() as UserProfile;
@@ -202,110 +209,116 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         const shiftsFromExcel: ParsedShift[] = [];
         const failedShifts: FailedShift[] = [];
         const allDatesFound: Date[] = [];
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        
+        // --- Step 1: Find the global Date Row ---
+        let dateRowIndex = -1;
+        let dateRow: (Date | null)[] = [];
+        const monthAbbrs = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-        for (const sheetName of workbook.SheetNames) {
-            const worksheet = workbook.Sheets[sheetName];
-            const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, blankrows: false, defval: null });
-
-            const projectBlockStarts: number[] = [];
-            jsonData.forEach((row, i) => {
-                const cellA = (row[0] || '').toString().toUpperCase();
-                if (cellA.includes('JOB MANAGER')) {
-                    projectBlockStarts.push(i);
+        for (let i = 0; i < Math.min(jsonData.length, 10); i++) {
+            const row = jsonData[i] || [];
+            let dateCellCount = 0;
+            // A row is likely the date row if it has multiple date-like cells
+            row.forEach(cell => {
+                if (cell instanceof Date) {
+                    dateCellCount++;
+                } else if (typeof cell === 'string' && monthAbbrs.some(abbr => cell.includes(abbr))) {
+                    dateCellCount++;
                 }
             });
 
-            for (let i = 0; i < projectBlockStarts.length; i++) {
-                const blockStart = projectBlockStarts[i];
-                const blockEnd = i + 1 < projectBlockStarts.length ? projectBlockStarts[i+1] : jsonData.length;
-                const projectBlock = jsonData.slice(blockStart, blockEnd);
+            if (dateCellCount > 2) { // Heuristic: if more than 2 cells look like dates, it's our row.
+                dateRowIndex = i;
+                dateRow = row.map(cell => parseDate(cell));
+                dateRow.forEach(d => d && allDatesFound.push(d));
+                break;
+            }
+        }
+        
+        if (dateRowIndex === -1) {
+            throw new Error("Could not automatically find the date row in the spreadsheet. Please ensure dates are in a recognizable format (e.g., '03-Oct') in one of the first 10 rows.");
+        }
 
-                let manager = (projectBlock[1]?.[0] || '').toString().trim();
-                let address = '';
-                let bNumber = '';
-                
-                for (const row of projectBlock) {
-                    const cellValue = row[0];
-                    if (cellValue && typeof cellValue === 'string' && cellValue.includes('\n')) {
-                        const parts = cellValue.split('\n');
-                        bNumber = parts[0].trim().length < 15 ? parts[0].trim() : '';
-                        address = (bNumber ? parts.slice(1) : parts).join(', ').trim();
-                        break;
-                    }
+
+        // --- Step 2: Find project blocks and parse shifts ---
+        const projectBlockStarts: number[] = [];
+        jsonData.forEach((row, i) => {
+            const cellA = (row[0] || '').toString().trim().toUpperCase();
+            if (cellA.includes('JOB MANAGER')) {
+                projectBlockStarts.push(i);
+            }
+        });
+        
+        for (let i = 0; i < projectBlockStarts.length; i++) {
+            const blockStartRow = projectBlockStarts[i];
+            const blockEndRow = i + 1 < projectBlockStarts.length ? projectBlockStarts[i+1] : jsonData.length;
+            const projectBlock = jsonData.slice(blockStartRow, blockEndRow);
+
+            let address = '';
+            let bNumber = '';
+
+            for (const row of projectBlock) {
+                const cellValue = row[0];
+                if (cellValue && typeof cellValue === 'string' && cellValue.includes('\n')) {
+                    const parts = cellValue.split('\n');
+                    bNumber = parts[0].trim().length < 15 ? parts[0].trim() : '';
+                    address = (bNumber ? parts.slice(1) : parts).join(', ').trim();
+                    break;
                 }
-                if (!address) continue; // Skip block if no address found
+            }
+            if (!address) {
+                 failedShifts.push({ date: null, projectAddress: `Block starting at row ${blockStartRow + 1}`, cellContent: '', reason: 'Could not find a valid Address/B-Number cell in Column A for this project block.' });
+                 continue; // Skip this block if no address is found
+            }
 
-                // Find date row within the project block
-                let dateRowIndex = -1;
-                let dateRow: (Date | null)[] = [];
-                for(let r=0; r<projectBlock.length; r++) {
-                    const row = projectBlock[r] || [];
-                    let dateCellCount = 0;
-                    row.slice(4).forEach(cell => {
-                        if (parseDate(cell)) dateCellCount++;
-                    });
-                    if (dateCellCount > 2) { // Heuristic: if more than 2 cells in the latter part of a row are dates
-                        dateRowIndex = r;
-                        dateRow = row.map(cell => parseDate(cell));
-                        dateRow.forEach(d => d && allDatesFound.push(d));
-                        break;
+            // --- Step 3: Parse shifts for the current project block ---
+            for (let c = 1; c < dateRow.length; c++) { // Start from column B
+                const shiftDate = dateRow[c];
+                if (!shiftDate) continue;
+
+                for (let r = 0; r < projectBlock.length; r++) {
+                    const cellRef = XLSX.utils.encode_cell({ r: blockStartRow + r, c: c });
+                    const cell = worksheet[cellRef];
+                    const cellContentRaw = cell?.w || cell?.v;
+                    
+                    if (!cellContentRaw || typeof cellContentRaw !== 'string') continue;
+
+                    const cellContent = cellContentRaw.replace(/\s+/g, ' ').trim();
+                    const bgColor = cell?.s?.fgColor?.rgb;
+                    if (bgColor === 'FF800080' || bgColor === '800080') { 
+                        continue; // Skip deep purple informational cells
                     }
-                }
+                    
+                    const parts = cellContent.split('-').map(p => p.trim());
+                    if (parts.length > 1) {
+                        const potentialUserNames = parts.pop()!;
+                        const task = parts.join('-').trim();
 
-                if (dateRowIndex === -1) continue; // Skip block if no date row found
+                        const usersInCell = potentialUserNames.split(/&|,|\+/g).map(name => name.trim()).filter(Boolean);
 
-                // Process shifts for the discovered project and dates
-                for (let c = 4; c < dateRow.length; c++) {
-                    const shiftDate = dateRow[c];
-                    if (!shiftDate) continue;
-
-                    let lastTask: string | null = null;
-                    for (let r = dateRowIndex + 1; r < projectBlock.length; r++) {
-                        const cell = worksheet[XLSX.utils.encode_cell({c: c, r: blockStart + r})];
-                        const cellContentRaw = cell?.w || cell?.v;
-                        
-                        if (!cellContentRaw || typeof cellContentRaw !== 'string') {
-                            if (cell?.v !== null) lastTask = null; // Reset task if we hit an empty or non-string cell
-                            continue;
-                        }
-
-                        const bgColor = cell?.s?.fgColor?.rgb;
-                        if (bgColor === 'FF800080' || bgColor === '800080') { 
-                            continue; // Skip deep purple informational cells
-                        }
-
-                        const cellContent = cellContentRaw.replace(/\s+/g, ' ').trim();
-                        
-                        const parts = cellContent.split('-').map(p => p.trim());
-                        if (parts.length > 1) {
-                            const potentialUserNames = parts.pop()!;
-                            const task = parts.join('-').trim();
-
-                            const usersInCell = potentialUserNames.split(/&|,|\+/g).map(name => name.trim()).filter(Boolean);
-                            if (task && usersInCell.length > 0) {
-                                for (const userName of usersInCell) {
-                                    const user = findUser(userName, userMap);
-                                    if (user) {
-                                        shiftsFromExcel.push({ 
-                                            task: task, 
-                                            userId: user.uid, 
-                                            type: 'all-day', // Defaulting to all-day as per new understanding
-                                            date: shiftDate, 
-                                            address: address, 
-                                            bNumber: bNumber 
-                                        });
-                                    } else {
-                                        failedShifts.push({
-                                            date: shiftDate,
-                                            projectAddress: address,
-                                            cellContent: cellContentRaw,
-                                            reason: `Could not find a user matching "${userName}".`
-                                        });
-                                    }
+                        if (task && usersInCell.length > 0) {
+                            for (const userName of usersInCell) {
+                                const user = findUser(userName, userMap);
+                                if (user) {
+                                    shiftsFromExcel.push({ 
+                                        task: task, 
+                                        userId: user.uid, 
+                                        type: 'all-day', // Defaulting to all-day as per new understanding
+                                        date: shiftDate, 
+                                        address: address, 
+                                        bNumber: bNumber 
+                                    });
+                                } else {
+                                    failedShifts.push({
+                                        date: shiftDate,
+                                        projectAddress: address,
+                                        cellContent: cellContentRaw,
+                                        reason: `Could not find a user matching "${userName}".`
+                                    });
                                 }
                             }
+                        } else {
+                             failedShifts.push({ date: shiftDate, projectAddress: address, cellContent: cellContentRaw, reason: 'Cell did not match "Task - User" format.' });
                         }
                     }
                 }
@@ -318,10 +331,21 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             return;
         }
 
-        if (shiftsFromExcel.length === 0 && failedShifts.length === 0) {
+        if (shiftsFromExcel.length === 0 && failedShifts.length > 0) {
+            toast({
+                variant: 'destructive',
+                title: 'Import Failed',
+                description: "No valid shifts could be parsed. Please check the file format and the Dry Run report.",
+                duration: 10000,
+            });
+            onImportComplete(failedShifts);
+            setIsUploading(false);
+            return;
+        }
+         if (shiftsFromExcel.length === 0 && failedShifts.length === 0) {
             toast({
                 title: 'No Shifts Found',
-                description: "The file was processed, but no valid shifts could be parsed. Please check the file format.",
+                description: "The file was processed, but no shifts were found to import.",
             });
              setIsUploading(false);
             return;
@@ -412,17 +436,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             });
         }
         
-        if (failedShifts.length > 0) {
-            onImportComplete(failedShifts);
-            toast({
-                variant: 'destructive',
-                title: `${failedShifts.length} Shift(s) Failed to Import`,
-                description: `A report has been generated below with details on the failures.`,
-                duration: 10000,
-            });
-        } else {
-            onImportComplete([]);
-        }
+        onImportComplete(failedShifts);
 
         setFile(null);
         const fileInput = document.getElementById('shift-file-input') as HTMLInputElement;
@@ -431,7 +445,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
       } catch (err: any) {
         console.error('Import failed:', err);
         setError(err.message || 'An unexpected error occurred during import.');
-        onImportComplete([]);
+        onImportComplete([], {found: [], failed: []});
       } finally {
         setIsUploading(false);
       }
@@ -449,6 +463,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
     <div className="space-y-4">
       {error && (
         <Alert variant="destructive">
+          <FileWarning className="h-4 w-4" />
           <AlertTitle>Import Error</AlertTitle>
           <AlertDescription style={{ whiteSpace: 'pre-wrap' }}>{error}</AlertDescription>
         </Alert>
