@@ -10,10 +10,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/shared/spinner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Upload, FileWarning, TestTube2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, FileWarning, TestTube2, Sheet } from 'lucide-react';
 import type { Shift, UserProfile, ShiftStatus } from '@/types';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
+import { Switch } from '@/components/ui/switch';
 
 type ParsedShift = Omit<Shift, 'id' | 'status' | 'date' | 'createdAt'> & { date: Date };
 type UserMapEntry = { uid: string; normalizedName: string; originalName: string; };
@@ -23,6 +24,7 @@ export interface FailedShift {
     projectAddress: string;
     cellContent: string;
     reason: string;
+    sheetName: string;
 }
 
 interface DryRunResult {
@@ -158,6 +160,8 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDryRun, setIsDryRun] = useState(true);
+  const [sheetNames, setSheetNames] = useState<string[]>([]);
+  const [enabledSheets, setEnabledSheets] = useState<{ [key: string]: boolean }>({});
   const { toast } = useToast();
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -167,9 +171,28 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         setFile(selectedFile);
         setError(null);
         onFileSelect();
+        
+        // Read sheet names
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const data = e.target?.result;
+            if (!data) return;
+            const workbook = XLSX.read(data, { type: 'array', bookSheets: true });
+            setSheetNames(workbook.SheetNames);
+            const initialEnabled: { [key: string]: boolean } = {};
+            workbook.SheetNames.forEach(name => {
+                initialEnabled[name] = true;
+            });
+            setEnabledSheets(initialEnabled);
+        };
+        reader.readAsArrayBuffer(selectedFile);
        }
     }
   };
+
+  const toggleSheet = (sheetName: string, isEnabled: boolean) => {
+      setEnabledSheets(prev => ({ ...prev, [sheetName]: isEnabled }));
+  }
 
   const getShiftKey = (shift: { userId: string; date: Date | Timestamp; type: 'am' | 'pm' | 'all-day'; task: string; address: string }): string => {
     const d = (shift.date as any).toDate ? (shift.date as Timestamp).toDate() : (shift.date as Date);
@@ -183,6 +206,11 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
       setError('Please select a file first.');
       return;
     }
+    const sheetsToProcess = sheetNames.filter(name => enabledSheets[name]);
+    if (sheetsToProcess.length === 0) {
+        setError('No sheets selected. Please enable at least one sheet to import.');
+        return;
+    }
 
     setIsUploading(true);
     setError(null);
@@ -195,9 +223,6 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         if (!data) throw new Error("Could not read file data.");
         
         const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellStyles: true });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, blankrows: false, defval: null });
 
         const usersSnapshot = await getDocs(collection(db, 'users'));
         const userMap: UserMapEntry[] = usersSnapshot.docs.map(doc => {
@@ -209,123 +234,132 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             };
         });
         
-        const shiftsFromExcel: ParsedShift[] = [];
-        const failedShifts: FailedShift[] = [];
+        let allShiftsFromExcel: ParsedShift[] = [];
+        let allFailedShifts: FailedShift[] = [];
         
-        const projectBlockStartRows: number[] = [];
-        jsonData.forEach((row, i) => {
-            const cellA = (row[0] || '').toString().trim().toUpperCase();
-            if (cellA.includes('JOB MANAGER')) {
-                projectBlockStartRows.push(i);
-            }
-        });
-        
-        if (projectBlockStartRows.length === 0) {
-            throw new Error("No projects found. Could not find any rows with 'JOB MANAGER' in the first column.");
-        }
+        for (const sheetName of sheetsToProcess) {
+            const worksheet = workbook.Sheets[sheetName];
+            if (!worksheet) continue;
 
-        for (let i = 0; i < projectBlockStartRows.length; i++) {
-            const blockStartRowIndex = projectBlockStartRows[i];
-            const blockEndRowIndex = i + 1 < projectBlockStartRows.length ? projectBlockStartRows[i+1] : jsonData.length;
+            const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, blankrows: false, defval: null });
+
+            const projectBlockStartRows: number[] = [];
+            jsonData.forEach((row, i) => {
+                const cellA = (row[0] || '').toString().trim().toUpperCase();
+                if (cellA.includes('JOB MANAGER')) {
+                    projectBlockStartRows.push(i);
+                }
+            });
             
-            let manager = jsonData[blockStartRowIndex + 1]?.[0] || 'Unknown Manager';
-            let address = '';
-            let bNumber = '';
-            let dateRow: (Date | null)[] = [];
-            let dateRowIndex = -1;
+            if (projectBlockStartRows.length === 0) {
+                continue; // Skip sheet if no projects found
+            }
 
-            const addressKeywords = ['road', 'street', 'avenue', 'lane', 'drive', 'court', 'close', 'crescent'];
-            for (let r = blockStartRowIndex; r < blockEndRowIndex; r++) {
-                const row = jsonData[r] || [];
-                const cellAValue = row[0];
-
-                if (cellAValue && typeof cellAValue === 'string') {
-                    const lowerCellValue = cellAValue.toLowerCase();
-                    if (addressKeywords.some(keyword => lowerCellValue.includes(keyword))) {
-                        const parts = cellAValue.split('\n');
-                        const firstLine = parts[0].trim();
-                        if (firstLine.length < 15 && firstLine.match(/^[a-zA-Z]?\d+/)) {
-                            bNumber = firstLine;
-                            address = parts.slice(1).join(', ').trim();
-                        } else {
-                            address = parts.join(', ').trim();
-                        }
-                    }
-                }
+            for (let i = 0; i < projectBlockStartRows.length; i++) {
+                const blockStartRowIndex = projectBlockStartRows[i];
+                const blockEndRowIndex = i + 1 < projectBlockStartRows.length ? projectBlockStartRows[i+1] : jsonData.length;
                 
-                const dayAbbrs = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-                const monthAbbrs = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-                let dateCellCount = 0;
-                row.forEach(cell => {
-                    if (cell instanceof Date) dateCellCount++;
-                    else if (typeof cell === 'string') {
-                        const lowerCell = cell.toLowerCase();
-                        if (dayAbbrs.some(day => lowerCell.startsWith(day)) || monthAbbrs.some(abbr => lowerCell.includes(abbr))) {
-                            dateCellCount++;
+                let manager = jsonData[blockStartRowIndex + 1]?.[0] || 'Unknown Manager';
+                let address = '';
+                let bNumber = '';
+                let dateRow: (Date | null)[] = [];
+                let dateRowIndex = -1;
+
+                const addressKeywords = ['road', 'street', 'avenue', 'lane', 'drive', 'court', 'close', 'crescent', 'place'];
+                for (let r = blockStartRowIndex; r < blockEndRowIndex; r++) {
+                    const row = jsonData[r] || [];
+                    const cellAValue = row[0];
+
+                    if (!address && cellAValue && typeof cellAValue === 'string') {
+                        const lowerCellValue = cellAValue.toLowerCase();
+                        if (addressKeywords.some(keyword => lowerCellValue.includes(keyword))) {
+                            const parts = cellAValue.split('\n');
+                            const firstLine = parts[0].trim();
+                            if (firstLine.length < 15 && firstLine.match(/^[a-zA-Z]?\d+/)) {
+                                bNumber = firstLine;
+                                address = parts.slice(1).join(', ').trim();
+                            } else {
+                                address = parts.join(', ').trim();
+                            }
                         }
                     }
-                });
-
-                if (dateCellCount > 2) {
-                    dateRowIndex = r;
-                    dateRow = row.map(cell => parseDate(cell));
-                }
-            }
-
-
-            if (!address) {
-                 failedShifts.push({ date: null, projectAddress: `Block at row ${blockStartRowIndex + 1}`, cellContent: '', reason: 'Could not find a valid Address cell in Column A for this project block.' });
-                 continue;
-            }
-             if (dateRowIndex === -1) {
-                failedShifts.push({ date: null, projectAddress: address, cellContent: '', reason: 'Could not find a valid Date Row within this project block.' });
-                continue;
-            }
-
-            for (let r = blockStartRowIndex; r < blockEndRowIndex; r++) {
-                for (let c = 1; c < dateRow.length; c++) { 
-                    const shiftDate = dateRow[c];
-                    if (!shiftDate) continue;
-
-                    const cellRef = XLSX.utils.encode_cell({ r: r, c: c });
-                    const cell = worksheet[cellRef];
-                    let cellContentRaw = cell?.w || cell?.v;
                     
-                    if (!cellContentRaw || typeof cellContentRaw !== 'string') continue;
+                    if (dateRowIndex === -1) {
+                        const dayAbbrs = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+                        const monthAbbrs = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+                        let dateCellCount = 0;
+                        row.forEach(cell => {
+                            if (cell instanceof Date) dateCellCount++;
+                            else if (typeof cell === 'string') {
+                                const lowerCell = cell.toLowerCase();
+                                if (dayAbbrs.some(day => lowerCell.startsWith(day)) || monthAbbrs.some(abbr => lowerCell.includes(abbr))) {
+                                    dateCellCount++;
+                                }
+                            }
+                        });
 
-                    const cellContent = cellContentRaw.replace(/\s+/g, ' ').trim();
-                    const bgColor = cell?.s?.fgColor?.rgb;
-                    if (bgColor === 'FF800080' || bgColor === '800080') { 
-                        continue;
+                        if (dateCellCount > 2) {
+                            dateRowIndex = r;
+                            dateRow = row.map(cell => parseDate(cell));
+                        }
                     }
-                    
-                    const parts = cellContent.split('-').map(p => p.trim());
-                    if (parts.length > 1) {
-                        const potentialUserNames = parts.pop()!;
-                        const task = parts.join('-').trim();
+                }
 
-                        const usersInCell = potentialUserNames.split(/&|,|\+/g).map(name => name.trim()).filter(Boolean);
+                if (!address) {
+                     allFailedShifts.push({ date: null, projectAddress: `Block at row ${blockStartRowIndex + 1}`, cellContent: '', reason: 'Could not find a valid Address cell in Column A for this project block.', sheetName });
+                     continue;
+                }
+                if (dateRowIndex === -1) {
+                    allFailedShifts.push({ date: null, projectAddress: address, cellContent: '', reason: 'Could not find a valid Date Row within this project block.', sheetName });
+                    continue;
+                }
 
-                        if (task && usersInCell.length > 0) {
-                            for (const userName of usersInCell) {
-                                const user = findUser(userName, userMap);
-                                if (user) {
-                                    shiftsFromExcel.push({ 
-                                        task: task, 
-                                        userId: user.uid, 
-                                        type: 'all-day',
-                                        date: shiftDate, 
-                                        address: address, 
-                                        bNumber: bNumber,
-                                        manager: manager,
-                                    });
-                                } else {
-                                    failedShifts.push({
-                                        date: shiftDate,
-                                        projectAddress: address,
-                                        cellContent: cellContentRaw,
-                                        reason: `Could not find a user matching "${userName}".`
-                                    });
+                for (let r = blockStartRowIndex; r < blockEndRowIndex; r++) {
+                    for (let c = 1; c < dateRow.length; c++) { 
+                        const shiftDate = dateRow[c];
+                        if (!shiftDate) continue;
+
+                        const cellRef = XLSX.utils.encode_cell({ r: r, c: c });
+                        const cell = worksheet[cellRef];
+                        let cellContentRaw = cell?.w || cell?.v;
+                        
+                        if (!cellContentRaw || typeof cellContentRaw !== 'string') continue;
+
+                        const cellContent = cellContentRaw.replace(/\s+/g, ' ').trim();
+                        const bgColor = cell?.s?.fgColor?.rgb;
+                        if (bgColor === 'FF800080' || bgColor === '800080') { 
+                            continue;
+                        }
+                        
+                        const parts = cellContent.split('-').map(p => p.trim());
+                        if (parts.length > 1) {
+                            const potentialUserNames = parts.pop()!;
+                            const task = parts.join('-').trim();
+
+                            const usersInCell = potentialUserNames.split(/&|,|\+/g).map(name => name.trim()).filter(Boolean);
+
+                            if (task && usersInCell.length > 0) {
+                                for (const userName of usersInCell) {
+                                    const user = findUser(userName, userMap);
+                                    if (user) {
+                                        allShiftsFromExcel.push({ 
+                                            task: task, 
+                                            userId: user.uid, 
+                                            type: 'all-day',
+                                            date: shiftDate, 
+                                            address: address, 
+                                            bNumber: bNumber,
+                                            manager: manager,
+                                        });
+                                    } else {
+                                        allFailedShifts.push({
+                                            date: shiftDate,
+                                            projectAddress: address,
+                                            cellContent: cellContentRaw,
+                                            reason: `Could not find a user matching "${userName}".`,
+                                            sheetName
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -335,32 +369,32 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         }
         
         if (isDryRun) {
-            onImportComplete(failedShifts, { found: shiftsFromExcel, failed: failedShifts });
+            onImportComplete(allFailedShifts, { found: allShiftsFromExcel, failed: allFailedShifts });
             setIsUploading(false);
             return;
         }
 
-        if (shiftsFromExcel.length === 0 && failedShifts.length > 0) {
+        if (allShiftsFromExcel.length === 0 && allFailedShifts.length > 0) {
             toast({
                 variant: 'destructive',
                 title: 'Import Failed',
                 description: "No valid shifts could be parsed. Please check the file format and the Dry Run report.",
                 duration: 10000,
             });
-            onImportComplete(failedShifts);
+            onImportComplete(allFailedShifts);
             setIsUploading(false);
             return;
         }
-         if (shiftsFromExcel.length === 0 && failedShifts.length === 0) {
+         if (allShiftsFromExcel.length === 0 && allFailedShifts.length === 0) {
             toast({
                 title: 'No Shifts Found',
-                description: "The file was processed, but no shifts were found to import.",
+                description: "The file was processed, but no shifts were found to import from the selected sheets.",
             });
              setIsUploading(false);
             return;
         }
 
-        const allDatesFound = shiftsFromExcel.map(s => s.date).filter((d): d is Date => d !== null);
+        const allDatesFound = allShiftsFromExcel.map(s => s.date).filter((d): d is Date => d !== null);
         const minDate = new Date(Math.min(...allDatesFound.map(d => d.getTime())));
         const maxDate = new Date(Math.max(...allDatesFound.map(d => d.getTime())));
 
@@ -378,7 +412,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         });
 
         const excelShiftsMap = new Map<string, ParsedShift>();
-        for (const excelShift of shiftsFromExcel) {
+        for (const excelShift of allShiftsFromExcel) {
           excelShiftsMap.set(getShiftKey(excelShift), excelShift);
         }
 
@@ -440,18 +474,21 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                 title: 'Import Complete & Reconciled',
                 description: `Successfully processed the file: ${descriptionParts.join(', ')}.`,
             });
-        } else if (failedShifts.length === 0) {
+        } else if (allFailedShifts.length === 0) {
             toast({
                 title: 'No Changes Detected',
                 description: "The schedule was up-to-date. No changes were made.",
             });
         }
         
-        onImportComplete(failedShifts);
+        onImportComplete(allFailedShifts);
 
         setFile(null);
         const fileInput = document.getElementById('shift-file-input') as HTMLInputElement;
         if (fileInput) fileInput.value = "";
+        setSheetNames([]);
+        setEnabledSheets({});
+
 
       } catch (err: any) {
         console.error('Import failed:', err);
@@ -479,23 +516,47 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
           <AlertDescription style={{ whiteSpace: 'pre-wrap' }}>{error}</AlertDescription>
         </Alert>
       )}
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="space-y-4">
         <Input
           id="shift-file-input"
           type="file"
           accept=".xlsx, .xls"
           onChange={handleFileChange}
-          className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+          className="w-full file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
         />
-        <div className="flex items-center space-x-2">
-            <Checkbox id="dry-run" checked={isDryRun} onCheckedChange={(checked) => setIsDryRun(!!checked)} />
-            <Label htmlFor="dry-run" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                Dry Run
-            </Label>
+
+        {sheetNames.length > 0 && (
+            <div className="space-y-3 rounded-lg border p-4">
+                <h3 className="text-sm font-medium">Select Sheets to Import</h3>
+                <div className="space-y-2">
+                    {sheetNames.map(name => (
+                        <div key={name} className="flex items-center justify-between rounded-md border p-3">
+                            <Label htmlFor={`sheet-${name}`} className="flex items-center gap-2 text-sm font-normal">
+                                <Sheet className="h-4 w-4 text-muted-foreground" />
+                                {name}
+                            </Label>
+                            <Switch
+                                id={`sheet-${name}`}
+                                checked={enabledSheets[name]}
+                                onCheckedChange={(checked) => toggleSheet(name, checked)}
+                            />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex items-center space-x-2">
+                <Checkbox id="dry-run" checked={isDryRun} onCheckedChange={(checked) => setIsDryRun(!!checked)} />
+                <Label htmlFor="dry-run" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Dry Run
+                </Label>
+            </div>
+            <Button onClick={handleImport} disabled={!file || isUploading} className="w-full sm:w-auto">
+              {isUploading ? <Spinner /> : isDryRun ? <><TestTube2 className="mr-2 h-4 w-4" /> Run Test</> : <><Upload className="mr-2 h-4 w-4" /> Import Shifts</>}
+            </Button>
         </div>
-        <Button onClick={handleImport} disabled={!file || isUploading} className="w-full sm:w-auto">
-          {isUploading ? <Spinner /> : isDryRun ? <><TestTube2 className="mr-2 h-4 w-4" /> Run Test</> : <><Upload className="mr-2 h-4 w-4" /> Import Shifts</>}
-        </Button>
       </div>
     </div>
   );

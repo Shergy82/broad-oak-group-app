@@ -10,8 +10,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Download, FileWarning, CheckCircle, TestTube2, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
-import { useToast } from '@/hooks/use-toast';
-import { Spinner } from '../shared/spinner';
 import { Alert, AlertTitle, AlertDescription } from '../ui/alert';
 
 interface DryRunResult {
@@ -55,8 +53,9 @@ export default function AdminPageContent() {
     doc.setTextColor(100);
     doc.text(`Generated on: ${format(generationDate, 'PPP p')}`, 14, 28);
     
-    const head = [['Date', 'Project Address', 'Original Cell Content', 'Reason for Failure']];
+    const head = [['Sheet', 'Date', 'Project Address', 'Original Cell Content', 'Reason for Failure']];
     const body = importReport.failed.map(shift => [
+        shift.sheetName,
         shift.date ? format(shift.date, 'dd/MM/yyyy') : 'N/A',
         shift.projectAddress,
         shift.cellContent,
@@ -86,7 +85,7 @@ export default function AdminPageContent() {
                     Dry Run Results
                 </CardTitle>
                 <CardDescription>
-                    This is a preview of the import. No changes have been made to the database.
+                    This is a preview of the import from the selected sheets. No changes have been made to the database.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -131,6 +130,7 @@ export default function AdminPageContent() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    <TableHead>Sheet</TableHead>
                                     <TableHead>Date</TableHead>
                                     <TableHead>Cell Content</TableHead>
                                     <TableHead>Reason</TableHead>
@@ -139,6 +139,7 @@ export default function AdminPageContent() {
                             <TableBody>
                                 {failed.map((shift, index) => (
                                     <TableRow key={index}>
+                                        <TableCell>{shift.sheetName}</TableCell>
                                         <TableCell>{shift.date ? format(shift.date, 'dd/MM/yy') : 'N/A'}</TableCell>
                                         <TableCell className="font-mono text-xs">{shift.cellContent}</TableCell>
                                         <TableCell>{shift.reason}</TableCell>
@@ -165,7 +166,7 @@ export default function AdminPageContent() {
           <CardHeader>
             <CardTitle>Import Weekly Shifts from Excel</CardTitle>
             <CardDescription>
-                This tool reconciles shifts from an Excel file. New shifts are added, existing ones updated, and shifts not in the file are removed. Use "Dry Run" to test before importing.
+                Upload an Excel workbook. The tool will read shifts from all selected sheets. New shifts are added, existing ones updated, and shifts not in the file are removed. Use "Dry Run" to test before importing.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -178,7 +179,7 @@ export default function AdminPageContent() {
 
       {importAttempted && !importReport?.dryRun && (
           <>
-            {importReport.failed.length > 0 && (
+            {importReport && importReport.failed.length > 0 && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -193,6 +194,7 @@ export default function AdminPageContent() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    <TableHead>Sheet</TableHead>
                                     <TableHead>Date</TableHead>
                                     <TableHead>Project Address</TableHead>
                                     <TableHead>Original Cell Content</TableHead>
@@ -202,6 +204,7 @@ export default function AdminPageContent() {
                             <TableBody>
                                 {importReport.failed.map((shift, index) => (
                                     <TableRow key={index}>
+                                        <TableCell>{shift.sheetName}</TableCell>
                                         <TableCell>{shift.date ? format(shift.date, 'dd/MM/yyyy') : 'N/A'}</TableCell>
                                         <TableCell>{shift.projectAddress}</TableCell>
                                         <TableCell className="font-mono text-xs">{shift.cellContent}</TableCell>
@@ -220,7 +223,7 @@ export default function AdminPageContent() {
                 </Card>
             )}
 
-            {importReport.failed.length === 0 && (
+            {importReport && importReport.failed.length === 0 && (
                 <Alert className="border-green-500 text-green-700">
                     <CheckCircle className="h-4 w-4 text-green-500" />
                     <AlertTitle>Import Successful</AlertTitle>
