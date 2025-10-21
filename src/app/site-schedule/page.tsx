@@ -1,7 +1,8 @@
+
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot, query, getDocs, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, getDocs, where, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shift, UserProfile } from '@/types';
 import { isSameWeek, format, startOfToday, addDays, subDays, startOfWeek, isSameDay } from 'date-fns';
@@ -22,7 +23,7 @@ import { Spinner } from '@/components/shared/spinner';
 import { useUserProfile } from '@/hooks/use-user-profile';
 
 
-const DayCard = ({ day, shifts }: { day: string, shifts: Shift[] }) => {
+const DayCard = ({ day, shifts, userNameMap }: { day: string, shifts: Shift[], userNameMap: Map<string, string> }) => {
     if (shifts.length === 0) return null;
 
     const sortedShifts = [...shifts].sort((a, b) => {
@@ -48,7 +49,7 @@ const DayCard = ({ day, shifts }: { day: string, shifts: Shift[] }) => {
     );
 }
 
-const WeekScheduleView = ({ shifts, weekName }: { shifts: { [key: string]: Shift[] }, weekName: string }) => {
+const WeekScheduleView = ({ shifts, weekName, userNameMap }: { shifts: { [key: string]: Shift[] }, weekName: string, userNameMap: Map<string, string> }) => {
     const hasShifts = Object.values(shifts).some(dayShifts => dayShifts.length > 0);
     const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     const weekendDays = ['Saturday', 'Sunday'];
@@ -67,14 +68,14 @@ const WeekScheduleView = ({ shifts, weekName }: { shifts: { [key: string]: Shift
         <div className="space-y-6">
             <h3 className="text-xl font-semibold tracking-tight">Weekdays</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                {weekDays.map(day => <DayCard key={day} day={day} shifts={shifts[day] || []} />)}
+                {weekDays.map(day => <DayCard key={day} day={day} shifts={shifts[day] || []} userNameMap={userNameMap} />)}
             </div>
 
             {(shifts['Saturday']?.length > 0 || shifts['Sunday']?.length > 0) && (
                 <>
                     <h3 className="text-xl font-semibold tracking-tight pt-4">Weekend</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                        {weekendDays.map(day => <DayCard key={day} day={day} shifts={shifts[day] || []} />)}
+                        {weekendDays.map(day => <DayCard key={day} day={day} shifts={shifts[day] || []} userNameMap={userNameMap} />)}
                     </div>
                 </>
             )}
@@ -116,9 +117,9 @@ export default function SiteSchedulePage() {
             setLoading(false);
         });
         
-        // Admins/Owners need the full user list for the PDF download feature.
-        // Standard users do not.
         let unsubUsers = () => {};
+        // Only privileged users fetch the full user list for the PDF download feature.
+        // Standard users do not need it as the `userName` is on the shift.
         if (isPrivilegedUser) {
             const usersQuery = query(collection(db, 'users'));
             unsubUsers = onSnapshot(usersQuery, (snapshot) => {
@@ -126,7 +127,8 @@ export default function SiteSchedulePage() {
                 setUsers(fetchedUsers);
             }, (err) => {
                 console.error("Error fetching users:", err);
-                setError("Could not fetch user data.");
+                // Non-critical for display, but note it for admins.
+                toast({ variant: 'destructive', title: 'Could not fetch all user data for PDF downloads.'})
             });
         }
         
@@ -134,11 +136,11 @@ export default function SiteSchedulePage() {
           unsubShifts();
           unsubUsers();
         };
-    }, [isPrivilegedUser]);
+    }, [isPrivilegedUser, toast]);
 
     const naturalSort = (a: string, b: string) => {
-        const aParts = a.match(/(\d+)|(\D+)/g) || [];
-        const bParts = b.match(/(\d+)|(\D+)/g) || [];
+        const aParts = a.match(/(\\d+)|(\\D+)/g) || [];
+        const bParts = b.match(/(\\d+)|(\\D+)/g) || [];
         
         for (let i = 0; i < Math.min(aParts.length, bParts.length); i++) {
             const partA = aParts[i];
@@ -163,7 +165,8 @@ export default function SiteSchedulePage() {
         let relevantShifts = allShifts;
         // For standard users, only show addresses for projects they are assigned to.
         if (!isPrivilegedUser && user) {
-            relevantShifts = allShifts.filter(shift => shift.userId === user.uid);
+            const userShiftAddresses = new Set(allShifts.filter(shift => shift.userId === user.uid).map(s => s.address));
+            relevantShifts = allShifts.filter(shift => userShiftAddresses.has(shift.address));
         }
 
         const uniqueAddresses = Array.from(new Set(relevantShifts.map(shift => shift.address)));
@@ -274,11 +277,12 @@ export default function SiteSchedulePage() {
             finalY = (doc as any).lastAutoTable.finalY + 15;
         }
         
+        generateTableForWeek('Last Week', lastWeekShifts);
         generateTableForWeek('This Week', thisWeekShifts);
         generateTableForWeek('Next Week', nextWeekShifts);
 
-        if (Object.values(thisWeekShifts).flat().length === 0 && Object.values(nextWeekShifts).flat().length === 0) {
-            doc.text("No shifts scheduled for this property for this week or next.", 14, finalY);
+        if (Object.values(lastWeekShifts).flat().length === 0 && Object.values(thisWeekShifts).flat().length === 0 && Object.values(nextWeekShifts).flat().length === 0) {
+            doc.text("No shifts scheduled for this property for these periods.", 14, finalY);
         }
 
         doc.save(`schedule_${selectedAddress.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
@@ -371,13 +375,13 @@ export default function SiteSchedulePage() {
                                     <TabsTrigger value="next-week">Next Week</TabsTrigger>
                                 </TabsList>
                                 <TabsContent value="last-week" className="mt-4">
-                                    <WeekScheduleView shifts={lastWeekShifts} weekName="Last Week" />
+                                    <WeekScheduleView shifts={lastWeekShifts} weekName="Last Week" userNameMap={userNameMap} />
                                 </TabsContent>
                                 <TabsContent value="this-week" className="mt-4">
-                                    <WeekScheduleView shifts={thisWeekShifts} weekName="This Week" />
+                                    <WeekScheduleView shifts={thisWeekShifts} weekName="This Week" userNameMap={userNameMap} />
                                 </TabsContent>
                                 <TabsContent value="next-week" className="mt-4">
-                                     <WeekScheduleView shifts={nextWeekShifts} weekName="Next Week" />
+                                     <WeekScheduleView shifts={nextWeekShifts} weekName="Next Week" userNameMap={userNameMap} />
                                 </TabsContent>
                             </Tabs>
                         )}
