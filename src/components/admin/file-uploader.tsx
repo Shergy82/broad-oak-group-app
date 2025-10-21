@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { collection, writeBatch, doc, getDocs, query, where, Timestamp, serverTimestamp } from 'firebase/firestore';
@@ -16,7 +16,7 @@ import { Label } from '../ui/label';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 
 
-type ParsedShift = Omit<Shift, 'id' | 'status' | 'date' | 'createdAt'> & { date: Date };
+type ParsedShift = Omit<Shift, 'id' | 'status' | 'date' | 'createdAt' | 'userName'> & { date: Date; userName: string; };
 type UserMapEntry = { uid: string; normalizedName: string; originalName: string; };
 
 export interface FailedShift {
@@ -35,7 +35,7 @@ export interface DryRunResult {
 }
 
 interface FileUploaderProps {
-    onImportComplete: (failedShifts: FailedShift[], dryRunResult?: DryRunResult) => void;
+    onImportComplete: (failedShifts: FailedShift[], onConfirm: () => Promise<void>, dryRunResult?: DryRunResult) => void;
     onFileSelect: () => void;
 }
 
@@ -225,7 +225,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
   };
 
 
-  const handleImport = async () => {
+  const runImport = useCallback(async (commitChanges: boolean) => {
     if (!file || !db) {
       setError('Please select a file first.');
       return;
@@ -238,7 +238,6 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
 
     setIsUploading(true);
     setError(null);
-    onImportComplete([], { toCreate: [], toUpdate: [], toDelete: [], failed: [] });
 
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -403,11 +402,12 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         }
 
         const allDatesFound = allShiftsFromExcel.map(s => s.date).filter((d): d is Date => d !== null);
-        if (allDatesFound.length === 0) {
-            onImportComplete(allFailedShifts, { toCreate: [], toUpdate: [], toDelete: [], failed: allFailedShifts });
-            setIsUploading(false);
-            return;
+        if (allDatesFound.length === 0 && allFailedShifts.length > 0) {
+             onImportComplete(allFailedShifts, async () => {}, { toCreate: [], toUpdate: [], toDelete: [], failed: allFailedShifts });
+             setIsUploading(false);
+             return;
         }
+
         const minDate = new Date(Math.min(...allDatesFound.map(d => d.getTime())));
         const maxDate = new Date(Math.max(...allDatesFound.map(d => d.getTime())));
 
@@ -434,7 +434,6 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         const toDelete: Shift[] = [];
         const protectedStatuses: ShiftStatus[] = ['completed', 'incomplete'];
 
-
         for (const [key, excelShift] of excelShiftsMap.entries()) {
             const existingShift = existingShiftsMap.get(key);
             if (existingShift) {
@@ -457,70 +456,73 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             }
         }
         
-        if (isDryRun) {
-            onImportComplete(allFailedShifts, { toCreate, toUpdate, toDelete, failed: allFailedShifts });
+        const onConfirm = async () => {
+          const batch = writeBatch(db);
+
+          toCreate.forEach(shift => {
+              const newShiftData = {
+                  ...shift,
+                  date: Timestamp.fromDate(shift.date),
+                  status: 'pending-confirmation',
+                  createdAt: serverTimestamp(),
+              };
+              batch.set(doc(collection(db, 'shifts')), newShiftData);
+          });
+
+          toUpdate.forEach(({ old, new: newShift }) => {
+              batch.update(doc(db, 'shifts', old.id), { 
+                  bNumber: newShift.bNumber || '',
+                  manager: newShift.manager || '',
+              });
+          });
+
+          toDelete.forEach(shift => {
+              batch.delete(doc(db, 'shifts', shift.id));
+          });
+          
+          if (toCreate.length > 0 || toUpdate.length > 0 || toDelete.length > 0) {
+              await batch.commit();
+          }
+          
+          let descriptionParts = [];
+          if (toCreate.length > 0) descriptionParts.push(`created ${toCreate.length} new shift(s)`);
+          if (toUpdate.length > 0) descriptionParts.push(`updated ${toUpdate.length} shift(s)`);
+          if (toDelete.length > 0) descriptionParts.push(`deleted ${toDelete.length} old shift(s)`);
+
+          if (descriptionParts.length > 0) {
+              toast({
+                  title: 'Import Complete & Reconciled',
+                  description: `Successfully processed the file: ${descriptionParts.join(', ')}.`,
+              });
+          } else if (allFailedShifts.length === 0) {
+              toast({
+                  title: 'No Changes Detected',
+                  description: "The schedule was up-to-date. No changes were made.",
+              });
+          }
+        };
+
+        if (!commitChanges) {
+            onImportComplete(allFailedShifts, onConfirm, { toCreate, toUpdate, toDelete, failed: allFailedShifts });
             setIsUploading(false);
             return;
         }
 
-
-        const batch = writeBatch(db);
-
-        toCreate.forEach(shift => {
-            const newShiftData = {
-                ...shift,
-                date: Timestamp.fromDate(shift.date),
-                status: 'pending-confirmation',
-                createdAt: serverTimestamp(),
-            };
-            batch.set(doc(collection(db, 'shifts')), newShiftData);
-        });
-
-        toUpdate.forEach(({ old, new: newShift }) => {
-            batch.update(doc(db, 'shifts', old.id), { 
-                bNumber: newShift.bNumber || '',
-                manager: newShift.manager || '',
-            });
-        });
-
-        toDelete.forEach(shift => {
-            batch.delete(doc(db, 'shifts', shift.id));
-        });
+        // This part runs if commitChanges is true (i.e., not a dry run)
+        await onConfirm();
+        onImportComplete(allFailedShifts, onConfirm);
         
-        if (toCreate.length > 0 || toUpdate.length > 0 || toDelete.length > 0) {
-            await batch.commit();
-        }
-        
-        let descriptionParts = [];
-        if (toCreate.length > 0) descriptionParts.push(`created ${toCreate.length} new shift(s)`);
-        if (toUpdate.length > 0) descriptionParts.push(`updated ${toUpdate.length} shift(s)`);
-        if (toDelete.length > 0) descriptionParts.push(`deleted ${toDelete.length} old shift(s)`);
-
-        if (descriptionParts.length > 0) {
-            toast({
-                title: 'Import Complete & Reconciled',
-                description: `Successfully processed the file: ${descriptionParts.join(', ')}.`,
-            });
-        } else if (allFailedShifts.length === 0) {
-            toast({
-                title: 'No Changes Detected',
-                description: "The schedule was up-to-date. No changes were made.",
-            });
-        }
-        
-        onImportComplete(allFailedShifts);
-
+        // Reset file input after successful import
         setFile(null);
         const fileInput = document.getElementById('shift-file-input') as HTMLInputElement;
         if (fileInput) fileInput.value = "";
         setSheetNames([]);
         setSelectedSheets([]);
 
-
       } catch (err: any) {
         console.error('Import failed:', err);
         setError(err.message || 'An unexpected error occurred during import.');
-        onImportComplete([], {toCreate: [], toUpdate: [], toDelete: [], failed: []});
+        onImportComplete([], async () => {});
       } finally {
         setIsUploading(false);
       }
@@ -532,6 +534,10 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
     }
 
     reader.readAsArrayBuffer(file);
+  }, [file, selectedSheets, toast]);
+
+  const handleImport = () => {
+    runImport(isDryRun === false);
   };
 
   return (
@@ -566,7 +572,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                             <ChevronDown className="h-4 w-4 opacity-50" />
                         </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-full">
+                    <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)]">
                         <DropdownMenuLabel>Available Sheets</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         {sheetNames.map(name => (

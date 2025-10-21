@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,22 +5,26 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { FileUploader, FailedShift, DryRunResult } from '@/components/admin/file-uploader';
 import { ShiftScheduleOverview } from '@/components/admin/shift-schedule-overview';
 import { useUserProfile } from '@/hooks/use-user-profile';
+import { useAllUsers } from '@/hooks/use-all-users';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Download, FileWarning, CheckCircle, TestTube2, AlertCircle, PlusCircle, Pencil, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Alert, AlertTitle, AlertDescription } from '../ui/alert';
-import { useAllUsers } from '@/hooks/use-all-users';
 import type { UserProfile } from '@/types';
+import { Spinner } from '../shared/spinner';
+
 
 export default function AdminPageContent() {
   const { userProfile } = useUserProfile();
   const [importReport, setImportReport] = useState<{ failed: FailedShift[], dryRun?: DryRunResult } | null>(null);
   const [importAttempted, setImportAttempted] = useState(false);
   const isPrivilegedUser = userProfile && ['admin', 'owner'].includes(userProfile.role);
-  
   const { users: allUsers } = useAllUsers();
   const [userNameMap, setUserNameMap] = useState<Map<string, string>>(new Map());
+  
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [confirmImport, setConfirmImport] = useState<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     if (allUsers.length > 0) {
@@ -33,7 +36,7 @@ export default function AdminPageContent() {
     }
   }, [allUsers]);
 
-  const handleImportComplete = (failedShifts: FailedShift[], dryRunResult?: DryRunResult) => {
+  const handleImportComplete = (failedShifts: FailedShift[], onConfirm: () => Promise<void>, dryRunResult?: DryRunResult) => {
     const sortedFailed = failedShifts.sort((a, b) => {
         if (!a.date) return 1;
         if (!b.date) return -1;
@@ -41,11 +44,25 @@ export default function AdminPageContent() {
     });
     setImportReport({ failed: sortedFailed, dryRun: dryRunResult });
     setImportAttempted(true);
+    if (dryRunResult) {
+        setConfirmImport(() => onConfirm);
+    }
   };
   
   const handleFileSelection = () => {
     setImportAttempted(false);
     setImportReport(null);
+    setConfirmImport(null);
+    setIsConfirming(false);
+  };
+  
+  const handleConfirmAndPublish = async () => {
+    if (confirmImport) {
+        setIsConfirming(true);
+        await confirmImport();
+        setIsConfirming(false);
+        handleFileSelection(); // Reset the view after import
+    }
   };
 
   const handleDownloadPdf = async () => {
@@ -87,9 +104,9 @@ export default function AdminPageContent() {
 
     const { toCreate, toUpdate, toDelete, failed } = importReport.dryRun;
 
-    const sortedCreate = [...toCreate].sort((a, b) => (a.userName || '').localeCompare(b.userName || '') || a.date.getTime() - b.date.getTime());
-    const sortedUpdate = [...toUpdate].sort((a, b) => (a.new.userName || '').localeCompare(b.new.userName || '') || a.new.date.getTime() - b.new.date.getTime());
-    const sortedDelete = [...toDelete].sort((a, b) => (a.userName || '').localeCompare(b.userName || '') || a.date.toMillis() - b.date.toMillis());
+    const sortedCreate = [...toCreate].sort((a, b) => (userNameMap.get(a.userId) || a.userId).localeCompare(userNameMap.get(b.userId) || b.userId) || a.date.getTime() - b.date.getTime());
+    const sortedUpdate = [...toUpdate].sort((a, b) => (userNameMap.get(a.new.userId) || a.new.userId).localeCompare(userNameMap.get(b.new.userId) || b.new.userId) || a.new.date.getTime() - b.new.date.getTime());
+    const sortedDelete = [...toDelete].sort((a, b) => (userNameMap.get(a.userId) || a.userId).localeCompare(userNameMap.get(b.userId) || b.userId) || a.date.toDate().getTime() - b.date.toDate().getTime());
 
     return (
         <Card className="mt-6 border-blue-500">
@@ -99,7 +116,7 @@ export default function AdminPageContent() {
                     Dry Run Results
                 </CardTitle>
                 <CardDescription>
-                    This is a preview of the changes to be made. No shifts have been created, updated, or deleted.
+                    This is a preview of the changes to be made. No shifts have been created, updated, or deleted. Review the changes below and then click "Confirm &amp; Publish" to apply them.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -114,7 +131,7 @@ export default function AdminPageContent() {
                             <TableHeader><TableRow><TableHead>Operative</TableHead><TableHead>Date</TableHead><TableHead>Task</TableHead><TableHead>Address</TableHead></TableRow></TableHeader>
                             <TableBody>
                                 {sortedCreate.map((shift, index) => (
-                                    <TableRow key={index}><TableCell>{shift.userName}</TableCell><TableCell>{format(shift.date, 'dd/MM/yy')}</TableCell><TableCell>{shift.task}</TableCell><TableCell>{shift.address}</TableCell></TableRow>
+                                    <TableRow key={index}><TableCell>{userNameMap.get(shift.userId) || shift.userId}</TableCell><TableCell>{format(shift.date, 'dd/MM/yy')}</TableCell><TableCell>{shift.task}</TableCell><TableCell>{shift.address}</TableCell></TableRow>
                                 ))}
                             </TableBody>
                         </Table>
@@ -133,7 +150,7 @@ export default function AdminPageContent() {
                             <TableHeader><TableRow><TableHead>Operative</TableHead><TableHead>Date</TableHead><TableHead>Task</TableHead><TableHead>Changes</TableHead></TableRow></TableHeader>
                             <TableBody>
                                 {sortedUpdate.map(({old, new: newShift}, index) => (
-                                    <TableRow key={index}><TableCell>{newShift.userName}</TableCell><TableCell>{format(newShift.date, 'dd/MM/yy')}</TableCell><TableCell>{newShift.task}</TableCell><TableCell className="text-xs">Manager: {old.manager} -> {newShift.manager}</TableCell></TableRow>
+                                    <TableRow key={index}><TableCell>{userNameMap.get(newShift.userId) || newShift.userId}</TableCell><TableCell>{format(newShift.date, 'dd/MM/yy')}</TableCell><TableCell>{newShift.task}</TableCell><TableCell className="text-xs">Manager: {old.manager} -&gt; {newShift.manager}</TableCell></TableRow>
                                 ))}
                             </TableBody>
                         </Table>
@@ -152,7 +169,7 @@ export default function AdminPageContent() {
                             <TableHeader><TableRow><TableHead>Operative</TableHead><TableHead>Date</TableHead><TableHead>Task</TableHead><TableHead>Address</TableHead></TableRow></TableHeader>
                             <TableBody>
                                 {sortedDelete.map((shift, index) => (
-                                    <TableRow key={index}><TableCell>{shift.userName}</TableCell><TableCell>{format(shift.date.toDate(), 'dd/MM/yy')}</TableCell><TableCell>{shift.task}</TableCell><TableCell>{shift.address}</TableCell></TableRow>
+                                    <TableRow key={index}><TableCell>{userNameMap.get(shift.userId) || shift.userId}</TableCell><TableCell>{format(shift.date.toDate(), 'dd/MM/yy')}</TableCell><TableCell>{shift.task}</TableCell><TableCell>{shift.address}</TableCell></TableRow>
                                 ))}
                             </TableBody>
                         </Table>
@@ -179,8 +196,11 @@ export default function AdminPageContent() {
                     )}
                 </div>
             </CardContent>
-             <CardFooter>
-                <p className="text-xs text-muted-foreground">If these results look correct, uncheck "Dry Run" and import the file again to apply the changes.</p>
+             <CardFooter className="flex justify-end gap-2">
+                <Button variant="outline" onClick={handleFileSelection} disabled={isConfirming}>Cancel</Button>
+                <Button onClick={handleConfirmAndPublish} disabled={isConfirming}>
+                    {isConfirming ? <Spinner /> : 'Confirm &amp; Publish'}
+                </Button>
             </CardFooter>
         </Card>
     );
@@ -189,7 +209,7 @@ export default function AdminPageContent() {
   return (
     <div className="space-y-8">
       
-      {isPrivilegedUser && (
+      {isPrivilegedUser && !importAttempted && (
         <Card>
           <CardHeader>
             <CardTitle>Import Weekly Shifts from Excel</CardTitle>
