@@ -260,6 +260,9 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         let allShiftsFromExcel: ParsedShift[] = [];
         let allFailedShifts: FailedShift[] = [];
         
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
         for (const sheetName of selectedSheets) {
             const worksheet = workbook.Sheets[sheetName];
             if (!worksheet) continue;
@@ -341,6 +344,10 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                     for (let c = 1; c < dateRow.length; c++) { 
                         const shiftDate = dateRow[c];
                         if (!shiftDate) continue;
+
+                        if (shiftDate < today) {
+                          continue; // Skip shifts with past dates
+                        }
 
                         const cellRef = XLSX.utils.encode_cell({ r: r, c: c });
                         const cell = worksheet[cellRef];
