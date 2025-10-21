@@ -303,9 +303,6 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                     let addressLines = [];
                     for (let r = addressStartRowIndex; r < nextBlockStartRowIndex; r++) {
                         const line = String(jsonData[r]?.[0] || '').trim();
-                        // This check is key - the address block ends before the schedule grid begins.
-                        // The schedule grid rows have entries in columns past B (index 1).
-                        // Let's assume an address row ONLY has content in the first column.
                         const rowHasOtherData = jsonData[r].slice(1).some((cell: any) => cell !== null && String(cell).trim() !== '');
                         if (!line || rowHasOtherData) break;
                         addressLines.push(line);
@@ -321,15 +318,14 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                 const dateRow = jsonData[headerRowIndex];
                 const dates: (Date | null)[] = dateRow.map((cell: any, c: number) => c >= 5 ? parseDate(cell) : null);
                 
-                // --- CORRECTED LOGIC FOR SHIFT ROWS ---
                 // The shift rows start 2 rows below the header and go until the next block starts.
-                for (let r = headerRowIndex + 2; r < nextBlockStartRowIndex; r++) {
+                const shiftDataStartRow = headerRowIndex + 2;
+                for (let r = shiftDataStartRow; r < nextBlockStartRowIndex; r++) {
                     const rowData = jsonData[r];
-                    if (!rowData || rowData.every((cell: any) => cell === null)) continue;
+                    if (!rowData || rowData.every((cell: any) => cell === null || String(cell).trim() === '')) continue;
                     
-                    // Check columns F through L (indices 5 to 11)
                     for (let c = 5; c <= 11; c++) { 
-                        const shiftDate = dates[c]; // Dates array starts at col F=0 for it, so col F in excel is 5, but 0 for the date array. So we need to adjust
+                        const shiftDate = dates[c];
                         if (!shiftDate) continue;
 
                         const cellContentRaw = String(rowData[c] || '').trim();
@@ -349,7 +345,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                                 task: taskPart, 
                                 userId: user.uid, 
                                 userName: user.originalName,
-                                type: 'all-day', // Assuming all-day, can be refined
+                                type: 'all-day', // Assuming all-day for now
                                 date: shiftDate, 
                                 address, 
                                 bNumber: '', // Can be extracted if available
@@ -380,7 +376,6 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
         const minDate = allDatesFound.length > 0 ? new Date(Math.min(...allDatesFound.map(d => d.getTime()))) : new Date();
         const maxDate = allDatesFound.length > 0 ? new Date(Math.max(...allDatesFound.map(d => d.getTime()))) : new Date();
 
-
         const shiftsQuery = query(
             collection(db, 'shifts'),
             where('date', '>=', Timestamp.fromDate(minDate)),
@@ -388,14 +383,12 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
         );
         const existingShiftsSnapshot = await getDocs(shiftsQuery);
 
-        // Safeguard: If parsing yields 0 shifts but DB has shifts in range, abort.
         if (allParsedShifts.length === 0 && !existingShiftsSnapshot.empty && allFailedShifts.length === 0) {
             setError("Parsing resulted in zero shifts from the file, but shifts exist in the database for this date range. Aborting to prevent accidental deletion. Please check the file format.");
             onImportComplete(allFailedShifts, { toCreate: [], toUpdate: [], toDelete: [], failed: allFailedShifts });
             setIsProcessing(false);
             return;
         }
-
 
         const existingShiftsMap = new Map<string, Shift>();
         existingShiftsSnapshot.forEach(doc => {
