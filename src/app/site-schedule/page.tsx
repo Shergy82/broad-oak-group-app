@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shift, UserProfile } from '@/types';
-import { isSameWeek, format, startOfToday, addDays } from 'date-fns';
+import { isSameWeek, format, startOfToday, addDays, subDays } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -173,11 +173,11 @@ export default function SiteSchedulePage() {
 
     const userNameMap = useMemo(() => new Map(users.map(u => [u.uid, u.name])), [users]);
 
-    const { thisWeekShifts, nextWeekShifts } = useMemo(() => {
+    const { lastWeekShifts, thisWeekShifts, nextWeekShifts } = useMemo(() => {
         const today = startOfToday();
         
         if (!selectedAddress) {
-            return { thisWeekShifts: {}, nextWeekShifts: {} };
+            return { lastWeekShifts: {}, thisWeekShifts: {}, nextWeekShifts: {} };
         }
 
         const relevantShifts = allShifts.filter(s => s.address === selectedAddress);
@@ -198,8 +198,10 @@ export default function SiteSchedulePage() {
 
         const startOfThisWeek = today;
         const startOfNextWeek = addDays(today, 7);
+        const startOfLastWeek = subDays(today, 7);
 
         return {
+            lastWeekShifts: groupShifts(startOfLastWeek),
             thisWeekShifts: groupShifts(startOfThisWeek),
             nextWeekShifts: groupShifts(startOfNextWeek)
         };
@@ -360,9 +362,13 @@ export default function SiteSchedulePage() {
                         ) : (
                             <Tabs defaultValue="this-week">
                                 <TabsList>
+                                    <TabsTrigger value="last-week">Last Week</TabsTrigger>
                                     <TabsTrigger value="this-week">This Week</TabsTrigger>
                                     <TabsTrigger value="next-week">Next Week</TabsTrigger>
                                 </TabsList>
+                                <TabsContent value="last-week" className="mt-4">
+                                    <WeekScheduleView shifts={lastWeekShifts} userNameMap={userNameMap} weekName="Last Week" />
+                                </TabsContent>
                                 <TabsContent value="this-week" className="mt-4">
                                     <WeekScheduleView shifts={thisWeekShifts} userNameMap={userNameMap} weekName="This Week" />
                                 </TabsContent>
@@ -377,5 +383,7 @@ export default function SiteSchedulePage() {
         </div>
     );
 }
+
+    
 
     
