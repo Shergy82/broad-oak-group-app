@@ -122,14 +122,14 @@ export default function SiteSchedulePage() {
             setUsers(fetchedUsers);
         }, (err) => {
             console.error("Error fetching users:", err);
-            toast({ variant: 'destructive', title: 'Could not fetch all user data.'})
+            setError("Could not fetch all user data.");
         });
         
         return () => {
           unsubShifts();
           unsubUsers();
         };
-    }, [toast]);
+    }, []);
 
     const naturalSort = (a: string, b: string) => {
         const aParts = a.match(/(\\d+)|(\\D+)/g) || [];
