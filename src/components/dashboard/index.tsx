@@ -272,7 +272,7 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
           <TabsTrigger value="today">Today</TabsTrigger>
           <TabsTrigger value="this-week">This Week</TabsTrigger>
           <TabsTrigger value="next-week">Next Week</TabsTrigger>
-          <TabsTrigger value="last-week">Last Week</TabsTrigger>
+          <TabsTrigger value="last-week" className="data-[state=active]:bg-amber-100 data-[state=active]:text-amber-800 dark:data-[state=active]:bg-amber-900/50 dark:data-[state=active]:text-amber-300">Last Week</TabsTrigger>
         </TabsList>
         <TabsContent value="today">
           {loading ? (
@@ -346,4 +346,5 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
   );
 }
 
+    
     
