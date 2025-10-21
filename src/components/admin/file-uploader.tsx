@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -267,6 +266,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                             bNumber: excelShift.bNumber || '',
                             type: excelShift.type,
                             manager: excelShift.manager || '',
+                            userName: excelShift.userName, // Also update username
                         });
                         shiftsUpdated++;
                      }
@@ -473,6 +473,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                                         allShiftsFromExcel.push({ 
                                             task: task, 
                                             userId: user.uid, 
+                                            userName: user.originalName, // Add the user's name here
                                             type: 'all-day',
                                             date: shiftDate, 
                                             address: address, 

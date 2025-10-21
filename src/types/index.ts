@@ -1,4 +1,3 @@
-
 import type { Timestamp } from 'firebase/firestore';
 
 export type ShiftStatus = 'pending-confirmation' | 'confirmed' | 'on-site' | 'completed' | 'incomplete' | 'rejected';
@@ -6,6 +5,7 @@ export type ShiftStatus = 'pending-confirmation' | 'confirmed' | 'on-site' | 'co
 export interface Shift {
   id: string;
   userId: string;
+  userName?: string; // Add the user's name directly to the shift
   date: Timestamp;
   type: 'am' | 'pm' | 'all-day';
   status: ShiftStatus;

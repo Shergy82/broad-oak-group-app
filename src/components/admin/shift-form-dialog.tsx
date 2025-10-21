@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -93,12 +92,20 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift, userProfile 
     if (!db) return;
     setIsLoading(true);
 
+    const selectedUser = users.find(u => u.uid === values.userId);
+    if (!selectedUser) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Selected user not found.' });
+        setIsLoading(false);
+        return;
+    }
+
     const selectedDate = values.date;
     // Correct for timezone offset by creating a UTC date from the local date parts
     const correctedDate = new Date(Date.UTC(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate()));
 
     const dataToSave = {
       ...values,
+      userName: selectedUser.name, // Add userName to the shift data
       date: Timestamp.fromDate(correctedDate),
       bNumber: values.bNumber || '',
     };
@@ -151,6 +158,7 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift, userProfile 
     try {
         await addDoc(collection(db, 'shifts'), {
             userId: testUser.uid,
+            userName: testUser.name, // Also add userName to test shifts
             date: Timestamp.fromDate(new Date()),
             type: 'all-day',
             status: 'pending-confirmation',

@@ -1,8 +1,7 @@
-
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot, query, where, getDocs, Query, DocumentData, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shift, UserProfile } from '@/types';
 import { isSameWeek, format, startOfToday, addDays, subDays, startOfWeek } from 'date-fns';
@@ -23,7 +22,7 @@ import { Spinner } from '@/components/shared/spinner';
 import { useUserProfile } from '@/hooks/use-user-profile';
 
 
-const DayCard = ({ day, shifts, userNameMap }: { day: string, shifts: Shift[], userNameMap: Map<string, string> }) => {
+const DayCard = ({ day, shifts }: { day: string, shifts: Shift[] }) => {
     if (shifts.length === 0) return null;
 
     const sortedShifts = [...shifts].sort((a, b) => {
@@ -40,7 +39,7 @@ const DayCard = ({ day, shifts, userNameMap }: { day: string, shifts: Shift[], u
                 {sortedShifts.map(shift => (
                     <div key={shift.id} className="p-3 rounded-md bg-muted/50 border">
                         <p className="font-semibold">{shift.task}</p>
-                        <p className="text-sm text-muted-foreground">{userNameMap.get(shift.userId) || 'Unknown User'}</p>
+                        <p className="text-sm text-muted-foreground">{shift.userName || 'Unknown User'}</p>
                         <p className="text-xs text-muted-foreground capitalize">{shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase()}</p>
                     </div>
                 ))}
@@ -49,7 +48,7 @@ const DayCard = ({ day, shifts, userNameMap }: { day: string, shifts: Shift[], u
     );
 }
 
-const WeekScheduleView = ({ shifts, userNameMap, weekName }: { shifts: { [key: string]: Shift[] }, userNameMap: Map<string, string>, weekName: string }) => {
+const WeekScheduleView = ({ shifts, weekName }: { shifts: { [key: string]: Shift[] }, weekName: string }) => {
     const hasShifts = Object.values(shifts).some(dayShifts => dayShifts.length > 0);
     const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     const weekendDays = ['Saturday', 'Sunday'];
@@ -68,14 +67,14 @@ const WeekScheduleView = ({ shifts, userNameMap, weekName }: { shifts: { [key: s
         <div className="space-y-6">
             <h3 className="text-xl font-semibold tracking-tight">Weekdays</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                {weekDays.map(day => <DayCard key={day} day={day} shifts={shifts[day] || []} userNameMap={userNameMap} />)}
+                {weekDays.map(day => <DayCard key={day} day={day} shifts={shifts[day] || []} />)}
             </div>
 
             {(shifts['Saturday']?.length > 0 || shifts['Sunday']?.length > 0) && (
                 <>
                     <h3 className="text-xl font-semibold tracking-tight pt-4">Weekend</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                        {weekendDays.map(day => <DayCard key={day} day={day} shifts={shifts[day] || []} userNameMap={userNameMap} />)}
+                        {weekendDays.map(day => <DayCard key={day} day={day} shifts={shifts[day] || []} />)}
                     </div>
                 </>
             )}
@@ -115,7 +114,7 @@ export default function SiteSchedulePage() {
             setLoading(false);
         });
 
-        // For privileged users, fetch all users. Otherwise, users will be fetched on-demand.
+        // For privileged users, fetch all users for the PDF download functionality.
         if (userProfile && ['admin', 'owner'].includes(userProfile.role)) {
             const usersQuery = query(collection(db, 'users'));
             const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
@@ -134,45 +133,6 @@ export default function SiteSchedulePage() {
         return () => unsubShifts();
     }, [userProfile]);
 
-    useEffect(() => {
-        const fetchUsersForProject = async () => {
-            if (!selectedAddress || !db) {
-                return;
-            }
-            // Admin/owners have all users pre-loaded, so no need to fetch.
-            if (userProfile && ['admin', 'owner'].includes(userProfile.role)) {
-                return;
-            }
-
-            setError(null);
-            const shiftsForAddress = allShifts.filter(s => s.address === selectedAddress);
-            const userIdsOnProject = Array.from(new Set(shiftsForAddress.map(s => s.userId)));
-
-            if (userIdsOnProject.length === 0) {
-                setUsers([]);
-                return;
-            }
-            
-            try {
-                // Fetch each user document individually by ID.
-                const userPromises = userIdsOnProject.map(userId => getDoc(doc(db, 'users', userId)));
-                const userDocSnapshots = await Promise.all(userPromises);
-                
-                const fetchedUsers: UserProfile[] = userDocSnapshots
-                    .filter(docSnap => docSnap.exists())
-                    .map(docSnap => ({ uid: docSnap.id, ...docSnap.data() } as UserProfile));
-
-                setUsers(fetchedUsers);
-            } catch (err: any) {
-                console.error("Error fetching users for project:", err);
-                setError("Could not fetch user data for this project. Check Firestore rules.");
-                setUsers([]);
-            }
-        };
-
-        fetchUsersForProject();
-    }, [selectedAddress, allShifts, userProfile]);
-    
     const naturalSort = (a: string, b: string) => {
         const aParts = a.match(/(\d+)|(\D+)/g) || [];
         const bParts = b.match(/(\d+)|(\D+)/g) || [];
@@ -212,7 +172,6 @@ export default function SiteSchedulePage() {
 
         return filtered.sort(naturalSort);
     }, [allShifts, loading, addressSearchTerm, user, userProfile]);
-
 
     const userNameMap = useMemo(() => new Map(users.map(u => [u.uid, u.name])), [users]);
 
@@ -296,7 +255,7 @@ export default function SiteSchedulePage() {
             const head = [['Date', 'Operative', 'Task', 'Type']];
             const body = allWeekShifts.map(shift => [
                 format(getCorrectedLocalDate(shift.date), 'EEE, dd MMM'),
-                userNameMap.get(shift.userId) || 'Unknown',
+                shift.userName || userNameMap.get(shift.userId) || 'Unknown',
                 shift.task,
                 shift.type === 'all-day' ? 'All Day' : shift.type.toUpperCase()
             ]);
@@ -410,13 +369,13 @@ export default function SiteSchedulePage() {
                                     <TabsTrigger value="next-week">Next Week</TabsTrigger>
                                 </TabsList>
                                 <TabsContent value="last-week" className="mt-4">
-                                    <WeekScheduleView shifts={lastWeekShifts} userNameMap={userNameMap} weekName="Last Week" />
+                                    <WeekScheduleView shifts={lastWeekShifts} weekName="Last Week" />
                                 </TabsContent>
                                 <TabsContent value="this-week" className="mt-4">
-                                    <WeekScheduleView shifts={thisWeekShifts} userNameMap={userNameMap} weekName="This Week" />
+                                    <WeekScheduleView shifts={thisWeekShifts} weekName="This Week" />
                                 </TabsContent>
                                 <TabsContent value="next-week" className="mt-4">
-                                     <WeekScheduleView shifts={nextWeekShifts} userNameMap={userNameMap} weekName="Next Week" />
+                                     <WeekScheduleView shifts={nextWeekShifts} weekName="Next Week" />
                                 </TabsContent>
                             </Tabs>
                         )}
