@@ -9,13 +9,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/shared/spinner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Upload, FileWarning, TestTube2, Sheet, XCircle, CheckCircle, AlertCircle, Trash2 } from 'lucide-react';
+import { Upload, FileWarning, TestTube2, Sheet, XCircle } from 'lucide-react';
 import type { Shift, UserProfile, ShiftStatus } from '@/types';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { format } from 'date-fns';
 import { useAllUsers } from '@/hooks/use-all-users';
 
 export type ParsedShift = Omit<Shift, 'id' | 'status' | 'date' | 'createdAt'> & { date: Date };
@@ -67,7 +65,7 @@ const levenshtein = (a: string, b: string): number => {
     return matrix[b.length][a.length];
 };
 
-const normalizeText = (text: string) => (text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const normalizeText = (text: string) => (text || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
 
 const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null => {
     const normalizedName = normalizeText(name);
@@ -77,36 +75,26 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
     let minDistance = Infinity;
 
     for (const user of userMap) {
-        if (user.normalizedName === normalizedName) return user;
+        const userNormalized = user.normalizedName;
+        // Exact match
+        if (userNormalized === normalizedName) return user;
         
-        const distance = levenshtein(normalizedName, user.normalizedName);
-
-        // Prioritize exact substring matches (e.g., "rory" in "rory skinner")
-        if (user.normalizedName.includes(normalizedName)) {
-             if (distance < minDistance) {
-                minDistance = distance;
-                bestMatch = user;
-            }
-        }
-
-        // Check against first name only
-        const firstNameNormalized = normalizeText(user.originalName.split(' ')[0]);
+        // Check for first name match
+        const firstNameNormalized = userNormalized.split(' ')[0];
         if (firstNameNormalized === normalizedName) {
-             const firstNameDistance = levenshtein(normalizedName, firstNameNormalized);
-              if (firstNameDistance < minDistance) {
-                minDistance = firstNameDistance;
-                bestMatch = user;
-            }
+            return user;
         }
 
-        const threshold = Math.max(1, Math.floor(normalizedName.length / 3));
-        if (distance <= threshold && distance < minDistance) {
+        const distance = levenshtein(normalizedName, userNormalized);
+
+        // Prioritize very close matches
+        if (distance <= 2 && distance < minDistance) {
             minDistance = distance;
             bestMatch = user;
         }
     }
     
-    // Looser threshold for final best match
+    // Return best match if it's reasonably close
     if (bestMatch && minDistance <= 3) {
         return bestMatch;
     }
@@ -116,42 +104,24 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
 
 const parseDate = (dateValue: any): Date | null => {
     if (!dateValue) return null;
+    if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
+        return new Date(Date.UTC(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate()));
+    }
     if (typeof dateValue === 'number' && dateValue > 1) { // Excel serial date
+        // Excel's epoch starts on 1900-01-01, but incorrectly thinks 1900 is a leap year.
+        // The convention is to treat dates as if the epoch was 1899-12-30.
         const excelEpoch = new Date(1899, 11, 30);
-        const d = new Date(excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
+        const d = new Date(excelEpoch.getTime() + dateValue * 86400000);
         if (!isNaN(d.getTime())) {
-             // Return as UTC to avoid timezone shifts during processing
              return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
         }
     }
     if (typeof dateValue === 'string') {
-        const lowerCell = dateValue.toLowerCase();
-        // Matches "dd-mon" like "03-oct"
-        const dateMatch = lowerCell.match(/(\d{1,2})[ -/]+([a-z]{3})/);
-         if (dateMatch) {
-            const day = parseInt(dateMatch[1], 10);
-            const monthStr = dateMatch[2];
-            const monthIndex = new Date(Date.parse(monthStr +" 1, 2012")).getMonth();
-            if (!isNaN(day) && monthIndex !== -1) {
-                 const year = new Date().getFullYear();
-                 return new Date(Date.UTC(year, monthIndex, day));
-            }
+        // Try parsing formats like "dd/mm/yyyy" or "dd-Mon-yyyy"
+        const d = new Date(dateValue);
+        if (!isNaN(d.getTime())) {
+             return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
         }
-
-        // Matches "day dd-mon" like "mon 26-sep"
-        const dayNameMatch = lowerCell.match(/(mon|tue|wed|thu|fri|sat|sun)\s+(\d{1,2})[ -/]+([a-z]{3})/);
-        if (dayNameMatch) {
-            const day = parseInt(dayNameMatch[2], 10);
-            const monthStr = dayNameMatch[3];
-            const monthIndex = new Date(Date.parse(monthStr +" 1, 2012")).getMonth();
-             if (!isNaN(day) && monthIndex !== -1) {
-                 const year = new Date().getFullYear();
-                 return new Date(Date.UTC(year, monthIndex, day));
-            }
-        }
-    }
-    if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
-        return new Date(Date.UTC(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate()));
     }
     return null;
 };
@@ -159,13 +129,19 @@ const parseDate = (dateValue: any): Date | null => {
 
 const getShiftKey = (shift: { userId: string; date: Date | Timestamp; task: string; address: string }): string => {
     let datePart: string;
+
     if (shift.date instanceof Timestamp) {
         const d = shift.date.toDate();
-        datePart = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString().slice(0, 10);
-    } else {
+        // Use UTC date parts to ensure consistency regardless of server/client timezone
+        datePart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString().slice(0, 10);
+    } else { // It's a JS Date object
         datePart = new Date(Date.UTC(shift.date.getFullYear(), shift.date.getMonth(), shift.date.getDate())).toISOString().slice(0, 10);
     }
-    return `${datePart}-${shift.userId}-${normalizeText(shift.address)}-${normalizeText(shift.task)}`;
+
+    const cleanTask = normalizeText(shift.task);
+    const cleanAddress = normalizeText(shift.address);
+
+    return `${datePart}-${shift.userId}-${cleanAddress}-${cleanTask}`;
 };
   
 export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, children }: FileUploaderProps) {
@@ -293,7 +269,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
         const data = e.target?.result;
         if (!data) throw new Error("Could not read file data.");
         
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellStyles: true });
+        const workbook = XLSX.read(data, { type: 'array' });
 
         const userMap: UserMapEntry[] = users.map(user => ({
             uid: user.uid,
@@ -309,11 +285,10 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
             if (!worksheet) continue;
 
             const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, blankrows: false, defval: null });
-
+            
             const projectBlockStartRows: number[] = [];
             jsonData.forEach((row, i) => {
-                const cellA = (row[0] || '').toString().trim().toUpperCase();
-                if (cellA.includes('JOB MANAGER')) {
+                if (String(row[0]).trim().toUpperCase() === 'JOB MANAGER') {
                     projectBlockStartRows.push(i);
                 }
             });
@@ -321,94 +296,90 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
             if (projectBlockStartRows.length === 0) continue;
 
             for (let i = 0; i < projectBlockStartRows.length; i++) {
-                const blockStartRowIndex = projectBlockStartRows[i];
-                const blockEndRowIndex = i + 1 < projectBlockStartRows.length ? projectBlockStartRows[i+1] : jsonData.length;
+                const blockStartRow = projectBlockStartRows[i];
+                const blockEndRow = i + 1 < projectBlockStartRows.length ? projectBlockStartRows[i+1] : jsonData.length;
                 
-                let manager = jsonData[blockStartRowIndex + 1]?.[0] || 'Unknown Manager';
+                const manager = String(jsonData[blockStartRow + 1]?.[0] || 'Unknown Manager').trim();
+                
                 let address = '';
-                let bNumber = '';
-                let dateRow: (Date | null)[] = [];
-                let dateRowIndex = -1;
-
-                // Find address and date row within the block
-                for (let r = blockStartRowIndex; r < blockEndRowIndex; r++) {
-                    const row = jsonData[r] || [];
-                    const cellAValue = row[0];
-
-                    if (!address && cellAValue && typeof cellAValue === 'string') {
-                        const addrKeywords = ['road', 'street', 'avenue', 'lane', 'drive', 'court', 'close', 'crescent', 'place'];
-                        if (addrKeywords.some(kw => cellAValue.toLowerCase().includes(kw))) {
-                            address = cellAValue.split('\n').join(', ').trim();
-                        }
+                let addressStartRow = -1;
+                for (let r = blockStartRow; r < blockEndRow; r++) {
+                    if (String(jsonData[r]?.[0]).trim().toUpperCase() === 'ADDRESS') {
+                        addressStartRow = r + 1;
+                        break;
                     }
-                    
-                    if (dateRowIndex === -1) {
-                        const dayAbbrs = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-                        const monthAbbrs = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-                        let dateCellCount = 0;
-                        row.forEach(cell => {
-                            if (cell instanceof Date) dateCellCount++;
-                            else if (typeof cell === 'string') {
-                                const lowerCell = cell.toLowerCase();
-                                if (dayAbbrs.some(day => lowerCell.startsWith(day)) || monthAbbrs.some(abbr => lowerCell.includes(abbr)) || lowerCell.match(/\d{1,2}[-\/]\w{3}/)) {
-                                    dateCellCount++;
-                                }
-                            }
-                        });
+                }
 
-                        if (dateCellCount > 2) { // Heuristic for identifying a date row
-                            dateRowIndex = r;
-                            dateRow = row.map(cell => parseDate(cell));
+                if (addressStartRow > -1) {
+                    let addressLines = [];
+                    for (let r = addressStartRow; r < blockEndRow; r++) {
+                        const line = String(jsonData[r]?.[0] || '').trim();
+                        if (!line || String(jsonData[r+1]?.[0]).trim().toUpperCase() === 'JOB MANAGER' || r === blockEndRow -1) {
+                            if (line) addressLines.push(line);
+                            break;
                         }
+                        addressLines.push(line);
                     }
+                    address = addressLines.join(', ');
                 }
 
                 if (!address) {
-                     allFailedShifts.push({ date: null, projectAddress: `Block at row ${blockStartRowIndex + 1}`, cellContent: '', reason: 'Could not find Address.', sheetName });
+                     allFailedShifts.push({ date: null, projectAddress: `Block at row ${blockStartRow + 1}`, cellContent: '', reason: 'Could not find Address.', sheetName });
                      continue;
                 }
+
+                let dateRow: (Date | null)[] = [];
+                let dateRowIndex = -1;
+                for (let r = blockStartRow; r < blockEndRow; r++) {
+                    const row = jsonData[r];
+                    if (!row) continue;
+                    let dateCount = 0;
+                    for (let c = 5; c < row.length; c++) { // Start from column F (index 5)
+                        if (row[c] !== null && parseDate(row[c])) {
+                            dateCount++;
+                        }
+                    }
+                    if (dateCount > 2) { // Heuristic for date row
+                        dateRowIndex = r;
+                        dateRow = row.map((cell, c) => c >= 5 ? parseDate(cell) : null);
+                        break;
+                    }
+                }
+                
                 if (dateRowIndex === -1) {
                     allFailedShifts.push({ date: null, projectAddress: address, cellContent: '', reason: 'Could not find Date Row.', sheetName });
                     continue;
                 }
-                // Try to find BNumber near address
-                const addressRowIndex = jsonData.findIndex(row => (row[0] || '').toString().includes(address));
-                if (addressRowIndex > -1 && addressRowIndex > 0) {
-                    const bNumCandidate = (jsonData[addressRowIndex-1]?.[0] || '').toString();
-                    if(bNumCandidate.match(/^[a-zA-Z]?\d+/)) {
-                        bNumber = bNumCandidate;
-                    }
-                }
-
-
-                for (let r = dateRowIndex + 1; r < blockEndRowIndex; r++) {
+                
+                for (let r = dateRowIndex + 1; r < blockEndRow; r++) {
                     const rowData = jsonData[r];
-                    if (!rowData || !rowData[0] || typeof rowData[0] !== 'string') continue;
-                    
-                    const task = rowData[0].trim();
-                    if (!task) continue;
-                    
-                    for (let c = 1; c < Math.min(rowData.length, dateRow.length); c++) { 
+                    if (!rowData || rowData[0] === null) continue; // Skip empty rows
+
+                    const taskDescription = String(rowData[0] || '').trim();
+                    if (!taskDescription) continue;
+
+                    for (let c = 5; c < Math.min(rowData.length, dateRow.length); c++) { 
                         const shiftDate = dateRow[c];
                         if (!shiftDate) continue;
 
-                        const cellContentRaw = rowData[c];
-                        if (!cellContentRaw || typeof cellContentRaw !== 'string') continue;
-                        
-                        const usersInCell = cellContentRaw.split(/&|,|\+/g).map(name => name.trim()).filter(Boolean);
+                        const cellContentRaw = String(rowData[c] || '').trim();
+                        if (!cellContentRaw) continue;
+
+                        const cellContentCleaned = cellContentRaw.replace(/\(.*\)/g, '').trim();
+                        const usersInCell = cellContentCleaned.split(/&|,|\/|\+/g).map(name => name.trim()).filter(Boolean);
 
                         if (usersInCell.length > 0) {
                             for (const userName of usersInCell) {
                                 const user = findUser(userName, userMap);
                                 if (user) {
                                     allParsedShifts.push({ 
-                                        task, 
+                                        task: taskDescription, 
                                         userId: user.uid, 
                                         userName: user.originalName,
                                         type: 'all-day',
                                         date: shiftDate, 
                                         address, 
-                                        bNumber,
+                                        bNumber: '', // B-Number logic can be added here if needed
                                         manager,
                                     });
                                 } else {
@@ -428,7 +399,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
         }
         
         const allDatesFound = allParsedShifts.map(s => s.date).filter((d): d is Date => d !== null);
-        if (allDatesFound.length === 0 && allFailedShifts.length > 0) {
+        if (allDatesFound.length === 0) {
             onImportComplete(allFailedShifts, { toCreate: [], toUpdate: [], toDelete: [], failed: allFailedShifts });
             setIsProcessing(false);
             return;
@@ -451,28 +422,40 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
         });
         
         const parsedShiftsMap = new Map<string, ParsedShift>();
-        allParsedShifts.forEach(shift => parsedShiftsMap.set(getShiftKey(shift), shift));
+        allParsedShifts.forEach(shift => {
+             const key = getShiftKey(shift);
+             if (!parsedShiftsMap.has(key)) { // Avoid duplicates from the file itself
+                parsedShiftsMap.set(key, shift);
+             }
+        });
 
-        const toCreate = allParsedShifts.filter(p => !existingShiftsMap.has(getShiftKey(p)));
+        const toCreate: ParsedShift[] = [];
+        parsedShiftsMap.forEach((parsedShift, key) => {
+            if (!existingShiftsMap.has(key)) {
+                toCreate.push(parsedShift);
+            }
+        });
+
         const toUpdate: { id: string; data: Partial<Shift> }[] = [];
         const toDelete: string[] = [];
-
+        const protectedStatuses: ShiftStatus[] = ['completed', 'incomplete', 'on-site'];
+        
         existingShiftsMap.forEach((dbShift, key) => {
             const excelShift = parsedShiftsMap.get(key);
             if (excelShift) {
+                // This shift exists in both. Check for updates.
                 const updateData: Partial<Shift> = {};
-                if (dbShift.bNumber !== excelShift.bNumber) updateData.bNumber = excelShift.bNumber;
                 if (dbShift.manager !== excelShift.manager) updateData.manager = excelShift.manager;
-                if (dbShift.userName !== excelShift.userName) updateData.userName = excelShift.userName;
+                if (dbShift.bNumber !== excelShift.bNumber) updateData.bNumber = excelShift.bNumber;
                 
-                if (Object.keys(updateData).length > 0) {
+                if (Object.keys(updateData).length > 0 && !protectedStatuses.includes(dbShift.status)) {
                     toUpdate.push({ id: dbShift.id, data: updateData });
                 }
             } else {
-                 const protectedStatuses: ShiftStatus[] = ['completed', 'incomplete', 'on-site'];
-                 if(!protectedStatuses.includes(dbShift.status)){
-                    toDelete.push(dbShift.id);
-                 }
+                // This shift is in the DB but not in the Excel file. Mark for deletion.
+                if(!protectedStatuses.includes(dbShift.status)){
+                   toDelete.push(dbShift.id);
+                }
             }
         });
         
@@ -544,15 +527,15 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
             </div>
         )}
 
-        <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex flex-col sm:flex-row gap-4 items-center">
             <div className="flex items-center space-x-2">
                 <Checkbox id="dry-run" checked={isDryRun} onCheckedChange={(checked) => setIsDryRun(!!checked)} />
                 <Label htmlFor="dry-run" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Dry Run
+                    Dry Run (Preview changes before publishing)
                 </Label>
             </div>
-            <Button onClick={handleProcessFile} disabled={!file || isProcessing} className="w-full sm:w-auto">
-              {isProcessing ? <Spinner /> : isDryRun ? <><TestTube2 className="mr-2 h-4 w-4" /> Run Test</> : <><Upload className="mr-2 h-4 w-4" /> Import Shifts</>}
+            <Button onClick={handleProcessFile} disabled={!file || isProcessing} className="w-full sm:w-auto ml-auto">
+              {isProcessing ? <Spinner /> : isDryRun ? <><TestTube2 className="mr-2 h-4 w-4" /> Run Test</> : <><Upload className="mr-2 h-4 w-4" /> Import & Publish</>}
             </Button>
         </div>
       </div>
