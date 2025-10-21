@@ -16,7 +16,7 @@ import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
 import { Switch } from '@/components/ui/switch';
 
-type ParsedShift = Omit<Shift, 'id' | 'status' | 'date' | 'createdAt'> & { date: Date };
+export type ParsedShift = Omit<Shift, 'id' | 'status' | 'date' | 'createdAt'> & { date: Date };
 type UserMapEntry = { uid: string; normalizedName: string; originalName: string; };
 
 export interface FailedShift {
@@ -35,6 +35,8 @@ interface DryRunResult {
 interface FileUploaderProps {
     onImportComplete: (failedShifts: FailedShift[], dryRunResult?: DryRunResult) => void;
     onFileSelect: () => void;
+    shiftsToPublish?: ParsedShift[] | null;
+    children?: React.ReactNode;
 }
 
 
@@ -155,9 +157,9 @@ const parseDate = (dateValue: any): Date | null => {
 };
 
 
-export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderProps) {
+export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, children }: FileUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDryRun, setIsDryRun] = useState(true);
   const [sheetNames, setSheetNames] = useState<string[]>([]);
@@ -172,7 +174,6 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         setError(null);
         onFileSelect();
         
-        // Read sheet names
         const reader = new FileReader();
         reader.onload = (e) => {
             const data = e.target?.result;
@@ -199,9 +200,136 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
     const normalizedDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
     return `${normalizedDate.toISOString().slice(0, 10)}-${shift.userId}-${normalizeText(shift.address)}-${normalizeText(shift.task)}`;
   };
+  
+  const processAndPublish = async (shiftsFromExcel: ParsedShift[], failedShifts: FailedShift[]) => {
+      setIsProcessing(true);
+      
+      if (shiftsFromExcel.length === 0 && failedShifts.length > 0) {
+          toast({
+              variant: 'destructive',
+              title: 'Import Failed',
+              description: "No valid shifts could be parsed. Please check the file format and the Dry Run report.",
+              duration: 10000,
+          });
+          onImportComplete(failedShifts);
+          setIsProcessing(false);
+          return;
+      }
+      if (shiftsFromExcel.length === 0 && failedShifts.length === 0) {
+          toast({
+              title: 'No Shifts Found',
+              description: "The file was processed, but no shifts were found to import from the selected sheets.",
+          });
+          setIsProcessing(false);
+          return;
+      }
 
+      try {
+        const allDatesFound = shiftsFromExcel.map(s => s.date).filter((d): d is Date => d !== null);
+        const minDate = new Date(Math.min(...allDatesFound.map(d => d.getTime())));
+        const maxDate = new Date(Math.max(...allDatesFound.map(d => d.getTime())));
 
-  const handleImport = async () => {
+        const shiftsQuery = query(
+            collection(db, 'shifts'),
+            where('date', '>=', Timestamp.fromDate(minDate)),
+            where('date', '<=', Timestamp.fromDate(maxDate))
+        );
+        const existingShiftsSnapshot = await getDocs(shiftsQuery);
+
+        const existingShiftsMap = new Map<string, Shift>();
+        existingShiftsSnapshot.forEach(doc => {
+            const shiftData = { id: doc.id, ...doc.data() } as Shift;
+            existingShiftsMap.set(getShiftKey(shiftData), shiftData);
+        });
+
+        const excelShiftsMap = new Map<string, ParsedShift>();
+        for (const excelShift of shiftsFromExcel) {
+          excelShiftsMap.set(getShiftKey(excelShift), excelShift);
+        }
+
+        const batch = writeBatch(db);
+        let shiftsCreated = 0;
+        let shiftsUpdated = 0;
+        let shiftsDeleted = 0;
+
+        const protectedStatuses: ShiftStatus[] = ['completed', 'incomplete'];
+
+        for (const [key, excelShift] of excelShiftsMap.entries()) {
+            const existingShift = existingShiftsMap.get(key);
+            if (existingShift) {
+                if (
+                    existingShift.bNumber !== (excelShift.bNumber || '') || 
+                    existingShift.type !== excelShift.type ||
+                    existingShift.manager !== (excelShift.manager || '')
+                ) {
+                     if (!protectedStatuses.includes(existingShift.status)) {
+                        batch.update(doc(db, 'shifts', existingShift.id), { 
+                            bNumber: excelShift.bNumber || '',
+                            type: excelShift.type,
+                            manager: excelShift.manager || '',
+                        });
+                        shiftsUpdated++;
+                     }
+                }
+                existingShiftsMap.delete(key);
+            } else {
+                const newShiftData = {
+                    ...excelShift,
+                    date: Timestamp.fromDate(excelShift.date),
+                    status: 'pending-confirmation',
+                    createdAt: serverTimestamp(),
+                };
+                batch.set(doc(collection(db, 'shifts')), newShiftData);
+                shiftsCreated++;
+            }
+        }
+
+        for (const [key, shiftToDelete] of existingShiftsMap.entries()) {
+             if (!protectedStatuses.includes(shiftToDelete.status)) {
+                batch.delete(doc(db, 'shifts', shiftToDelete.id));
+                shiftsDeleted++;
+             }
+        }
+        
+        if (shiftsCreated > 0 || shiftsUpdated > 0 || shiftsDeleted > 0) {
+            await batch.commit();
+        }
+        
+        let descriptionParts = [];
+        if (shiftsCreated > 0) descriptionParts.push(`created ${shiftsCreated} new shift(s)`);
+        if (shiftsUpdated > 0) descriptionParts.push(`updated ${shiftsUpdated} shift(s)`);
+        if (shiftsDeleted > 0) descriptionParts.push(`deleted ${shiftsDeleted} old shift(s)`);
+
+        if (descriptionParts.length > 0) {
+            toast({
+                title: 'Import Complete & Reconciled',
+                description: `Successfully processed the file: ${descriptionParts.join(', ')}.`,
+            });
+        } else if (failedShifts.length === 0) {
+            toast({
+                title: 'No Changes Detected',
+                description: "The schedule was up-to-date. No changes were made.",
+            });
+        }
+        
+        onImportComplete(failedShifts);
+
+      } catch (err: any) {
+        console.error('Publishing failed:', err);
+        setError(err.message || 'An unexpected error occurred during publishing.');
+        onImportComplete(failedShifts);
+      } finally {
+        setIsProcessing(false);
+      }
+  };
+
+  const handleProcessFile = async () => {
+    // If we have pre-parsed shifts to publish, use them.
+    if (shiftsToPublish) {
+        await processAndPublish(shiftsToPublish, []);
+        return;
+    }
+      
     if (!file || !db) {
       setError('Please select a file first.');
       return;
@@ -212,7 +340,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         return;
     }
 
-    setIsUploading(true);
+    setIsProcessing(true);
     setError(null);
     onImportComplete([], { found: [], failed: [] });
 
@@ -370,142 +498,34 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         
         if (isDryRun) {
             onImportComplete(allFailedShifts, { found: allShiftsFromExcel, failed: allFailedShifts });
-            setIsUploading(false);
-            return;
+        } else {
+            await processAndPublish(allShiftsFromExcel, allFailedShifts);
+            setFile(null);
+            const fileInput = document.getElementById('shift-file-input') as HTMLInputElement;
+            if (fileInput) fileInput.value = "";
+            setSheetNames([]);
+            setEnabledSheets({});
         }
-
-        if (allShiftsFromExcel.length === 0 && allFailedShifts.length > 0) {
-            toast({
-                variant: 'destructive',
-                title: 'Import Failed',
-                description: "No valid shifts could be parsed. Please check the file format and the Dry Run report.",
-                duration: 10000,
-            });
-            onImportComplete(allFailedShifts);
-            setIsUploading(false);
-            return;
-        }
-         if (allShiftsFromExcel.length === 0 && allFailedShifts.length === 0) {
-            toast({
-                title: 'No Shifts Found',
-                description: "The file was processed, but no shifts were found to import from the selected sheets.",
-            });
-             setIsUploading(false);
-            return;
-        }
-
-        const allDatesFound = allShiftsFromExcel.map(s => s.date).filter((d): d is Date => d !== null);
-        const minDate = new Date(Math.min(...allDatesFound.map(d => d.getTime())));
-        const maxDate = new Date(Math.max(...allDatesFound.map(d => d.getTime())));
-
-        const shiftsQuery = query(
-            collection(db, 'shifts'),
-            where('date', '>=', Timestamp.fromDate(minDate)),
-            where('date', '<=', Timestamp.fromDate(maxDate))
-        );
-        const existingShiftsSnapshot = await getDocs(shiftsQuery);
-
-        const existingShiftsMap = new Map<string, Shift>();
-        existingShiftsSnapshot.forEach(doc => {
-            const shiftData = { id: doc.id, ...doc.data() } as Shift;
-            existingShiftsMap.set(getShiftKey(shiftData), shiftData);
-        });
-
-        const excelShiftsMap = new Map<string, ParsedShift>();
-        for (const excelShift of allShiftsFromExcel) {
-          excelShiftsMap.set(getShiftKey(excelShift), excelShift);
-        }
-
-        const batch = writeBatch(db);
-        let shiftsCreated = 0;
-        let shiftsUpdated = 0;
-        let shiftsDeleted = 0;
-
-        const protectedStatuses: ShiftStatus[] = ['completed', 'incomplete'];
-
-        for (const [key, excelShift] of excelShiftsMap.entries()) {
-            const existingShift = existingShiftsMap.get(key);
-            if (existingShift) {
-                if (
-                    existingShift.bNumber !== (excelShift.bNumber || '') || 
-                    existingShift.type !== excelShift.type ||
-                    existingShift.manager !== (excelShift.manager || '')
-                ) {
-                     if (!protectedStatuses.includes(existingShift.status)) {
-                        batch.update(doc(db, 'shifts', existingShift.id), { 
-                            bNumber: excelShift.bNumber || '',
-                            type: excelShift.type,
-                            manager: excelShift.manager || '',
-                        });
-                        shiftsUpdated++;
-                     }
-                }
-                existingShiftsMap.delete(key);
-            } else {
-                const newShiftData = {
-                    ...excelShift,
-                    date: Timestamp.fromDate(excelShift.date),
-                    status: 'pending-confirmation',
-                    createdAt: serverTimestamp(),
-                };
-                batch.set(doc(collection(db, 'shifts')), newShiftData);
-                shiftsCreated++;
-            }
-        }
-
-        for (const [key, shiftToDelete] of existingShiftsMap.entries()) {
-             if (!protectedStatuses.includes(shiftToDelete.status)) {
-                batch.delete(doc(db, 'shifts', shiftToDelete.id));
-                shiftsDeleted++;
-             }
-        }
-        
-        if (shiftsCreated > 0 || shiftsUpdated > 0 || shiftsDeleted > 0) {
-            await batch.commit();
-        }
-        
-        let descriptionParts = [];
-        if (shiftsCreated > 0) descriptionParts.push(`created ${shiftsCreated} new shift(s)`);
-        if (shiftsUpdated > 0) descriptionParts.push(`updated ${shiftsUpdated} shift(s)`);
-        if (shiftsDeleted > 0) descriptionParts.push(`deleted ${shiftsDeleted} old shift(s)`);
-
-        if (descriptionParts.length > 0) {
-            toast({
-                title: 'Import Complete & Reconciled',
-                description: `Successfully processed the file: ${descriptionParts.join(', ')}.`,
-            });
-        } else if (allFailedShifts.length === 0) {
-            toast({
-                title: 'No Changes Detected',
-                description: "The schedule was up-to-date. No changes were made.",
-            });
-        }
-        
-        onImportComplete(allFailedShifts);
-
-        setFile(null);
-        const fileInput = document.getElementById('shift-file-input') as HTMLInputElement;
-        if (fileInput) fileInput.value = "";
-        setSheetNames([]);
-        setEnabledSheets({});
-
-
       } catch (err: any) {
         console.error('Import failed:', err);
         setError(err.message || 'An unexpected error occurred during import.');
         onImportComplete([], {found: [], failed: []});
       } finally {
-        setIsUploading(false);
+        setIsProcessing(false);
       }
     };
 
     reader.onerror = () => {
         setError('Failed to read the file.');
-        setIsUploading(false);
+        setIsProcessing(false);
     }
 
     reader.readAsArrayBuffer(file);
   };
+  
+  if (shiftsToPublish) {
+    return <div onClick={handleProcessFile}>{children}</div>;
+  }
 
   return (
     <div className="space-y-4">
@@ -553,8 +573,8 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                     Dry Run
                 </Label>
             </div>
-            <Button onClick={handleImport} disabled={!file || isUploading} className="w-full sm:w-auto">
-              {isUploading ? <Spinner /> : isDryRun ? <><TestTube2 className="mr-2 h-4 w-4" /> Run Test</> : <><Upload className="mr-2 h-4 w-4" /> Import Shifts</>}
+            <Button onClick={handleProcessFile} disabled={!file || isProcessing} className="w-full sm:w-auto">
+              {isProcessing ? <Spinner /> : isDryRun ? <><TestTube2 className="mr-2 h-4 w-4" /> Run Test</> : <><Upload className="mr-2 h-4 w-4" /> Import Shifts</>}
             </Button>
         </div>
       </div>

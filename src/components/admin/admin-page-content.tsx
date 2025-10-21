@@ -3,48 +3,63 @@
 
 import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { FileUploader, FailedShift } from '@/components/admin/file-uploader';
+import { FileUploader, FailedShift, ParsedShift } from '@/components/admin/file-uploader';
 import { ShiftScheduleOverview } from '@/components/admin/shift-schedule-overview';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Download, FileWarning, CheckCircle, TestTube2, AlertCircle } from 'lucide-react';
+import { Download, FileWarning, CheckCircle, TestTube2, AlertCircle, Upload } from 'lucide-react';
 import { format } from 'date-fns';
 import { Alert, AlertTitle, AlertDescription } from '../ui/alert';
 import { useAllUsers } from '@/hooks/use-all-users';
+import { useToast } from '@/hooks/use-toast';
+import { Spinner } from '../shared/spinner';
 
 interface DryRunResult {
-    found: any[];
+    found: ParsedShift[];
     failed: FailedShift[];
 }
 
 export default function AdminPageContent() {
   const { userProfile } = useUserProfile();
   const { users: allUsers, loading: usersLoading } = useAllUsers();
-  const [importReport, setImportReport] = useState<{ failed: FailedShift[], dryRun?: DryRunResult } | null>(null);
+  const [importReport, setImportReport] = useState<{ failed: FailedShift[] } | null>(null);
+  const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null);
   const [importAttempted, setImportAttempted] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  
   const isPrivilegedUser = userProfile && ['admin', 'owner'].includes(userProfile.role);
+  const { toast } = useToast();
 
   const userNameMap = useMemo(() => {
     if (usersLoading || !allUsers) return new Map();
     return new Map(allUsers.map(u => [u.uid, u.name]));
   }, [allUsers, usersLoading]);
 
-  const handleImportComplete = (failedShifts: FailedShift[], dryRunResult?: DryRunResult) => {
+  const handleImportComplete = (failedShifts: FailedShift[], dryRunData?: DryRunResult) => {
     const sortedFailed = failedShifts.sort((a, b) => {
         if (!a.date) return 1;
         if (!b.date) return -1;
         return a.date.getTime() - b.date.getTime();
     });
-    setImportReport({ failed: sortedFailed, dryRun: dryRunResult });
+
+    if (dryRunData) {
+        setDryRunResult(dryRunData);
+        setImportReport(null); // Clear previous final reports
+    } else {
+        setImportReport({ failed: sortedFailed });
+        setDryRunResult(null); // Clear dry run data on final import
+    }
     setImportAttempted(true);
+    setIsPublishing(false); // Reset publishing state
   };
   
   const handleFileSelection = () => {
     setImportAttempted(false);
     setImportReport(null);
+    setDryRunResult(null);
   };
-
+  
   const handleDownloadPdf = async () => {
     if (!importReport?.failed || importReport.failed.length === 0) return;
     
@@ -80,9 +95,9 @@ export default function AdminPageContent() {
   };
 
   const renderDryRunReport = () => {
-    if (!importReport?.dryRun) return null;
+    if (!dryRunResult) return null;
 
-    const { found, failed } = importReport.dryRun;
+    const { found, failed } = dryRunResult;
 
     const sortedFound = [...found].sort((a, b) => {
       const nameA = userNameMap.get(a.userId) || '';
@@ -101,7 +116,7 @@ export default function AdminPageContent() {
                     Dry Run Results
                 </CardTitle>
                 <CardDescription>
-                    This is a preview of the import from the selected sheets. No changes have been made to the database.
+                    This is a preview of the import. No changes have been saved yet. Review the shifts below and click "Confirm and Publish" to apply them.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -168,7 +183,15 @@ export default function AdminPageContent() {
                 </div>
             </CardContent>
              <CardFooter>
-                <p className="text-xs text-muted-foreground">If these results look correct, uncheck "Dry Run" and import the file again to apply the changes.</p>
+                <FileUploader 
+                    onImportComplete={handleImportComplete}
+                    onFileSelect={() => {}}
+                    shiftsToPublish={dryRunResult.found}
+                >
+                    <Button disabled={isPublishing}>
+                        {isPublishing ? <Spinner /> : <><Upload className="mr-2 h-4 w-4" />Confirm and Publish</>}
+                    </Button>
+                </FileUploader>
             </CardFooter>
         </Card>
     );
@@ -191,9 +214,9 @@ export default function AdminPageContent() {
         </Card>
       )}
 
-      {importAttempted && importReport?.dryRun && renderDryRunReport()}
+      {importAttempted && dryRunResult && renderDryRunReport()}
 
-      {importAttempted && !importReport?.dryRun && (
+      {importAttempted && !dryRunResult && (
           <>
             {importReport && importReport.failed.length > 0 && (
                 <Card>
