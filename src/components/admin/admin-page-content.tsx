@@ -1,9 +1,8 @@
-
 'use client';
 
 import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { FileUploader, FailedShift, ParsedShift } from '@/components/admin/file-uploader';
+import { FileUploader, FailedShift, ParsedShift, ReconciliationResult } from '@/components/admin/file-uploader';
 import { ShiftScheduleOverview } from '@/components/admin/shift-schedule-overview';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -15,12 +14,6 @@ import { useAllUsers } from '@/hooks/use-all-users';
 import { useToast } from '@/hooks/use-toast';
 import { Spinner } from '../shared/spinner';
 
-interface ReconciliationResult {
-    toCreate: ParsedShift[];
-    toUpdate: { id: string; data: Partial<any> }[];
-    toDelete: string[];
-    failed: FailedShift[];
-}
 
 export default function AdminPageContent() {
   const { userProfile } = useUserProfile();
@@ -254,5 +247,3 @@ export default function AdminPageContent() {
     </div>
   );
 }
-
-    

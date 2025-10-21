@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
 import { collection, writeBatch, doc, getDocs, query, where, Timestamp, serverTimestamp, deleteDoc } from 'firebase/firestore';
@@ -26,7 +26,7 @@ export interface FailedShift {
     sheetName: string;
 }
 
-interface ReconciliationResult {
+export interface ReconciliationResult {
   toCreate: ParsedShift[];
   toUpdate: { id: string; data: Partial<Shift> }[];
   toDelete: string[];
@@ -321,13 +321,15 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                 const dateRow = jsonData[headerRowIndex];
                 const dates: (Date | null)[] = dateRow.map((cell: any, c: number) => c >= 5 ? parseDate(cell) : null);
                 
-                // Shift rows start from BELOW the header row and go until the next block starts
-                for (let r = headerRowIndex + 1; r < nextBlockStartRowIndex; r++) {
+                // --- CORRECTED LOGIC FOR SHIFT ROWS ---
+                // The shift rows start 2 rows below the header and go until the next block starts.
+                for (let r = headerRowIndex + 2; r < nextBlockStartRowIndex; r++) {
                     const rowData = jsonData[r];
                     if (!rowData || rowData.every((cell: any) => cell === null)) continue;
                     
-                    for (let c = 5; c < Math.min(rowData.length, dates.length + 5); c++) { 
-                        const shiftDate = dates[c];
+                    // Check columns F through L (indices 5 to 11)
+                    for (let c = 5; c <= 11; c++) { 
+                        const shiftDate = dates[c]; // Dates array starts at col F=0 for it, so col F in excel is 5, but 0 for the date array. So we need to adjust
                         if (!shiftDate) continue;
 
                         const cellContentRaw = String(rowData[c] || '').trim();
@@ -368,14 +370,16 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
         }
         
         const allDatesFound = allParsedShifts.map(s => s.date).filter((d): d is Date => d !== null);
-        if (allDatesFound.length === 0 && allParsedShifts.length === 0) {
-            onImportComplete(allFailedShifts, { toCreate: [], toUpdate: [], toDelete: [], failed: allFailedShifts });
-            setIsProcessing(false);
-            return;
+        if (allDatesFound.length === 0 && allParsedShifts.length > 0) {
+             onImportComplete(allFailedShifts, { toCreate: [], toUpdate: [], toDelete: [], failed: allFailedShifts });
+             setIsProcessing(false);
+             setError("Shifts were found, but no valid dates could be parsed from the date row.");
+             return;
         }
 
-        const minDate = new Date(Math.min(...allDatesFound.map(d => d.getTime())));
-        const maxDate = new Date(Math.max(...allDatesFound.map(d => d.getTime())));
+        const minDate = allDatesFound.length > 0 ? new Date(Math.min(...allDatesFound.map(d => d.getTime()))) : new Date();
+        const maxDate = allDatesFound.length > 0 ? new Date(Math.max(...allDatesFound.map(d => d.getTime()))) : new Date();
+
 
         const shiftsQuery = query(
             collection(db, 'shifts'),
@@ -383,6 +387,15 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
             where('date', '<=', Timestamp.fromDate(maxDate))
         );
         const existingShiftsSnapshot = await getDocs(shiftsQuery);
+
+        // Safeguard: If parsing yields 0 shifts but DB has shifts in range, abort.
+        if (allParsedShifts.length === 0 && !existingShiftsSnapshot.empty && allFailedShifts.length === 0) {
+            setError("Parsing resulted in zero shifts from the file, but shifts exist in the database for this date range. Aborting to prevent accidental deletion. Please check the file format.");
+            onImportComplete(allFailedShifts, { toCreate: [], toUpdate: [], toDelete: [], failed: allFailedShifts });
+            setIsProcessing(false);
+            return;
+        }
+
 
         const existingShiftsMap = new Map<string, Shift>();
         existingShiftsSnapshot.forEach(doc => {
