@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -98,7 +99,7 @@ export default function AdminPageContent() {
   const renderDryRunReport = () => {
     if (!dryRunResult) return null;
 
-    const { toCreate, toUpdate, toDelete, failed } = dryRunResult;
+    const { toCreate = [], toUpdate = [], toDelete = [], failed = [] } = dryRunResult;
 
     const sortShifts = (shifts: ParsedShift[]) => [...shifts].sort((a, b) => {
       const nameA = userNameMap.get(a.userId) || '';
