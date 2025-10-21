@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot, query, where, getDocs, Query, DocumentData } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs, Query, DocumentData, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shift, UserProfile } from '@/types';
 import { isSameWeek, format, startOfToday, addDays, subDays, startOfWeek } from 'date-fns';
@@ -136,7 +136,11 @@ export default function SiteSchedulePage() {
 
     useEffect(() => {
         const fetchUsersForProject = async () => {
-            if (!selectedAddress || (userProfile && ['admin', 'owner'].includes(userProfile.role))) {
+            if (!selectedAddress || !db) {
+                return;
+            }
+            // Admin/owners have all users pre-loaded, so no need to fetch.
+            if (userProfile && ['admin', 'owner'].includes(userProfile.role)) {
                 return;
             }
 
@@ -150,31 +154,18 @@ export default function SiteSchedulePage() {
             }
             
             try {
-                // Firestore 'in' queries are limited to 30 items. If more, we need multiple queries.
-                const MAX_IN_CLAUSE_LENGTH = 30;
-                const userChunks: string[][] = [];
-                for (let i = 0; i < userIdsOnProject.length; i += MAX_IN_CLAUSE_LENGTH) {
-                    userChunks.push(userIdsOnProject.slice(i, i + MAX_IN_CLAUSE_LENGTH));
-                }
-
-                const userPromises = userChunks.map(chunk => {
-                    const usersQuery = query(collection(db, 'users'), where('__name__', 'in', chunk));
-                    return getDocs(usersQuery);
-                });
-
-                const userSnapshots = await Promise.all(userPromises);
+                // Fetch each user document individually by ID.
+                const userPromises = userIdsOnProject.map(userId => getDoc(doc(db, 'users', userId)));
+                const userDocSnapshots = await Promise.all(userPromises);
                 
-                const fetchedUsers: UserProfile[] = [];
-                userSnapshots.forEach(snapshot => {
-                    snapshot.forEach(doc => {
-                        fetchedUsers.push({ uid: doc.id, ...doc.data() } as UserProfile);
-                    });
-                });
-                
+                const fetchedUsers: UserProfile[] = userDocSnapshots
+                    .filter(docSnap => docSnap.exists())
+                    .map(docSnap => ({ uid: docSnap.id, ...docSnap.data() } as UserProfile));
+
                 setUsers(fetchedUsers);
             } catch (err: any) {
                 console.error("Error fetching users for project:", err);
-                setError("Could not fetch user data for this project.");
+                setError("Could not fetch user data for this project. Check Firestore rules.");
                 setUsers([]);
             }
         };
@@ -435,7 +426,3 @@ export default function SiteSchedulePage() {
         </div>
     );
 }
-
-    
-
-    
