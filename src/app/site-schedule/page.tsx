@@ -2,10 +2,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs, Query, DocumentData } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shift, UserProfile } from '@/types';
-import { isSameWeek, format, startOfToday, addDays, subDays } from 'date-fns';
+import { isSameWeek, format, startOfToday, addDays, subDays, startOfWeek } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -68,14 +68,14 @@ const WeekScheduleView = ({ shifts, userNameMap, weekName }: { shifts: { [key: s
         <div className="space-y-6">
             <h3 className="text-xl font-semibold tracking-tight">Weekdays</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                {weekDays.map(day => <DayCard key={day} day={day} shifts={shifts[day]} userNameMap={userNameMap} />)}
+                {weekDays.map(day => <DayCard key={day} day={day} shifts={shifts[day] || []} userNameMap={userNameMap} />)}
             </div>
 
             {(shifts['Saturday']?.length > 0 || shifts['Sunday']?.length > 0) && (
                 <>
                     <h3 className="text-xl font-semibold tracking-tight pt-4">Weekend</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                        {weekendDays.map(day => <DayCard key={day} day={day} shifts={shifts[day]} userNameMap={userNameMap} />)}
+                        {weekendDays.map(day => <DayCard key={day} day={day} shifts={shifts[day] || []} userNameMap={userNameMap} />)}
                     </div>
                 </>
             )}
@@ -104,7 +104,6 @@ export default function SiteSchedulePage() {
 
     useEffect(() => {
         const shiftsQuery = query(collection(db, 'shifts'));
-        const usersQuery = query(collection(db, 'users'));
 
         const unsubShifts = onSnapshot(shiftsQuery, (snapshot) => {
             const fetchedShifts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift));
@@ -115,20 +114,73 @@ export default function SiteSchedulePage() {
             setError("Could not fetch shift data.");
             setLoading(false);
         });
-        
-        const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
-            const fetchedUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
-            setUsers(fetchedUsers);
-        }, (err) => {
-            console.error("Error fetching users:", err);
-            setError("Could not fetch user data.");
-        });
 
-        return () => {
-            unsubShifts();
-            unsubUsers();
+        // For privileged users, fetch all users. Otherwise, users will be fetched on-demand.
+        if (userProfile && ['admin', 'owner'].includes(userProfile.role)) {
+            const usersQuery = query(collection(db, 'users'));
+            const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
+                const fetchedUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+                setUsers(fetchedUsers);
+            }, (err) => {
+                console.error("Error fetching users:", err);
+                setError("Could not fetch user data.");
+            });
+            return () => {
+                unsubShifts();
+                unsubUsers();
+            };
+        }
+        
+        return () => unsubShifts();
+    }, [userProfile]);
+
+    useEffect(() => {
+        const fetchUsersForProject = async () => {
+            if (!selectedAddress || (userProfile && ['admin', 'owner'].includes(userProfile.role))) {
+                return;
+            }
+
+            setError(null);
+            const shiftsForAddress = allShifts.filter(s => s.address === selectedAddress);
+            const userIdsOnProject = Array.from(new Set(shiftsForAddress.map(s => s.userId)));
+
+            if (userIdsOnProject.length === 0) {
+                setUsers([]);
+                return;
+            }
+            
+            try {
+                // Firestore 'in' queries are limited to 30 items. If more, we need multiple queries.
+                const MAX_IN_CLAUSE_LENGTH = 30;
+                const userChunks: string[][] = [];
+                for (let i = 0; i < userIdsOnProject.length; i += MAX_IN_CLAUSE_LENGTH) {
+                    userChunks.push(userIdsOnProject.slice(i, i + MAX_IN_CLAUSE_LENGTH));
+                }
+
+                const userPromises = userChunks.map(chunk => {
+                    const usersQuery = query(collection(db, 'users'), where('__name__', 'in', chunk));
+                    return getDocs(usersQuery);
+                });
+
+                const userSnapshots = await Promise.all(userPromises);
+                
+                const fetchedUsers: UserProfile[] = [];
+                userSnapshots.forEach(snapshot => {
+                    snapshot.forEach(doc => {
+                        fetchedUsers.push({ uid: doc.id, ...doc.data() } as UserProfile);
+                    });
+                });
+                
+                setUsers(fetchedUsers);
+            } catch (err: any) {
+                console.error("Error fetching users for project:", err);
+                setError("Could not fetch user data for this project.");
+                setUsers([]);
+            }
         };
-    }, []);
+
+        fetchUsersForProject();
+    }, [selectedAddress, allShifts, userProfile]);
     
     const naturalSort = (a: string, b: string) => {
         const aParts = a.match(/(\d+)|(\D+)/g) || [];
@@ -196,9 +248,9 @@ export default function SiteSchedulePage() {
             return grouped;
         }
 
-        const startOfThisWeek = today;
-        const startOfNextWeek = addDays(today, 7);
-        const startOfLastWeek = subDays(today, 7);
+        const startOfThisWeek = startOfWeek(today, { weekStartsOn: 1 });
+        const startOfNextWeek = addDays(startOfThisWeek, 7);
+        const startOfLastWeek = subDays(startOfThisWeek, 7);
 
         return {
             lastWeekShifts: groupShifts(startOfLastWeek),
