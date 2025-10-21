@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -561,5 +560,3 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
     </div>
   );
 }
-
-    
