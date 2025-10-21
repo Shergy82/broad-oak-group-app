@@ -1,22 +1,18 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { FileUploader, FailedShift } from '@/components/admin/file-uploader';
+import { FileUploader, FailedShift, DryRunResult } from '@/components/admin/file-uploader';
 import { ShiftScheduleOverview } from '@/components/admin/shift-schedule-overview';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Download, FileWarning, CheckCircle, TestTube2, AlertCircle } from 'lucide-react';
+import { Download, FileWarning, CheckCircle, TestTube2, AlertCircle, PlusCircle, Pencil, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Alert, AlertTitle, AlertDescription } from '../ui/alert';
 import { useAllUsers } from '@/hooks/use-all-users';
 import type { UserProfile } from '@/types';
-
-interface DryRunResult {
-    found: any[];
-    failed: FailedShift[];
-}
 
 export default function AdminPageContent() {
   const { userProfile } = useUserProfile();
@@ -89,19 +85,11 @@ export default function AdminPageContent() {
   const renderDryRunReport = () => {
     if (!importReport?.dryRun) return null;
 
-    const { found, failed } = importReport.dryRun;
+    const { toCreate, toUpdate, toDelete, failed } = importReport.dryRun;
 
-    const sortedFound = [...found].sort((a, b) => {
-        const nameA = userNameMap.get(a.userId) || a.userId;
-        const nameB = userNameMap.get(b.userId) || b.userId;
-        const dateA = a.date.getTime();
-        const dateB = b.date.getTime();
-
-        if (nameA < nameB) return -1;
-        if (nameA > nameB) return 1;
-        
-        return dateA - dateB;
-    });
+    const sortedCreate = [...toCreate].sort((a, b) => (a.userName || '').localeCompare(b.userName || '') || a.date.getTime() - b.date.getTime());
+    const sortedUpdate = [...toUpdate].sort((a, b) => (a.new.userName || '').localeCompare(b.new.userName || '') || a.new.date.getTime() - b.new.date.getTime());
+    const sortedDelete = [...toDelete].sort((a, b) => (a.userName || '').localeCompare(b.userName || '') || a.date.toMillis() - b.date.toMillis());
 
     return (
         <Card className="mt-6 border-blue-500">
@@ -111,39 +99,65 @@ export default function AdminPageContent() {
                     Dry Run Results
                 </CardTitle>
                 <CardDescription>
-                    This is a preview of the import from the selected sheets. No changes have been made to the database.
+                    This is a preview of the changes to be made. No shifts have been created, updated, or deleted.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                 <div>
                     <h3 className="font-semibold flex items-center gap-2 mb-2">
-                        <CheckCircle className="text-green-600" /> 
-                        {found.length} Shifts Found Successfully
+                        <PlusCircle className="text-green-600" /> 
+                        {toCreate.length} New Shifts to be Created
                     </h3>
-                    {found.length > 0 ? (
+                    {toCreate.length > 0 && (
                         <div className="max-h-60 overflow-y-auto border rounded-lg">
                         <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Operative</TableHead>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Task</TableHead>
-                                    <TableHead>Address</TableHead>
-                                </TableRow>
-                            </TableHeader>
+                            <TableHeader><TableRow><TableHead>Operative</TableHead><TableHead>Date</TableHead><TableHead>Task</TableHead><TableHead>Address</TableHead></TableRow></TableHeader>
                             <TableBody>
-                                {sortedFound.map((shift, index) => (
-                                    <TableRow key={index}>
-                                        <TableCell>{userNameMap.get(shift.userId) || shift.userId}</TableCell>
-                                        <TableCell>{format(shift.date, 'dd/MM/yy')}</TableCell>
-                                        <TableCell>{shift.task}</TableCell>
-                                        <TableCell>{shift.address}</TableCell>
-                                    </TableRow>
+                                {sortedCreate.map((shift, index) => (
+                                    <TableRow key={index}><TableCell>{shift.userName}</TableCell><TableCell>{format(shift.date, 'dd/MM/yy')}</TableCell><TableCell>{shift.task}</TableCell><TableCell>{shift.address}</TableCell></TableRow>
                                 ))}
                             </TableBody>
                         </Table>
                         </div>
-                    ) : <p className="text-sm text-muted-foreground">No shifts could be parsed from the file.</p>}
+                    )}
+                </div>
+
+                 <div>
+                    <h3 className="font-semibold flex items-center gap-2 mb-2">
+                        <Pencil className="text-amber-600" /> 
+                        {toUpdate.length} Shifts to be Updated
+                    </h3>
+                    {toUpdate.length > 0 && (
+                        <div className="max-h-60 overflow-y-auto border rounded-lg">
+                        <Table>
+                            <TableHeader><TableRow><TableHead>Operative</TableHead><TableHead>Date</TableHead><TableHead>Task</TableHead><TableHead>Changes</TableHead></TableRow></TableHeader>
+                            <TableBody>
+                                {sortedUpdate.map(({old, new: newShift}, index) => (
+                                    <TableRow key={index}><TableCell>{newShift.userName}</TableCell><TableCell>{format(newShift.date, 'dd/MM/yy')}</TableCell><TableCell>{newShift.task}</TableCell><TableCell className="text-xs">Manager: {old.manager} -> {newShift.manager}</TableCell></TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                        </div>
+                    )}
+                </div>
+
+                 <div>
+                    <h3 className="font-semibold flex items-center gap-2 mb-2">
+                        <Trash2 className="text-destructive" /> 
+                        {toDelete.length} Shifts to be Deleted
+                    </h3>
+                    {toDelete.length > 0 && (
+                        <div className="max-h-60 overflow-y-auto border rounded-lg">
+                        <Table>
+                            <TableHeader><TableRow><TableHead>Operative</TableHead><TableHead>Date</TableHead><TableHead>Task</TableHead><TableHead>Address</TableHead></TableRow></TableHeader>
+                            <TableBody>
+                                {sortedDelete.map((shift, index) => (
+                                    <TableRow key={index}><TableCell>{shift.userName}</TableCell><TableCell>{format(shift.date.toDate(), 'dd/MM/yy')}</TableCell><TableCell>{shift.task}</TableCell><TableCell>{shift.address}</TableCell></TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                        </div>
+                    )}
                 </div>
 
                 <div>
@@ -151,30 +165,18 @@ export default function AdminPageContent() {
                         <AlertCircle className="text-destructive" /> 
                         {failed.length} Rows Failed to Parse
                     </h3>
-                     {failed.length > 0 ? (
+                     {failed.length > 0 && (
                         <div className="max-h-60 overflow-y-auto border rounded-lg">
                         <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Sheet</TableHead>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Cell Content</TableHead>
-                                    <TableHead>Reason</TableHead>
-                                </TableRow>
-                            </TableHeader>
+                            <TableHeader><TableRow><TableHead>Sheet</TableHead><TableHead>Date</TableHead><TableHead>Cell</TableHead><TableHead>Reason</TableHead></TableRow></TableHeader>
                             <TableBody>
                                 {failed.map((shift, index) => (
-                                    <TableRow key={index}>
-                                        <TableCell>{shift.sheetName}</TableCell>
-                                        <TableCell>{shift.date ? format(shift.date, 'dd/MM/yy') : 'N/A'}</TableCell>
-                                        <TableCell className="font-mono text-xs">{shift.cellContent}</TableCell>
-                                        <TableCell>{shift.reason}</TableCell>
-                                    </TableRow>
+                                    <TableRow key={index}><TableCell>{shift.sheetName}</TableCell><TableCell>{shift.date ? format(shift.date, 'dd/MM/yy') : 'N/A'}</TableCell><TableCell className="font-mono text-xs">{shift.cellContent}</TableCell><TableCell>{shift.reason}</TableCell></TableRow>
                                 ))}
                             </TableBody>
                         </Table>
                         </div>
-                    ) : <p className="text-sm text-muted-foreground">No errors found during parsing.</p>}
+                    )}
                 </div>
             </CardContent>
              <CardFooter>

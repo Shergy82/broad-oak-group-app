@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -15,7 +16,8 @@ import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
 import { Switch } from '@/components/ui/switch';
 
-type ParsedShift = Omit<Shift, 'id' | 'status' | 'date' | 'createdAt'> & { date: Date };
+type ParsedShift = Omit<Shift, 'id' | 'status' | 'date' | 'createdAt' | 'userName'> & { date: Date, userName?: string };
+
 type UserMapEntry = { uid: string; normalizedName: string; originalName: string; };
 
 export interface FailedShift {
@@ -26,8 +28,10 @@ export interface FailedShift {
     sheetName: string;
 }
 
-interface DryRunResult {
-    found: ParsedShift[];
+export interface DryRunResult {
+    toCreate: ParsedShift[];
+    toUpdate: { old: Shift, new: ParsedShift }[];
+    toDelete: Shift[];
     failed: FailedShift[];
 }
 
@@ -193,7 +197,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
       setEnabledSheets(prev => ({ ...prev, [sheetName]: isEnabled }));
   }
 
-  const getShiftKey = (shift: { userId: string; date: Date | Timestamp; type: 'am' | 'pm' | 'all-day'; task: string; address: string }): string => {
+  const getShiftKey = (shift: { userId: string; date: Date | Timestamp; task: string; address: string }): string => {
     const d = (shift.date as any).toDate ? (shift.date as Timestamp).toDate() : (shift.date as Date);
     const normalizedDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
     return `${normalizedDate.toISOString().slice(0, 10)}-${shift.userId}-${normalizeText(shift.address)}-${normalizeText(shift.task)}`;
@@ -213,7 +217,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
 
     setIsUploading(true);
     setError(null);
-    onImportComplete([], { found: [], failed: [] });
+    onImportComplete([], { toCreate: [], toUpdate: [], toDelete: [], failed: [] });
 
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -344,6 +348,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                                         allShiftsFromExcel.push({ 
                                             task: task, 
                                             userId: user.uid, 
+                                            userName: user.originalName,
                                             type: 'all-day',
                                             date: shiftDate, 
                                             address: address, 
@@ -367,24 +372,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             }
         }
         
-        if (isDryRun) {
-            onImportComplete(allFailedShifts, { found: allShiftsFromExcel, failed: allFailedShifts });
-            setIsUploading(false);
-            return;
-        }
-
-        if (allShiftsFromExcel.length === 0 && allFailedShifts.length > 0) {
-            toast({
-                variant: 'destructive',
-                title: 'Import Failed',
-                description: "No valid shifts could be parsed. Please check the file format and the Dry Run report.",
-                duration: 10000,
-            });
-            onImportComplete(allFailedShifts);
-            setIsUploading(false);
-            return;
-        }
-         if (allShiftsFromExcel.length === 0 && allFailedShifts.length === 0) {
+        if (allShiftsFromExcel.length === 0 && allFailedShifts.length === 0) {
             toast({
                 title: 'No Shifts Found',
                 description: "The file was processed, but no shifts were found to import from the selected sheets.",
@@ -394,6 +382,11 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         }
 
         const allDatesFound = allShiftsFromExcel.map(s => s.date).filter((d): d is Date => d !== null);
+        if (allDatesFound.length === 0) {
+            onImportComplete(allFailedShifts, { toCreate: [], toUpdate: [], toDelete: [], failed: allFailedShifts });
+            setIsUploading(false);
+            return;
+        }
         const minDate = new Date(Math.min(...allDatesFound.map(d => d.getTime())));
         const maxDate = new Date(Math.max(...allDatesFound.map(d => d.getTime())));
 
@@ -414,59 +407,73 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
         for (const excelShift of allShiftsFromExcel) {
           excelShiftsMap.set(getShiftKey(excelShift), excelShift);
         }
-
-        const batch = writeBatch(db);
-        let shiftsCreated = 0;
-        let shiftsUpdated = 0;
-        let shiftsDeleted = 0;
-
+        
+        const toCreate: ParsedShift[] = [];
+        const toUpdate: { old: Shift, new: ParsedShift }[] = [];
+        const toDelete: Shift[] = [];
         const protectedStatuses: ShiftStatus[] = ['completed', 'incomplete'];
+
 
         for (const [key, excelShift] of excelShiftsMap.entries()) {
             const existingShift = existingShiftsMap.get(key);
             if (existingShift) {
                 if (
                     existingShift.bNumber !== (excelShift.bNumber || '') || 
-                    existingShift.type !== excelShift.type ||
                     existingShift.manager !== (excelShift.manager || '')
                 ) {
                      if (!protectedStatuses.includes(existingShift.status)) {
-                        batch.update(doc(db, 'shifts', existingShift.id), { 
-                            bNumber: excelShift.bNumber || '',
-                            type: excelShift.type,
-                            manager: excelShift.manager || '',
-                        });
-                        shiftsUpdated++;
+                        toUpdate.push({ old: existingShift, new: excelShift });
                      }
                 }
-                existingShiftsMap.delete(key);
             } else {
-                const newShiftData = {
-                    ...excelShift,
-                    date: Timestamp.fromDate(excelShift.date),
-                    status: 'pending-confirmation',
-                    createdAt: serverTimestamp(),
-                };
-                batch.set(doc(collection(db, 'shifts')), newShiftData);
-                shiftsCreated++;
+                toCreate.push(excelShift);
             }
         }
 
-        for (const [key, shiftToDelete] of existingShiftsMap.entries()) {
-             if (!protectedStatuses.includes(shiftToDelete.status)) {
-                batch.delete(doc(db, 'shifts', shiftToDelete.id));
-                shiftsDeleted++;
-             }
+        for (const [key, existingShift] of existingShiftsMap.entries()) {
+            if (!excelShiftsMap.has(key) && !protectedStatuses.includes(existingShift.status)) {
+                toDelete.push(existingShift);
+            }
         }
         
-        if (shiftsCreated > 0 || shiftsUpdated > 0 || shiftsDeleted > 0) {
+        if (isDryRun) {
+            onImportComplete(allFailedShifts, { toCreate, toUpdate, toDelete, failed: allFailedShifts });
+            setIsUploading(false);
+            return;
+        }
+
+
+        const batch = writeBatch(db);
+
+        toCreate.forEach(shift => {
+            const newShiftData = {
+                ...shift,
+                date: Timestamp.fromDate(shift.date),
+                status: 'pending-confirmation',
+                createdAt: serverTimestamp(),
+            };
+            batch.set(doc(collection(db, 'shifts')), newShiftData);
+        });
+
+        toUpdate.forEach(({ old, new: newShift }) => {
+            batch.update(doc(db, 'shifts', old.id), { 
+                bNumber: newShift.bNumber || '',
+                manager: newShift.manager || '',
+            });
+        });
+
+        toDelete.forEach(shift => {
+            batch.delete(doc(db, 'shifts', shift.id));
+        });
+        
+        if (toCreate.length > 0 || toUpdate.length > 0 || toDelete.length > 0) {
             await batch.commit();
         }
         
         let descriptionParts = [];
-        if (shiftsCreated > 0) descriptionParts.push(`created ${shiftsCreated} new shift(s)`);
-        if (shiftsUpdated > 0) descriptionParts.push(`updated ${shiftsUpdated} shift(s)`);
-        if (shiftsDeleted > 0) descriptionParts.push(`deleted ${shiftsDeleted} old shift(s)`);
+        if (toCreate.length > 0) descriptionParts.push(`created ${toCreate.length} new shift(s)`);
+        if (toUpdate.length > 0) descriptionParts.push(`updated ${toUpdate.length} shift(s)`);
+        if (toDelete.length > 0) descriptionParts.push(`deleted ${toDelete.length} old shift(s)`);
 
         if (descriptionParts.length > 0) {
             toast({
@@ -492,7 +499,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
       } catch (err: any) {
         console.error('Import failed:', err);
         setError(err.message || 'An unexpected error occurred during import.');
-        onImportComplete([], {found: [], failed: []});
+        onImportComplete([], {toCreate: [], toUpdate: [], toDelete: [], failed: []});
       } finally {
         setIsUploading(false);
       }
