@@ -7,15 +7,17 @@ import { ShiftScheduleOverview } from '@/components/admin/shift-schedule-overvie
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Download, FileWarning, CheckCircle, TestTube2, AlertCircle, Upload, XCircle } from 'lucide-react';
+import { Download, FileWarning, CheckCircle, TestTube2, AlertCircle, Upload, XCircle, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Alert, AlertTitle, AlertDescription } from '../ui/alert';
 import { useAllUsers } from '@/hooks/use-all-users';
 import { useToast } from '@/hooks/use-toast';
 import { Spinner } from '../shared/spinner';
 
-interface DryRunResult {
-    found: ParsedShift[];
+interface ReconciliationResult {
+    toCreate: ParsedShift[];
+    toUpdate: { id: string; data: Partial<any> }[];
+    toDelete: string[];
     failed: FailedShift[];
 }
 
@@ -23,7 +25,7 @@ export default function AdminPageContent() {
   const { userProfile } = useUserProfile();
   const { users: allUsers, loading: usersLoading } = useAllUsers();
   const [importReport, setImportReport] = useState<{ failed: FailedShift[] } | null>(null);
-  const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null);
+  const [dryRunResult, setDryRunResult] = useState<ReconciliationResult | null>(null);
   const [importAttempted, setImportAttempted] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   
@@ -35,7 +37,7 @@ export default function AdminPageContent() {
     return new Map(allUsers.map(u => [u.uid, u.name]));
   }, [allUsers, usersLoading]);
 
-  const handleImportComplete = (failedShifts: FailedShift[], dryRunData?: DryRunResult) => {
+  const handleImportComplete = (failedShifts: FailedShift[], dryRunData?: ReconciliationResult) => {
     const sortedFailed = failedShifts.sort((a, b) => {
         if (!a.date) return 1;
         if (!b.date) return -1;
@@ -44,13 +46,13 @@ export default function AdminPageContent() {
 
     if (dryRunData) {
         setDryRunResult(dryRunData);
-        setImportReport(null); // Clear previous final reports
+        setImportReport(null);
     } else {
         setImportReport({ failed: sortedFailed });
-        setDryRunResult(null); // Clear dry run data on final import
+        setDryRunResult(null);
     }
     setImportAttempted(true);
-    setIsPublishing(false); // Reset publishing state
+    setIsPublishing(false);
   };
   
   const handleFileSelection = () => {
@@ -96,14 +98,12 @@ export default function AdminPageContent() {
   const renderDryRunReport = () => {
     if (!dryRunResult) return null;
 
-    const { found, failed } = dryRunResult;
+    const { toCreate, toUpdate, toDelete, failed } = dryRunResult;
 
-    const sortedFound = [...found].sort((a, b) => {
+    const sortShifts = (shifts: ParsedShift[]) => [...shifts].sort((a, b) => {
       const nameA = userNameMap.get(a.userId) || '';
       const nameB = userNameMap.get(b.userId) || '';
-      if (nameA.localeCompare(nameB) !== 0) {
-        return nameA.localeCompare(nameB);
-      }
+      if (nameA.localeCompare(nameB) !== 0) return nameA.localeCompare(nameB);
       return a.date.getTime() - b.date.getTime();
     });
 
@@ -115,70 +115,52 @@ export default function AdminPageContent() {
                     Dry Run Results
                 </CardTitle>
                 <CardDescription>
-                    This is a preview of the import. No changes have been saved yet. Review the new shifts that will be created below and click "Confirm and Publish" to apply them.
+                    This is a preview of the import. No changes have been saved yet. Review the summary below and click "Confirm and Publish" to apply them.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                 <div>
                     <h3 className="font-semibold flex items-center gap-2 mb-2">
                         <CheckCircle className="text-green-600" /> 
-                        {found.length} New Shifts to be Created
+                        {toCreate.length} New Shifts to be Created
                     </h3>
-                    {found.length > 0 ? (
+                    {toCreate.length > 0 && (
                         <div className="max-h-60 overflow-y-auto border rounded-lg">
                         <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Operative</TableHead>
-                                    <TableHead>Task</TableHead>
-                                    <TableHead>Address</TableHead>
-                                </TableRow>
-                            </TableHeader>
+                            <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Operative</TableHead><TableHead>Task</TableHead><TableHead>Address</TableHead></TableRow></TableHeader>
                             <TableBody>
-                                {sortedFound.map((shift, index) => (
-                                    <TableRow key={index}>
-                                        <TableCell>{format(shift.date, 'dd/MM/yy')}</TableCell>
-                                        <TableCell>{userNameMap.get(shift.userId) || shift.userId}</TableCell>
-                                        <TableCell>{shift.task}</TableCell>
-                                        <TableCell>{shift.address}</TableCell>
-                                    </TableRow>
+                                {sortShifts(toCreate).map((shift, index) => (
+                                    <TableRow key={index}><TableCell>{format(shift.date, 'dd/MM/yy')}</TableCell><TableCell>{userNameMap.get(shift.userId) || shift.userId}</TableCell><TableCell>{shift.task}</TableCell><TableCell>{shift.address}</TableCell></TableRow>
                                 ))}
                             </TableBody>
                         </Table>
                         </div>
-                    ) : <p className="text-sm text-muted-foreground">No new shifts will be created.</p>}
+                    )}
                 </div>
-
+                 <div>
+                    <h3 className="font-semibold flex items-center gap-2 mb-2">
+                        <Trash2 className="text-destructive" /> 
+                        {toDelete.length} Shifts to be Deleted
+                    </h3>
+                    {toDelete.length > 0 && <p className="text-sm text-muted-foreground">Shifts no longer in the schedule will be removed.</p>}
+                </div>
                 <div>
                     <h3 className="font-semibold flex items-center gap-2 mb-2">
-                        <AlertCircle className="text-destructive" /> 
+                        <AlertCircle className="text-amber-500" /> 
                         {failed.length} Rows Failed to Parse
                     </h3>
-                     {failed.length > 0 ? (
+                     {failed.length > 0 && (
                         <div className="max-h-60 overflow-y-auto border rounded-lg">
                         <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Sheet</TableHead>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Cell Content</TableHead>
-                                    <TableHead>Reason</TableHead>
-                                </TableRow>
-                            </TableHeader>
+                           <TableHeader><TableRow><TableHead>Sheet</TableHead><TableHead>Date</TableHead><TableHead>Cell Content</TableHead><TableHead>Reason</TableHead></TableRow></TableHeader>
                             <TableBody>
                                 {failed.map((shift, index) => (
-                                    <TableRow key={index}>
-                                        <TableCell>{shift.sheetName}</TableCell>
-                                        <TableCell>{shift.date ? format(shift.date, 'dd/MM/yy') : 'N/A'}</TableCell>
-                                        <TableCell className="font-mono text-xs">{shift.cellContent}</TableCell>
-                                        <TableCell>{shift.reason}</TableCell>
-                                    </TableRow>
+                                    <TableRow key={index}><TableCell>{shift.sheetName}</TableCell><TableCell>{shift.date ? format(shift.date, 'dd/MM/yy') : 'N/A'}</TableCell><TableCell className="font-mono text-xs">{shift.cellContent}</TableCell><TableCell>{shift.reason}</TableCell></TableRow>
                                 ))}
                             </TableBody>
                         </Table>
                         </div>
-                    ) : <p className="text-sm text-muted-foreground">No errors found during parsing.</p>}
+                    )}
                 </div>
             </CardContent>
              <CardFooter className="flex justify-end gap-2">
@@ -189,9 +171,9 @@ export default function AdminPageContent() {
                 <FileUploader 
                     onImportComplete={handleImportComplete}
                     onFileSelect={() => {}}
-                    shiftsToPublish={dryRunResult.found}
+                    shiftsToPublish={dryRunResult}
                 >
-                    <Button disabled={isPublishing || found.length === 0}>
+                    <Button disabled={isPublishing || (toCreate.length === 0 && toUpdate.length === 0 && toDelete.length === 0)}>
                         {isPublishing ? <Spinner /> : <><Upload className="mr-2 h-4 w-4" />Confirm and Publish</>}
                     </Button>
                 </FileUploader>
@@ -208,7 +190,7 @@ export default function AdminPageContent() {
           <CardHeader>
             <CardTitle>Import Weekly Shifts from Excel</CardTitle>
             <CardDescription>
-                Upload an Excel workbook. The tool will read shifts from all selected sheets. New shifts are added, existing ones updated, and shifts not in the file are removed. Use "Dry Run" to test before importing.
+                Upload an Excel workbook. The tool will read shifts from all selected sheets, reconcile them against existing data, and show you a preview of what will be created, updated, or deleted.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -221,7 +203,7 @@ export default function AdminPageContent() {
 
       {importAttempted && !dryRunResult && (
           <>
-            {importReport && importReport.failed.length > 0 && (
+            {(importReport?.failed.length ?? 0) > 0 && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -229,29 +211,15 @@ export default function AdminPageContent() {
                             Failed Import Report
                         </CardTitle>
                         <CardDescription>
-                            The following {importReport.failed.length} shift(s) could not be imported. Please correct them in the source file and re-upload.
+                            The following {importReport!.failed.length} shift(s) could not be imported. Please correct them in the source file and re-upload. All other shifts were processed successfully.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Sheet</TableHead>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Project Address</TableHead>
-                                    <TableHead>Original Cell Content</TableHead>
-                                    <TableHead>Reason for Failure</TableHead>
-                                </TableRow>
-                            </TableHeader>
+                            <TableHeader><TableRow><TableHead>Sheet</TableHead><TableHead>Date</TableHead><TableHead>Project Address</TableHead><TableHead>Original Cell Content</TableHead><TableHead>Reason for Failure</TableHead></TableRow></TableHeader>
                             <TableBody>
-                                {importReport.failed.map((shift, index) => (
-                                    <TableRow key={index}>
-                                        <TableCell>{shift.sheetName}</TableCell>
-                                        <TableCell>{shift.date ? format(shift.date, 'dd/MM/yyyy') : 'N/A'}</TableCell>
-                                        <TableCell>{shift.projectAddress}</TableCell>
-                                        <TableCell className="font-mono text-xs">{shift.cellContent}</TableCell>
-                                        <TableCell>{shift.reason}</TableCell>
-                                    </TableRow>
+                                {importReport!.failed.map((shift, index) => (
+                                    <TableRow key={index}><TableCell>{shift.sheetName}</TableCell><TableCell>{shift.date ? format(shift.date, 'dd/MM/yyyy') : 'N/A'}</TableCell><TableCell>{shift.projectAddress}</TableCell><TableCell className="font-mono text-xs">{shift.cellContent}</TableCell><TableCell>{shift.reason}</TableCell></TableRow>
                                 ))}
                             </TableBody>
                         </Table>
@@ -270,7 +238,7 @@ export default function AdminPageContent() {
                     <CheckCircle className="h-4 w-4 text-green-500" />
                     <AlertTitle>Import Successful</AlertTitle>
                     <AlertDescription>
-                        The file was processed successfully, and no errors were found. All shifts were reconciled.
+                        The file was processed successfully, and all shifts were reconciled.
                     </AlertDescription>
                 </Alert>
             )}
@@ -284,3 +252,5 @@ export default function AdminPageContent() {
     </div>
   );
 }
+
+    

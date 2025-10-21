@@ -3,17 +3,20 @@
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebase';
-import { collection, writeBatch, doc, getDocs, query, where, Timestamp, serverTimestamp } from 'firebase/firestore';
+import { collection, writeBatch, doc, getDocs, query, where, Timestamp, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/shared/spinner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Upload, FileWarning, TestTube2, Sheet, XCircle } from 'lucide-react';
+import { Upload, FileWarning, TestTube2, Sheet, XCircle, CheckCircle, AlertCircle, Trash2 } from 'lucide-react';
 import type { Shift, UserProfile, ShiftStatus } from '@/types';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { format } from 'date-fns';
+import { useAllUsers } from '@/hooks/use-all-users';
 
 export type ParsedShift = Omit<Shift, 'id' | 'status' | 'date' | 'createdAt'> & { date: Date };
 type UserMapEntry = { uid: string; normalizedName: string; originalName: string; };
@@ -26,15 +29,17 @@ export interface FailedShift {
     sheetName: string;
 }
 
-interface DryRunResult {
-    found: ParsedShift[];
-    failed: FailedShift[];
+interface ReconciliationResult {
+  toCreate: ParsedShift[];
+  toUpdate: { id: string; data: Partial<Shift> }[];
+  toDelete: string[];
+  failed: FailedShift[];
 }
 
 interface FileUploaderProps {
-    onImportComplete: (failedShifts: FailedShift[], dryRunResult?: DryRunResult) => void;
+    onImportComplete: (failedShifts: FailedShift[], dryRunResult?: ReconciliationResult) => void;
     onFileSelect: () => void;
-    shiftsToPublish?: ParsedShift[] | null;
+    shiftsToPublish?: ReconciliationResult | null;
     children?: React.ReactNode;
 }
 
@@ -72,12 +77,10 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
     let minDistance = Infinity;
 
     for (const user of userMap) {
-        // Direct match is best
         if (user.normalizedName === normalizedName) return user;
         
         const distance = levenshtein(normalizedName, user.normalizedName);
 
-        // Full name contains the search term (e.g., "rory" in "roryskinner")
         if (user.normalizedName.includes(normalizedName)) {
              if (distance < minDistance) {
                 minDistance = distance;
@@ -85,7 +88,6 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
             }
         }
 
-        // Check first name match
         const firstNameNormalized = normalizeText(user.originalName.split(' ')[0]);
         if (firstNameNormalized === normalizedName) {
              const firstNameDistance = levenshtein(normalizedName, firstNameNormalized);
@@ -95,7 +97,6 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
             }
         }
 
-        // Levenshtein distance for typo tolerance
         const threshold = Math.max(1, Math.floor(normalizedName.length / 3));
         if (distance <= threshold && distance < minDistance) {
             minDistance = distance;
@@ -103,7 +104,6 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
         }
     }
     
-    // Only return a fuzzy match if it's reasonably close
     if (bestMatch && minDistance <= 3) {
         return bestMatch;
     }
@@ -113,7 +113,6 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
 
 const parseDate = (dateValue: any): Date | null => {
     if (!dateValue) return null;
-    // Handle Excel's numeric date format
     if (typeof dateValue === 'number' && dateValue > 1) {
         const excelEpoch = new Date(1899, 11, 30);
         const d = new Date(excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
@@ -121,10 +120,8 @@ const parseDate = (dateValue: any): Date | null => {
              return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
         }
     }
-    // Handle string dates (e.g., "03-Oct" or "03/10/2025")
     if (typeof dateValue === 'string') {
         const lowerCell = dateValue.toLowerCase();
-        // Match "dd-Mon" format like "26-Sep"
         const dateMatch = lowerCell.match(/(\d{1,2})[ -/]+([a-z]{3})/);
          if (dateMatch) {
             const day = parseInt(dateMatch[1], 10);
@@ -136,7 +133,6 @@ const parseDate = (dateValue: any): Date | null => {
             }
         }
 
-        // Match day name format like "Mon 26-Sep"
         const dayNameMatch = lowerCell.match(/(mon|tue|wed|thu|fri|sat|sun)\s+(\d{1,2})[ -/]+([a-z]{3})/);
         if (dayNameMatch) {
             const day = parseInt(dayNameMatch[2], 10);
@@ -148,7 +144,6 @@ const parseDate = (dateValue: any): Date | null => {
             }
         }
     }
-     // Handle native JS Date objects
     if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
         return new Date(Date.UTC(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate()));
     }
@@ -156,11 +151,16 @@ const parseDate = (dateValue: any): Date | null => {
 };
 
 
-const getShiftKey = (shift: { userId: string; date: Date | Timestamp; type: 'am' | 'pm' | 'all-day'; task: string; address: string }): string => {
-    const d = (shift.date as any).toDate ? (shift.date as Timestamp).toDate() : (shift.date as Date);
-    const normalizedDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    return `${normalizedDate.toISOString().slice(0, 10)}-${shift.userId}-${normalizeText(shift.address)}-${normalizeText(shift.task)}`;
-  };
+const getShiftKey = (shift: { userId: string; date: Date | Timestamp; task: string; address: string }): string => {
+    let datePart: string;
+    if (shift.date instanceof Timestamp) {
+        const d = shift.date.toDate();
+        datePart = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString().slice(0, 10);
+    } else {
+        datePart = new Date(Date.UTC(shift.date.getFullYear(), shift.date.getMonth(), shift.date.getDate())).toISOString().slice(0, 10);
+    }
+    return `${datePart}-${shift.userId}-${normalizeText(shift.address)}-${normalizeText(shift.task)}`;
+};
   
 export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, children }: FileUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
@@ -170,6 +170,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [enabledSheets, setEnabledSheets] = useState<{ [key: string]: boolean }>({});
   const { toast } = useToast();
+  const { users } = useAllUsers();
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
@@ -200,113 +201,61 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
       setEnabledSheets(prev => ({ ...prev, [sheetName]: isEnabled }));
   }
   
-  const processAndPublish = async (shiftsFromExcel: ParsedShift[], failedShifts: FailedShift[]) => {
+  const processAndPublish = async (reconciliationResult: ReconciliationResult) => {
       setIsProcessing(true);
-      
-      if (shiftsFromExcel.length === 0 && failedShifts.length > 0) {
-          toast({
-              variant: 'destructive',
-              title: 'Import Failed',
-              description: "No valid shifts could be parsed. Please check the file format and the Dry Run report.",
-              duration: 10000,
-          });
-          onImportComplete(failedShifts);
-          setIsProcessing(false);
-          return;
-      }
-      if (shiftsFromExcel.length === 0 && failedShifts.length === 0) {
-          toast({
-              title: 'No Shifts Found',
-              description: "The file was processed, but no shifts were found to import from the selected sheets.",
-          });
-          onImportComplete([]); // Pass empty failed shifts array
+      const { toCreate, toUpdate, toDelete } = reconciliationResult;
+
+      if (toCreate.length === 0 && toUpdate.length === 0 && toDelete.length === 0) {
+          toast({ title: 'No Changes', description: "The schedule was already up-to-date." });
+          onImportComplete(reconciliationResult.failed);
           setIsProcessing(false);
           return;
       }
 
       try {
-        const allDatesFound = shiftsFromExcel.map(s => s.date).filter((d): d is Date => d !== null);
-        const minDate = new Date(Math.min(...allDatesFound.map(d => d.getTime())));
-        const maxDate = new Date(Math.max(...allDatesFound.map(d => d.getTime())));
-
-        const shiftsQuery = query(
-            collection(db, 'shifts'),
-            where('date', '>=', Timestamp.fromDate(minDate)),
-            where('date', '<=', Timestamp.fromDate(maxDate))
-        );
-        const existingShiftsSnapshot = await getDocs(shiftsQuery);
-
-        const existingShiftsMap = new Map<string, Shift>();
-        existingShiftsSnapshot.forEach(doc => {
-            const shiftData = { id: doc.id, ...doc.data() } as Shift;
-            existingShiftsMap.set(getShiftKey(shiftData), shiftData);
+        const batch = writeBatch(db);
+        
+        toCreate.forEach(excelShift => {
+            const newShiftData = {
+                ...excelShift,
+                date: Timestamp.fromDate(excelShift.date),
+                status: 'pending-confirmation',
+                createdAt: serverTimestamp(),
+            };
+            batch.set(doc(collection(db, 'shifts')), newShiftData);
         });
 
-        const batch = writeBatch(db);
-        let shiftsCreated = 0;
-        let shiftsUpdated = 0;
+        toUpdate.forEach(update => {
+            batch.update(doc(db, 'shifts', update.id), update.data);
+        });
 
-        const protectedStatuses: ShiftStatus[] = ['completed', 'incomplete'];
-
-        for (const excelShift of shiftsFromExcel) {
-            const key = getShiftKey(excelShift);
-            const existingShift = existingShiftsMap.get(key);
-
-            if (existingShift) {
-                 if (
-                    existingShift.bNumber !== (excelShift.bNumber || '') || 
-                    existingShift.type !== excelShift.type ||
-                    existingShift.manager !== (excelShift.manager || '')
-                ) {
-                     if (!protectedStatuses.includes(existingShift.status)) {
-                        batch.update(doc(db, 'shifts', existingShift.id), { 
-                            bNumber: excelShift.bNumber || '',
-                            type: excelShift.type,
-                            manager: excelShift.manager || '',
-                            userName: excelShift.userName, // Also update username
-                        });
-                        shiftsUpdated++;
-                     }
-                }
-            } else {
-                // This is a new shift, add it
-                const newShiftData = {
-                    ...excelShift,
-                    date: Timestamp.fromDate(excelShift.date),
-                    status: 'pending-confirmation',
-                    createdAt: serverTimestamp(),
-                };
-                batch.set(doc(collection(db, 'shifts')), newShiftData);
-                shiftsCreated++;
-            }
-        }
+        toDelete.forEach(shiftId => {
+            batch.delete(doc(db, 'shifts', shiftId));
+        });
         
-        if (shiftsCreated > 0 || shiftsUpdated > 0) {
-            await batch.commit();
-        }
-        
+        await batch.commit();
+
         let descriptionParts = [];
-        if (shiftsCreated > 0) descriptionParts.push(`created ${shiftsCreated} new shift(s)`);
-        if (shiftsUpdated > 0) descriptionParts.push(`updated ${shiftsUpdated} shift(s)`);
-
-        if (descriptionParts.length > 0) {
-            toast({
-                title: 'Import Complete & Reconciled',
-                description: `Successfully processed the file: ${descriptionParts.join(', ')}.`,
-            });
-        } else if (failedShifts.length === 0) {
-            toast({
-                title: 'No Changes Detected',
-                description: "The schedule was up-to-date. No changes were made.",
-            });
-        }
+        if (toCreate.length > 0) descriptionParts.push(`created ${toCreate.length}`);
+        if (toUpdate.length > 0) descriptionParts.push(`updated ${toUpdate.length}`);
+        if (toDelete.length > 0) descriptionParts.push(`deleted ${toDelete.length}`);
         
-        onImportComplete(failedShifts);
+        toast({
+            title: 'Import Complete & Reconciled',
+            description: `Successfully ${descriptionParts.join(', ')} shift(s).`,
+        });
+        
+        onImportComplete(reconciliationResult.failed);
+        setFile(null);
+        const fileInput = document.getElementById('shift-file-input') as HTMLInputElement;
+        if (fileInput) fileInput.value = "";
+        setSheetNames([]);
+        setEnabledSheets({});
 
       } catch (err: any) {
         console.error('Publishing failed:', err);
         setError(err.message || 'An unexpected error occurred during publishing.');
-        onImportComplete(failedShifts);
+        onImportComplete(reconciliationResult.failed, reconciliationResult);
       } finally {
         setIsProcessing(false);
       }
@@ -314,7 +263,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
 
   const handleProcessFile = async () => {
     if (shiftsToPublish) {
-        await processAndPublish(shiftsToPublish, []);
+        await processAndPublish(shiftsToPublish);
         return;
     }
       
@@ -330,7 +279,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
 
     setIsProcessing(true);
     setError(null);
-    onImportComplete([], { found: [], failed: [] });
+    onImportComplete([], { toCreate: [], toUpdate: [], toDelete: [], failed: [] });
 
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -340,15 +289,11 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
         
         const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellStyles: true });
 
-        const usersSnapshot = await getDocs(collection(db, 'users'));
-        const userMap: UserMapEntry[] = usersSnapshot.docs.map(doc => {
-            const user = doc.data() as UserProfile;
-            return {
-                uid: doc.id,
-                normalizedName: normalizeText(user.name),
-                originalName: user.name,
-            };
-        });
+        const userMap: UserMapEntry[] = users.map(user => ({
+            uid: user.uid,
+            normalizedName: normalizeText(user.name),
+            originalName: user.name,
+        }));
         
         let allParsedShifts: ParsedShift[] = [];
         let allFailedShifts: FailedShift[] = [];
@@ -379,22 +324,14 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                 let dateRow: (Date | null)[] = [];
                 let dateRowIndex = -1;
 
-                const addressKeywords = ['road', 'street', 'avenue', 'lane', 'drive', 'court', 'close', 'crescent', 'place'];
                 for (let r = blockStartRowIndex; r < blockEndRowIndex; r++) {
                     const row = jsonData[r] || [];
                     const cellAValue = row[0];
 
                     if (!address && cellAValue && typeof cellAValue === 'string') {
-                        const lowerCellValue = cellAValue.toLowerCase();
-                        if (addressKeywords.some(keyword => lowerCellValue.includes(keyword))) {
-                            const parts = cellAValue.split('\n');
-                            const firstLine = parts[0].trim();
-                            if (firstLine.length < 15 && firstLine.match(/^[a-zA-Z]?\d+/)) {
-                                bNumber = firstLine;
-                                address = parts.slice(1).join(', ').trim();
-                            } else {
-                                address = parts.join(', ').trim();
-                            }
+                        const addrKeywords = ['road', 'street', 'avenue', 'lane', 'drive', 'court', 'close', 'crescent', 'place'];
+                        if (addrKeywords.some(kw => cellAValue.toLowerCase().includes(kw))) {
+                            address = cellAValue.split('\n').join(', ').trim();
                         }
                     }
                     
@@ -420,59 +357,60 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                 }
 
                 if (!address) {
-                     allFailedShifts.push({ date: null, projectAddress: `Block at row ${blockStartRowIndex + 1}`, cellContent: '', reason: 'Could not find a valid Address cell in Column A for this project block.', sheetName });
+                     allFailedShifts.push({ date: null, projectAddress: `Block at row ${blockStartRowIndex + 1}`, cellContent: '', reason: 'Could not find Address.', sheetName });
                      continue;
                 }
                 if (dateRowIndex === -1) {
-                    allFailedShifts.push({ date: null, projectAddress: address, cellContent: '', reason: 'Could not find a valid Date Row within this project block.', sheetName });
+                    allFailedShifts.push({ date: null, projectAddress: address, cellContent: '', reason: 'Could not find Date Row.', sheetName });
                     continue;
                 }
+                // Try to find BNumber near address
+                const addressRowIndex = jsonData.findIndex(row => (row[0] || '').toString().includes(address));
+                if (addressRowIndex > -1) {
+                    const bNumCandidate = (jsonData[addressRowIndex-1]?.[0] || '').toString();
+                    if(bNumCandidate.match(/^[a-zA-Z]?\d+/)) {
+                        bNumber = bNumCandidate;
+                    }
+                }
 
-                for (let r = blockStartRowIndex; r < blockEndRowIndex; r++) {
-                    for (let c = 1; c < dateRow.length; c++) { 
+
+                for (let r = dateRowIndex + 1; r < blockEndRowIndex; r++) {
+                    const rowData = jsonData[r];
+                    if (!rowData || !rowData[0] || typeof rowData[0] !== 'string') continue;
+                    
+                    const task = rowData[0].trim();
+                    
+                    for (let c = 1; c < Math.min(rowData.length, dateRow.length); c++) { 
                         const shiftDate = dateRow[c];
                         if (!shiftDate) continue;
 
-                        const cellRef = XLSX.utils.encode_cell({ r: r, c: c });
-                        const cell = worksheet[cellRef];
-                        let cellContentRaw = cell?.w || cell?.v;
-                        
+                        const cellContentRaw = rowData[c];
                         if (!cellContentRaw || typeof cellContentRaw !== 'string') continue;
-
-                        const cellContent = cellContentRaw.replace(/\s+/g, ' ').trim();
-                        const bgColor = cell?.s?.fgColor?.rgb;
-                        if (bgColor === 'FF800080' || bgColor === '800080') continue;
                         
-                        const parts = cellContent.split('-').map(p => p.trim());
-                        if (parts.length > 1) {
-                            const potentialUserNames = parts.pop()!;
-                            const task = parts.join('-').trim();
+                        const usersInCell = cellContentRaw.split(/&|,|\+/g).map(name => name.trim()).filter(Boolean);
 
-                            const usersInCell = potentialUserNames.split(/&|,|\+/g).map(name => name.trim()).filter(Boolean);
-
-                            if (task && usersInCell.length > 0) {
-                                for (const userName of usersInCell) {
-                                    const user = findUser(userName, userMap);
-                                    if (user) {
-                                        allParsedShifts.push({ 
-                                            task: task, 
-                                            userId: user.uid, 
-                                            userName: user.originalName,
-                                            type: 'all-day',
-                                            date: shiftDate, 
-                                            address: address, 
-                                            bNumber: bNumber,
-                                            manager: manager,
-                                        });
-                                    } else {
-                                        allFailedShifts.push({
-                                            date: shiftDate,
-                                            projectAddress: address,
-                                            cellContent: cellContentRaw,
-                                            reason: `Could not find a user matching "${userName}".`,
-                                            sheetName
-                                        });
-                                    }
+                        if (task && usersInCell.length > 0) {
+                            for (const userName of usersInCell) {
+                                const user = findUser(userName, userMap);
+                                if (user) {
+                                    allParsedShifts.push({ 
+                                        task, 
+                                        userId: user.uid, 
+                                        userName: user.originalName,
+                                        type: 'all-day',
+                                        date: shiftDate, 
+                                        address, 
+                                        bNumber,
+                                        manager,
+                                    });
+                                } else {
+                                    allFailedShifts.push({
+                                        date: shiftDate,
+                                        projectAddress: address,
+                                        cellContent: cellContentRaw,
+                                        reason: `Could not find user matching "${userName}".`,
+                                        sheetName
+                                    });
                                 }
                             }
                         }
@@ -481,14 +419,9 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
             }
         }
         
-        // --- Reconciliation Logic ---
         const allDatesFound = allParsedShifts.map(s => s.date).filter((d): d is Date => d !== null);
         if (allDatesFound.length === 0) {
-             if (isDryRun) {
-                onImportComplete(allFailedShifts, { found: [], failed: allFailedShifts });
-            } else {
-                await processAndPublish([], allFailedShifts);
-            }
+            onImportComplete(allFailedShifts, { toCreate: [], toUpdate: [], toDelete: [], failed: allFailedShifts });
             setIsProcessing(false);
             return;
         }
@@ -508,27 +441,45 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
             const shiftData = { id: doc.id, ...doc.data() } as Shift;
             existingShiftsMap.set(getShiftKey(shiftData), shiftData);
         });
+        
+        const parsedShiftsMap = new Map<string, ParsedShift>();
+        allParsedShifts.forEach(shift => parsedShiftsMap.set(getShiftKey(shift), shift));
 
-        const newShiftsToCreate = allParsedShifts.filter(parsedShift => {
-            const key = getShiftKey(parsedShift);
-            return !existingShiftsMap.has(key);
+        const toCreate = allParsedShifts.filter(p => !existingShiftsMap.has(getShiftKey(p)));
+        const toUpdate: { id: string; data: Partial<Shift> }[] = [];
+        const toDelete: string[] = [];
+
+        existingShiftsMap.forEach((dbShift, key) => {
+            const excelShift = parsedShiftsMap.get(key);
+            if (excelShift) {
+                const updateData: Partial<Shift> = {};
+                if (dbShift.bNumber !== excelShift.bNumber) updateData.bNumber = excelShift.bNumber;
+                if (dbShift.manager !== excelShift.manager) updateData.manager = excelShift.manager;
+                if (dbShift.userName !== excelShift.userName) updateData.userName = excelShift.userName;
+                
+                if (Object.keys(updateData).length > 0) {
+                    toUpdate.push({ id: dbShift.id, data: updateData });
+                }
+            } else {
+                 const protectedStatuses: ShiftStatus[] = ['completed', 'incomplete', 'on-site'];
+                 if(!protectedStatuses.includes(dbShift.status)){
+                    toDelete.push(dbShift.id);
+                 }
+            }
         });
         
+        const reconciliationResult: ReconciliationResult = { toCreate, toUpdate, toDelete, failed: allFailedShifts };
+        
         if (isDryRun) {
-            onImportComplete(allFailedShifts, { found: newShiftsToCreate, failed: allFailedShifts });
+            onImportComplete(allFailedShifts, reconciliationResult);
         } else {
-            await processAndPublish(newShiftsToCreate, allFailedShifts);
-            setFile(null);
-            const fileInput = document.getElementById('shift-file-input') as HTMLInputElement;
-            if (fileInput) fileInput.value = "";
-            setSheetNames([]);
-            setEnabledSheets({});
+            await processAndPublish(reconciliationResult);
         }
 
       } catch (err: any) {
         console.error('Import failed:', err);
         setError(err.message || 'An unexpected error occurred during import.');
-        onImportComplete([], {found: [], failed: []});
+        onImportComplete([], { toCreate: [], toUpdate: [], toDelete: [], failed: [] });
       } finally {
         setIsProcessing(false);
       }
@@ -600,3 +551,4 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
     </div>
   );
 }
+    
