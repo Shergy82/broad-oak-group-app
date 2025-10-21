@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -275,35 +276,31 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
 
             const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, blankrows: false, defval: null });
             
-            const jobBlockStartRows: number[] = [];
+            // Find all potential date rows
+            const dateRowIndices: number[] = [];
             jsonData.forEach((row, i) => {
-                if (String(row[0]).trim().toLowerCase() === 'manager') {
-                    jobBlockStartRows.push(i);
+                const potentialDate = parseDate(row[5]); // Check column F for a date
+                if (potentialDate && i > 0) {
+                    dateRowIndices.push(i);
                 }
             });
             
-            if (jobBlockStartRows.length === 0) continue;
+            if (dateRowIndices.length === 0) continue;
 
-            for (let i = 0; i < jobBlockStartRows.length; i++) {
-                const managerRowIndex = jobBlockStartRows[i];
+            for (let i = 0; i < dateRowIndices.length; i++) {
+                const dateRowIndex = dateRowIndices[i];
+                const managerRowIndex = dateRowIndex - 1;
+                const nextDateRowIndex = i + 1 < dateRowIndices.length ? dateRowIndices[i] : jsonData.length;
+
                 const managerName = String(jsonData[managerRowIndex]?.[0] || 'Unknown Manager').trim();
 
-                let addressHeaderRowIndex = -1;
-                for (let r = managerRowIndex + 1; r < jsonData.length; r++) {
-                    if (String(jsonData[r]?.[0]).trim().toLowerCase() === 'site address') {
-                        addressHeaderRowIndex = r;
-                        break;
-                    }
-                }
-                if (addressHeaderRowIndex === -1) continue;
+                const dateRow = jsonData[dateRowIndex];
+                if (!dateRow) continue;
 
-                const headerRowIndex = addressHeaderRowIndex - 1;
-                const headerRow = jsonData[headerRowIndex];
-                if (!headerRow) continue;
-
+                // Extract dates from the date row
                 const dates: { date: Date | null, colIndex: number }[] = [];
-                for (let c = 5; c < headerRow.length; c++) {
-                    const date = parseDate(headerRow[c]);
+                for (let c = 5; c < dateRow.length; c++) { // Start from Column F
+                    const date = parseDate(dateRow[c]);
                     if (date) {
                         dates.push({ date, colIndex: c });
                     } else {
@@ -311,30 +308,31 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                     }
                 }
                 
-                let addressLines = [];
-                for (let r = addressHeaderRowIndex; r < jsonData.length; r++) {
+                // Find grid boundaries
+                const gridStartRow = dateRowIndex + 1;
+                let endOfJobRow = -1;
+                 for (let r = gridStartRow; r < nextDateRowIndex; r++) {
+                    if (String(jsonData[r]?.[0] || '').trim().toLowerCase() === 'end of this job') {
+                        endOfJobRow = r;
+                        break;
+                    }
+                }
+                
+                if (endOfJobRow === -1) continue; // Skip block if 'end of this job' is not found
+                
+                const gridEndRow = endOfJobRow;
+
+                // Extract Address
+                const addressLines = [];
+                for (let r = gridStartRow; r < gridEndRow; r++) {
                     const line = String(jsonData[r]?.[0] || '').trim();
-                    if (!line || line.toLowerCase() === 'end of this job') break;
-                    addressLines.push(line);
+                     if (line) addressLines.push(line);
                 }
                 const address = addressLines.join(', ');
                 if (!address) continue;
 
-                const gridStartRow = headerRowIndex + 1;
-                let gridEndRow = jsonData.length -1;
-                const nextBlockStartRowIndex = i + 1 < jobBlockStartRows.length ? jobBlockStartRows[i+1] : -1;
-
-                for (let r = gridStartRow; r < jsonData.length; r++) {
-                    if (String(jsonData[r]?.[0]).trim().toLowerCase() === 'end of this job') {
-                        gridEndRow = r - 1;
-                        break;
-                    }
-                }
-                if (nextBlockStartRowIndex > -1 && nextBlockStartRowIndex < gridEndRow) {
-                    gridEndRow = nextBlockStartRowIndex - 1;
-                }
-
-                for (let r = gridStartRow; r <= gridEndRow; r++) {
+                // Parse the shift grid
+                for (let r = gridStartRow; r < gridEndRow; r++) {
                     const rowData = jsonData[r];
                     if (!rowData) continue;
                     
@@ -377,7 +375,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
         if (allParsedShifts.length === 0 && allFailedShifts.length === 0) {
              onImportComplete(allFailedShifts, { toCreate: [], toUpdate: [], toDelete: [], failed: allFailedShifts });
              setIsProcessing(false);
-             setError("No shifts were found in the selected sheets. Please check the file format and ensure 'MANAGER' and 'SITE ADDRESS' blocks are present.");
+             setError("No shifts were found in the selected sheets. Please check the file format and ensure there are valid date rows and 'END OF THIS JOB' markers.");
              return;
         }
         
