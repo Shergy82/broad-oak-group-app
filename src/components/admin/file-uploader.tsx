@@ -81,6 +81,7 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
         
         const distance = levenshtein(normalizedName, user.normalizedName);
 
+        // Prioritize exact substring matches (e.g., "rory" in "rory skinner")
         if (user.normalizedName.includes(normalizedName)) {
              if (distance < minDistance) {
                 minDistance = distance;
@@ -88,6 +89,7 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
             }
         }
 
+        // Check against first name only
         const firstNameNormalized = normalizeText(user.originalName.split(' ')[0]);
         if (firstNameNormalized === normalizedName) {
              const firstNameDistance = levenshtein(normalizedName, firstNameNormalized);
@@ -104,6 +106,7 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
         }
     }
     
+    // Looser threshold for final best match
     if (bestMatch && minDistance <= 3) {
         return bestMatch;
     }
@@ -113,15 +116,17 @@ const findUser = (name: string, userMap: UserMapEntry[]): UserMapEntry | null =>
 
 const parseDate = (dateValue: any): Date | null => {
     if (!dateValue) return null;
-    if (typeof dateValue === 'number' && dateValue > 1) {
+    if (typeof dateValue === 'number' && dateValue > 1) { // Excel serial date
         const excelEpoch = new Date(1899, 11, 30);
         const d = new Date(excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000);
         if (!isNaN(d.getTime())) {
+             // Return as UTC to avoid timezone shifts during processing
              return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
         }
     }
     if (typeof dateValue === 'string') {
         const lowerCell = dateValue.toLowerCase();
+        // Matches "dd-mon" like "03-oct"
         const dateMatch = lowerCell.match(/(\d{1,2})[ -/]+([a-z]{3})/);
          if (dateMatch) {
             const day = parseInt(dateMatch[1], 10);
@@ -133,6 +138,7 @@ const parseDate = (dateValue: any): Date | null => {
             }
         }
 
+        // Matches "day dd-mon" like "mon 26-sep"
         const dayNameMatch = lowerCell.match(/(mon|tue|wed|thu|fri|sat|sun)\s+(\d{1,2})[ -/]+([a-z]{3})/);
         if (dayNameMatch) {
             const day = parseInt(dayNameMatch[2], 10);
@@ -324,6 +330,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                 let dateRow: (Date | null)[] = [];
                 let dateRowIndex = -1;
 
+                // Find address and date row within the block
                 for (let r = blockStartRowIndex; r < blockEndRowIndex; r++) {
                     const row = jsonData[r] || [];
                     const cellAValue = row[0];
@@ -343,13 +350,13 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                             if (cell instanceof Date) dateCellCount++;
                             else if (typeof cell === 'string') {
                                 const lowerCell = cell.toLowerCase();
-                                if (dayAbbrs.some(day => lowerCell.startsWith(day)) || monthAbbrs.some(abbr => lowerCell.includes(abbr))) {
+                                if (dayAbbrs.some(day => lowerCell.startsWith(day)) || monthAbbrs.some(abbr => lowerCell.includes(abbr)) || lowerCell.match(/\d{1,2}[-\/]\w{3}/)) {
                                     dateCellCount++;
                                 }
                             }
                         });
 
-                        if (dateCellCount > 2) {
+                        if (dateCellCount > 2) { // Heuristic for identifying a date row
                             dateRowIndex = r;
                             dateRow = row.map(cell => parseDate(cell));
                         }
@@ -366,7 +373,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                 }
                 // Try to find BNumber near address
                 const addressRowIndex = jsonData.findIndex(row => (row[0] || '').toString().includes(address));
-                if (addressRowIndex > -1) {
+                if (addressRowIndex > -1 && addressRowIndex > 0) {
                     const bNumCandidate = (jsonData[addressRowIndex-1]?.[0] || '').toString();
                     if(bNumCandidate.match(/^[a-zA-Z]?\d+/)) {
                         bNumber = bNumCandidate;
@@ -379,6 +386,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                     if (!rowData || !rowData[0] || typeof rowData[0] !== 'string') continue;
                     
                     const task = rowData[0].trim();
+                    if (!task) continue;
                     
                     for (let c = 1; c < Math.min(rowData.length, dateRow.length); c++) { 
                         const shiftDate = dateRow[c];
@@ -389,7 +397,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
                         
                         const usersInCell = cellContentRaw.split(/&|,|\+/g).map(name => name.trim()).filter(Boolean);
 
-                        if (task && usersInCell.length > 0) {
+                        if (usersInCell.length > 0) {
                             for (const userName of usersInCell) {
                                 const user = findUser(userName, userMap);
                                 if (user) {
@@ -420,7 +428,7 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
         }
         
         const allDatesFound = allParsedShifts.map(s => s.date).filter((d): d is Date => d !== null);
-        if (allDatesFound.length === 0) {
+        if (allDatesFound.length === 0 && allFailedShifts.length > 0) {
             onImportComplete(allFailedShifts, { toCreate: [], toUpdate: [], toDelete: [], failed: allFailedShifts });
             setIsProcessing(false);
             return;
@@ -551,4 +559,6 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
     </div>
   );
 }
+    
+
     
