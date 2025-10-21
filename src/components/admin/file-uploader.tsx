@@ -61,9 +61,13 @@ const findRowsWithText = (sheet: XLSX.WorkSheet, text: string): number[] => {
     const rows: number[] = [];
     const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1');
     for (let R = range.s.r; R <= range.e.r; ++R) {
-        const cellValue = getCellValue(sheet, R, 0); // Only check Column A
-        if (cellValue.toUpperCase() === text.toUpperCase()) {
-            rows.push(R);
+        // Check multiple columns for the text
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+             const cellValue = getCellValue(sheet, R, C);
+             if (cellValue.toUpperCase().includes(text.toUpperCase())) {
+                rows.push(R);
+                break; // Move to next row once found
+            }
         }
     }
     return rows.sort((a, b) => a - b);
@@ -82,8 +86,6 @@ const parseDate = (dateStr: string): Date | null => {
     // Handle Excel's date serial number format
     const excelDateNumber = Number(dateStr);
     if (!isNaN(excelDateNumber) && excelDateNumber > 1) {
-        // Excel's epoch starts on 1900-01-01, but it incorrectly treats 1900 as a leap year.
-        // It's safer to use the 'date-fns' addDays function with a known epoch.
         const excelEpoch = new Date(1899, 11, 30);
         return addDays(excelEpoch, excelDateNumber);
     }
@@ -91,16 +93,17 @@ const parseDate = (dateStr: string): Date | null => {
     return null;
 }
 
+// A more robust check for a date row
 const isDateRow = (sheet: XLSX.WorkSheet, row: number): boolean => {
-    // A row is considered a date row if at least one cell from column F onwards is a valid date.
-    for (let C = 5; C < 50; C++) { // Check from col F onwards
+    let dateCount = 0;
+    // A row is a date row if it has at least 3 valid dates starting from column F
+    for (let C = 5; C < 20; C++) { // Check from col F up to T
         const cellValue = getCellValue(sheet, row, C);
         if (cellValue && parseDate(cellValue)) {
-            return true;
+            dateCount++;
         }
-        if (C > 7 && !cellValue) break; // Optimization: stop if we see a blank after a couple of dates
     }
-    return false;
+    return dateCount >= 3;
 };
 
 
@@ -149,11 +152,14 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
   }
 
   const handleProcessFile = async () => {
+    console.log("--- Starting File Processing ---");
     if (!file) {
+      console.error("Processing stopped: No file selected.");
       setError('Please select a file first.');
       return;
     }
     if (usersLoading) {
+      console.error("Processing stopped: User data is still loading.");
       setError("Still loading user data. Please wait a moment and try again.");
       return;
     }
@@ -164,150 +170,188 @@ export function FileUploader({ onImportComplete, onFileSelect, shiftsToPublish, 
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
+        console.log("File loaded into reader.");
         const data = e.target?.result;
-        if (!data) throw new Error("Could not read file data.");
+        if (!data) {
+             console.error("File reader result is empty.");
+             throw new Error("Could not read file data.");
+        }
         
         const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellStyles: true });
+        console.log("Workbook parsed. Sheets found:", workbook.SheetNames);
         
         let allShifts: ParsedShift[] = [];
         let allFailed: FailedShift[] = [];
 
         workbook.SheetNames.forEach(sheetName => {
-            if (!enabledSheets[sheetName]) return;
+            if (!enabledSheets[sheetName]) {
+                console.log(`Skipping sheet: ${sheetName} (disabled)`);
+                return;
+            }
+            console.log(`--- Processing sheet: ${sheetName} ---`);
             
             const sheet = workbook.Sheets[sheetName];
-            if (!sheet || !sheet['!ref']) return;
+            if (!sheet || !sheet['!ref']) {
+                console.warn(`Sheet ${sheetName} is empty or invalid.`);
+                return;
+            }
 
+            const range = XLSX.utils.decode_range(sheet['!ref']);
             const jobStartRows = findRowsWithText(sheet, "START OF NEW JOB");
+            console.log(`Found ${jobStartRows.length} 'START OF NEW JOB' blocks at rows:`, jobStartRows.map(r => r + 1));
+
 
             jobStartRows.forEach((jobStartRow, index) => {
-                const endOfBlockRow = (index + 1 < jobStartRows.length) ? jobStartRows[index + 1] - 1 : XLSX.utils.decode_range(sheet['!ref']!).e.r;
-                
-                // --- Step 3: Get Manager Name ---
-                const jobManagerHeaderRow = jobStartRow + 2; // "JOB MANAGER" header
-                const managerName = getCellValue(sheet, jobManagerHeaderRow + 1, 0); // Name is below header
-                
-                let addressHeaderRow = -1;
-                let dateBoundaryRowForAddress = -1;
-                let dateRow = -1;
-                let gridStartRow = -1;
-                let gridEndRow = -1;
-                
-                // Scan to find the key rows based on their content/structure
-                for (let r = jobManagerHeaderRow + 2; r <= endOfBlockRow; r++) {
-                    if (getCellValue(sheet, r, 0).toUpperCase() === 'ADDRESS' && addressHeaderRow === -1) {
-                        addressHeaderRow = r;
-                    }
-                    // Look for the dark blue date boundary row
-                    if (addressHeaderRow !== -1 && dateBoundaryRowForAddress === -1 && getCellValue(sheet, r, 0) && parseDate(getCellValue(sheet, r, 0))) {
-                        dateBoundaryRowForAddress = r;
-                    }
-                    // Look for the light blue date row
-                    if (isDateRow(sheet, r) && dateRow === -1) {
-                        dateRow = r;
-                        gridStartRow = r + 1; // Grid starts right after the date row
-                    }
-                }
+                const currentJobNumber = index + 1;
+                console.log(`\n[Job ${currentJobNumber}] Processing block starting at row ${jobStartRow + 1}`);
 
-                // The grid ends before the next job starts, or at the end of the block
-                gridEndRow = endOfBlockRow;
+                try {
+                    const endOfBlockRow = (index + 1 < jobStartRows.length) ? jobStartRows[index + 1] - 1 : range.e.r;
+                    console.log(`[Job ${currentJobNumber}] Block ends at row ${endOfBlockRow + 1}`);
 
+                    // 1. Find Manager
+                    const jobManagerHeaderRow = findRowsWithText(sheet, "JOB MANAGER")[index];
+                    if (jobManagerHeaderRow === undefined || jobManagerHeaderRow > endOfBlockRow) {
+                        console.warn(`[Job ${currentJobNumber}] Could not find 'JOB MANAGER' header in this block.`);
+                        return;
+                    }
+                    const managerName = getCellValue(sheet, jobManagerHeaderRow + 1, 0); // Column A
+                    console.log(`[Job ${currentJobNumber}] Found Manager: '${managerName}'`);
 
-                // --- Step 4: Get Site Address ---
-                let siteAddress = "";
-                if (addressHeaderRow !== -1 && dateBoundaryRowForAddress !== -1) {
-                    for (let r = addressHeaderRow + 1; r < dateBoundaryRowForAddress; r++) {
-                        const addrPart = getCellValue(sheet, r, 0);
-                        if (addrPart) {
-                            siteAddress += (siteAddress ? '\n' : '') + addrPart;
+                    // 2. Find Address
+                    const addressHeaderRow = findRowsWithText(sheet, "ADDRESS")[index];
+                    let siteAddress = "";
+                    let addressEndRow = -1;
+
+                    if (addressHeaderRow !== undefined && addressHeaderRow < endOfBlockRow) {
+                        for (let r = addressHeaderRow + 1; r <= endOfBlockRow; r++) {
+                            const cellVal = getCellValue(sheet, r, 0);
+                             // The dark blue line with a date is the stop signal
+                            if (parseDate(cellVal)) {
+                                addressEndRow = r - 1;
+                                break;
+                            }
+                            siteAddress += (siteAddress ? '\n' : '') + cellVal;
+                        }
+                        if (addressEndRow === -1) addressEndRow = endOfBlockRow; // If no date found, go to end of block
+                        console.log(`[Job ${currentJobNumber}] Found Address: "${siteAddress}"`);
+                    } else {
+                         console.warn(`[Job ${currentJobNumber}] Could not find 'ADDRESS' header in this block.`);
+                    }
+
+                    // 3. Find Date Row
+                    let dateRow = -1;
+                    for (let r = addressEndRow > -1 ? addressEndRow : jobStartRow; r <= endOfBlockRow; r++) {
+                        if (isDateRow(sheet, r)) {
+                            dateRow = r;
+                            break;
                         }
                     }
-                }
 
-                if (!siteAddress) { // Fallback if structure is slightly different
-                    siteAddress = `Project from sheet '${sheetName}'`;
-                }
-                
-                // --- Step 5 & 7: Find Dates and Parse Shifts ---
-                if (dateRow === -1 || gridStartRow === -1) return; // Cannot proceed without a date row
-                
-                const dates: { col: number; date: Date }[] = [];
-                for (let c = 5; c < 50; c++) { // Check from col F up to AX
-                    const dateStr = getCellValue(sheet, dateRow, c);
-                    if (!dateStr) break;
-                    const parsed = parseDate(dateStr);
-                    if (parsed) {
-                        dates.push({ col: c, date: parsed });
+                    if (dateRow === -1) {
+                         console.warn(`[Job ${currentJobNumber}] Could not find a valid date row for this block.`);
+                         return;
                     }
-                }
-                if (dates.length === 0) return;
-
-
-                // --- Step 6 & 7: Scan Grid and Parse Shifts ---
-                for (let r = gridStartRow; r <= gridEndRow; r++) {
-                    // Check if this row is the start of the next job block and stop
-                    if (getCellValue(sheet, r, 0).toUpperCase() === 'START OF NEW JOB') {
-                        break;
-                    }
+                    console.log(`[Job ${currentJobNumber}] Found Date Row at row ${dateRow + 1}`);
                     
-                    for (const { col, date } of dates) {
-                        const cellContent = getCellValue(sheet, r, col);
-                        if (!cellContent) continue;
-
-                        const parts = cellContent.split('-').map(p => p.trim());
-                        if (parts.length < 2) {
-                            allFailed.push({ date, projectAddress: siteAddress, cellContent, reason: "Invalid format. Expected 'Task - User'.", sheetName, rowNumber: r + 1 });
-                            continue;
+                    const dates: { col: number; date: Date }[] = [];
+                    for (let c = 5; c <= range.e.c; c++) { // Check from col F onwards
+                        const dateStr = getCellValue(sheet, dateRow, c);
+                        if (!dateStr && dates.length > 0) {
+                            console.log(`[Job ${currentJobNumber}] End of dates at column ${C}.`);
+                            break; // Stop at first blank after finding some dates
                         }
-
-                        const task = parts.slice(0, -1).join('-').trim();
-                        const userNameFromCell = parts[parts.length - 1].trim();
-                        const userId = userMap.get(userNameFromCell.toUpperCase());
-
-                        if (!userId) {
-                            allFailed.push({ date, projectAddress: siteAddress, cellContent, reason: `User '${userNameFromCell}' not found in the system.`, sheetName, rowNumber: r + 1 });
-                            continue;
+                        const parsed = parseDate(dateStr);
+                        if (parsed) {
+                            dates.push({ col: c, date: parsed });
                         }
-
-                        // Determine shift type (am/pm/all-day)
-                        let shiftType: 'am' | 'pm' | 'all-day' = 'all-day';
-                        const cellAbove = getCellValue(sheet, r - 1, col).toUpperCase();
-                        if (cellAbove.includes('AM')) {
-                            shiftType = 'am';
-                        } else if (cellAbove.includes('PM')) {
-                            shiftType = 'pm';
-                        }
-                        
-                        allShifts.push({
-                          task,
-                          userName: userNameFromCell, // Keep original casing for display
-                          userId,
-                          date,
-                          address: siteAddress,
-                          manager: managerName,
-                          type: shiftType, 
-                        });
                     }
+                    console.log(`[Job ${currentJobNumber}] Parsed ${dates.length} dates.`);
+
+                    // 4. Parse Shift Grid
+                    const gridStartRow = dateRow + 1;
+                    const gridEndRow = endOfBlockRow;
+                    console.log(`[Job ${currentJobNumber}] Scanning shift grid from row ${gridStartRow + 1} to ${gridEndRow + 1}`);
+
+                    for (let r = gridStartRow; r <= gridEndRow; r++) {
+                         // Check if this row is the start of the next job block and stop
+                        const firstCell = getCellValue(sheet, r, 0);
+                        if (firstCell.toUpperCase().includes('START OF NEW JOB') || firstCell.toUpperCase().includes('END OF THIS JOB')) {
+                            console.log(`[Job ${currentJobNumber}] Reached end of grid at row ${r + 1}`);
+                            break;
+                        }
+
+                        for (const { col, date } of dates) {
+                            const cellContent = getCellValue(sheet, r, col);
+                            if (!cellContent) continue;
+                            
+                            console.log(`[Job ${currentJobNumber}] Found shift cell at (R${r+1}, C${col+1}): "${cellContent}"`);
+
+                            const parts = cellContent.split('-').map(p => p.trim());
+                            if (parts.length < 2) {
+                                allFailed.push({ date, projectAddress: siteAddress, cellContent, reason: "Invalid format. Expected 'Task - User'.", sheetName, rowNumber: r + 1 });
+                                continue;
+                            }
+
+                            const task = parts.slice(0, -1).join('-').trim();
+                            const userNameFromCell = parts[parts.length - 1].trim();
+                            const userId = userMap.get(userNameFromCell.toUpperCase());
+
+                            if (!userId) {
+                                allFailed.push({ date, projectAddress: siteAddress, cellContent, reason: `User '${userNameFromCell}' not found in the system.`, sheetName, rowNumber: r + 1 });
+                                continue;
+                            }
+
+                            let shiftType: 'am' | 'pm' | 'all-day' = 'all-day';
+                            const cellAbove = getCellValue(sheet, r - 1, col).toUpperCase();
+                            if (cellAbove.includes('AM')) {
+                                shiftType = 'am';
+                            } else if (cellAbove.includes('PM')) {
+                                shiftType = 'pm';
+                            }
+                            
+                            const newShift = {
+                              task,
+                              userName: userNameFromCell,
+                              userId,
+                              date,
+                              address: siteAddress,
+                              manager: managerName,
+                              type: shiftType, 
+                            };
+                            console.log(`[Job ${currentJobNumber}] Successfully parsed shift:`, newShift);
+                            allShifts.push(newShift);
+                        }
+                    }
+                } catch (jobError: any) {
+                    console.error(`An error occurred while processing Job ${currentJobNumber} in sheet ${sheetName}:`, jobError);
+                    // Add a generic failure for this block
+                    allFailed.push({ date: null, projectAddress: `Job ${currentJobNumber}`, cellContent: "Block Processing Failed", reason: jobError.message, sheetName, rowNumber: jobStartRow + 1 });
                 }
             });
         });
 
-        // In a real scenario, this is where you'd reconcile with existing shifts.
-        // For now, we will just treat them all as new creations for the dry run.
+        console.log("--- Finished All Sheets ---");
+        console.log(`Total shifts parsed: ${allShifts.length}`);
+        console.log(`Total failed entries: ${allFailed.length}`);
+        
         const dryRunResult: ReconciliationResult = {
           toCreate: allShifts,
           toUpdate: [],
           toDelete: [],
           failed: allFailed,
         };
-
+        
         onImportComplete(allFailed, dryRunResult);
+        console.log("--- onImportComplete callback called ---");
 
       } catch (err: any) {
+        console.error("Fatal error during file processing:", err);
         setError(`Failed to process file. Error: ${err.message}`);
         toast({ variant: "destructive", title: "Processing Error", description: err.message });
       } finally {
         setIsProcessing(false);
+         console.log("--- Ending File Processing ---");
       }
     };
     reader.readAsArrayBuffer(file);
