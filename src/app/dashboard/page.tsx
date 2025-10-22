@@ -13,6 +13,7 @@ import { db } from '@/lib/firebase';
 import type { Announcement, Shift } from '@/types';
 import { UnreadAnnouncements } from '@/components/announcements/unread-announcements';
 import { NewShiftsDialog } from '@/components/dashboard/new-shifts-dialog';
+import { getCorrectedLocalDate } from '@/lib/utils';
 
 export default function DashboardPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -87,7 +88,11 @@ export default function DashboardPage() {
 
   const newShifts = useMemo(() => {
     if (!user || loadingData || allShifts.length === 0) return [];
-    return allShifts.filter(shift => shift.status === 'pending-confirmation');
+    
+    const pendingShifts = allShifts.filter(shift => shift.status === 'pending-confirmation');
+    
+    // Sort shifts by date, from earliest to latest
+    return pendingShifts.sort((a, b) => getCorrectedLocalDate(a.date).getTime() - getCorrectedLocalDate(b.date).getTime());
   }, [allShifts, user, loadingData]);
   
   const isLoading = isAuthLoading || isProfileLoading || loadingData;
