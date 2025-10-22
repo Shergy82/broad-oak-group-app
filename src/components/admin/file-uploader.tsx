@@ -14,6 +14,7 @@ import type { Shift, UserProfile, ShiftStatus } from '@/types';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 
 type ParsedShift = Omit<Shift, 'id' | 'status' | 'date' | 'createdAt' | 'userName'> & { date: Date; userName: string; };
@@ -582,17 +583,19 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                     <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)]">
                         <DropdownMenuLabel>Available Sheets</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        {sheetNames.map(name => (
-                             <DropdownMenuCheckboxItem
-                                key={name}
-                                checked={selectedSheets.includes(name)}
-                                onCheckedChange={() => toggleSheet(name)}
-                                onSelect={(e) => e.preventDefault()} // prevent menu from closing on item click
-                             >
-                                <Sheet className="mr-2 h-4 w-4 text-muted-foreground" />
-                                {name}
-                            </DropdownMenuCheckboxItem>
-                        ))}
+                        <ScrollArea className="h-72">
+                            {sheetNames.map(name => (
+                                <DropdownMenuCheckboxItem
+                                    key={name}
+                                    checked={selectedSheets.includes(name)}
+                                    onCheckedChange={() => toggleSheet(name)}
+                                    onSelect={(e) => e.preventDefault()} // prevent menu from closing on item click
+                                >
+                                    <Sheet className="mr-2 h-4 w-4 text-muted-foreground" />
+                                    {name}
+                                </DropdownMenuCheckboxItem>
+                            ))}
+                        </ScrollArea>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
