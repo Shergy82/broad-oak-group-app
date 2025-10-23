@@ -219,30 +219,6 @@ export default function UserManagementPage() {
       }
   };
 
-  const handleRoleChange = async (uid: string, newRole: 'user' | 'admin') => {
-    if (!isOwner) {
-        toast({ variant: "destructive", title: "Permission Denied", description: "Only the owner can change roles." });
-        return;
-    }
-    
-    if (!functions) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Functions service not available.' });
-        return;
-    }
-
-    toast({ title: "Updating Role...", description: `Please wait.` });
-
-    try {
-        const setUserRoleFn = httpsCallable(functions, 'setUserRole');
-        await setUserRoleFn({ uid, newRole });
-        toast({ title: "Success", description: `User role has been changed to ${newRole}.` });
-    } catch (error: any) {
-        console.error("Error updating user role:", error);
-        // The page will auto-revert on error, so we show the error toast.
-        toast({ variant: "destructive", title: "Role Update Failed", description: error.message || "Could not update user role." });
-    }
-  };
-
   const handleDeleteUser = async (uid: string) => {
       if (!isOwner) {
           toast({ variant: "destructive", title: "Permission Denied" });
@@ -328,24 +304,9 @@ export default function UserManagementPage() {
                           </TableCell>
                           <TableCell>{user.phoneNumber || 'N/A'}</TableCell>
                           <TableCell>
-                              {user.role === 'owner' || !isOwner ? (
-                                  <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
-                                      {user.role}
-                                  </Badge>
-                              ) : (
-                                  <Select
-                                      value={user.role}
-                                      onValueChange={(value) => handleRoleChange(user.uid, value as 'user' | 'admin')}
-                                  >
-                                      <SelectTrigger className="w-[120px]">
-                                          <SelectValue placeholder="Set Role" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                          <SelectItem value="user">User</SelectItem>
-                                          <SelectItem value="admin">Admin</SelectItem>
-                                      </SelectContent>
-                                  </Select>
-                              )}
+                            <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
+                                {user.role}
+                            </Badge>
                           </TableCell>
                           <TableCell>
                               {getStatusBadge(user.status)}
@@ -410,24 +371,9 @@ export default function UserManagementPage() {
                   <CardContent className="text-sm space-y-3">
                      <div className="flex items-center gap-2">
                         <strong>Role:</strong>
-                        {user.role === 'owner' || !isOwner ? (
-                            <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
-                                {user.role}
-                            </Badge>
-                        ) : (
-                            <Select
-                                value={user.role}
-                                onValueChange={(value) => handleRoleChange(user.uid, value as 'user' | 'admin')}
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Set Role" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="user">User</SelectItem>
-                                    <SelectItem value="admin">Admin</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        )}
+                        <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
+                            {user.role}
+                        </Badge>
                       </div>
                      
                      {isPrivilegedUser && (
@@ -489,5 +435,3 @@ export default function UserManagementPage() {
     </Card>
   );
 }
-
-    
