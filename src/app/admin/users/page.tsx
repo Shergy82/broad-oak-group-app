@@ -240,7 +240,7 @@ export default function UserManagementPage() {
   
   const handleManageUser = (uid: string) => {
     if (projectId) {
-      const url = `https://console.firebase.google.com/project/${projectId}/authentication/users/${uid}`;
+      const url = `https://console.firebase.google.com/project/${projectId}/firestore/data/~2Fusers~2F${uid}`;
       window.open(url, '_blank');
     } else {
       toast({
