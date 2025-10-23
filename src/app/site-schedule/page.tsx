@@ -135,8 +135,8 @@ export default function SiteSchedulePage() {
     }, []);
 
     const naturalSort = (a: string, b: string) => {
-        const aParts = a.match(/(\\d+)|(\\D+)/g) || [];
-        const bParts = b.match(/(\\d+)|(\\D+)/g) || [];
+        const aParts = a.match(/(\d+)|(\D+)/g) || [];
+        const bParts = b.match(/(\d+)|(\D+)/g) || [];
         
         for (let i = 0; i < Math.min(aParts.length, bParts.length); i++) {
             const partA = aParts[i];
