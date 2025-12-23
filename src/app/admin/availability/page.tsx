@@ -25,7 +25,9 @@ type Role = 'user' | 'admin' | 'owner';
 
 interface AvailableUser {
   user: UserProfile;
-  availability: 'full' | 'am' | 'pm';
+  availability: 'full' | 'am' | 'pm' | 'partial';
+  availableDates?: Date[];
+  shiftLocation?: string;
 }
 
 const getInitials = (name?: string) => {
@@ -146,20 +148,20 @@ export default function AvailabilityPage() {
       );
   
       return usersToConsider
-        .map((user) => {
+        .map((user): AvailableUser | null => {
           const userShifts = shiftsOnDate.filter((s) => s.userId === user.uid);
           
           if (userShifts.length === 0) {
-            return { user, availability: 'full' as const };
+            return { user, availability: 'full' };
           }
   
           if (userShifts.length === 1) {
             const shift = userShifts[0];
             if (shift.type === 'am') {
-              return { user, availability: 'pm' as const };
+              return { user, availability: 'pm', shiftLocation: shift.address };
             }
             if (shift.type === 'pm') {
-              return { user, availability: 'am' as const };
+              return { user, availability: 'am', shiftLocation: shift.address };
             }
           }
           
@@ -169,18 +171,32 @@ export default function AvailabilityPage() {
         .filter((u): u is AvailableUser => u !== null);
   
     } else {
-      // For multi-day ranges, only show users who are fully available for the entire duration.
+      // For multi-day ranges, show users who are fully available or partially available.
       return usersToConsider
-        .filter((user) => {
-          const hasShiftsInRange = allShifts.some(
+        .map((user): AvailableUser | null => {
+          const intervalDays = eachDayOfInterval({ start, end });
+          const userShifts = allShifts.filter(
             (shift) =>
               shift.userId === user.uid &&
               getCorrectedLocalDate(shift.date) >= start &&
               getCorrectedLocalDate(shift.date) <= end
           );
-          return !hasShiftsInRange;
+          
+          if (userShifts.length === 0) {
+              return { user, availability: 'full' };
+          }
+
+          const busyDays = new Set(userShifts.map(s => format(getCorrectedLocalDate(s.date), 'yyyy-MM-dd')));
+          
+          const availableDates = intervalDays.filter(day => !busyDays.has(format(day, 'yyyy-MM-dd')));
+          
+          if (availableDates.length > 0) {
+              return { user, availability: 'partial', availableDates };
+          }
+
+          return null;
         })
-        .map((user) => ({ user, availability: 'full' as const }));
+        .filter((u): u is AvailableUser => u !== null);
     }
   }, [dateRange, allShifts, allUsers, selectedRoles, selectedUserIds]);
   
@@ -288,21 +304,41 @@ export default function AvailabilityPage() {
                     </h3>
                      {availableUsers.length > 0 ? (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                           {availableUsers.map(({ user, availability }) => (
-                               <div key={user.uid} className="flex items-center gap-3 p-3 border rounded-md bg-muted/50">
+                           {availableUsers.map(({ user, availability, shiftLocation, availableDates }) => (
+                               <div key={user.uid} className="flex items-start gap-3 p-3 border rounded-md bg-muted/50">
                                    <Avatar className="h-8 w-8">
                                        <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                                    </Avatar>
-                                   <div>
+                                   <div className="flex-1">
                                       <p className="text-sm font-medium">{user.name}</p>
-                                      {availability === 'am' || availability === 'pm' ? (
-                                        <Badge variant="secondary" className="capitalize mt-1">
-                                          {availability === 'am' && <Sun className="h-3 w-3 mr-1.5 text-orange-500" />}
-                                          {availability === 'pm' && <Moon className="h-3 w-3 mr-1.5 text-sky-500" />}
-                                          Available {availability.toUpperCase()}
-                                        </Badge>
-                                      ) : (
-                                        <Badge variant="outline" className="mt-1 border-green-500/50 bg-green-500/10 text-green-700">Fully Available</Badge>
+                                      {availability === 'full' && (
+                                          <Badge variant="outline" className="mt-1 border-green-500/50 bg-green-500/10 text-green-700">Fully Available</Badge>
+                                      )}
+                                      {(availability === 'am' || availability === 'pm') && (
+                                        <>
+                                          <Badge variant="secondary" className="capitalize mt-1">
+                                            {availability === 'am' && <Sun className="h-3 w-3 mr-1.5 text-orange-500" />}
+                                            {availability === 'pm' && <Moon className="h-3 w-3 mr-1.5 text-sky-500" />}
+                                            Available {availability.toUpperCase()}
+                                          </Badge>
+                                          {shiftLocation && (
+                                              <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1.5">
+                                                  <MapPin className="h-3 w-3" />
+                                                  Busy at: {shiftLocation}
+                                              </p>
+                                          )}
+                                        </>
+                                      )}
+                                      {availability === 'partial' && availableDates && (
+                                          <div className="text-xs mt-1 space-y-1">
+                                              <Badge variant="outline" className="border-blue-500/50 bg-blue-500/10 text-blue-700">Partially Available</Badge>
+                                              <p className="text-muted-foreground font-medium">Free on:</p>
+                                              <ul className="list-disc list-inside">
+                                                  {availableDates.map(d => (
+                                                      <li key={d.toISOString()}>{format(d, 'EEE, dd MMM')}</li>
+                                                  ))}
+                                              </ul>
+                                          </div>
                                       )}
                                    </div>
                                </div>
