@@ -373,17 +373,17 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                             continue;
                         }
                         
-                        // NEW LOGIC TO PARSE SHIFT TYPE, TASK, AND USER
-                        const contentUpper = cellContent.toUpperCase();
+                        // Robustly parse shift type, then parse task and user from the remainder.
                         let shiftType: 'am' | 'pm' | 'all-day' = 'all-day';
                         let remainingContent = cellContent;
 
-                        if (contentUpper.includes('-AM')) {
+                        // Use regex with word boundaries (\b) to avoid matching "lamp" etc.
+                        if (/\bAM\b/i.test(cellContent)) {
                             shiftType = 'am';
-                            remainingContent = cellContent.replace(/-AM/i, '').trim();
-                        } else if (contentUpper.includes('-PM')) {
+                            remainingContent = remainingContent.replace(/\bAM\b/i, '').trim();
+                        } else if (/\bPM\b/i.test(cellContent)) {
                             shiftType = 'pm';
-                            remainingContent = cellContent.replace(/-PM/i, '').trim();
+                            remainingContent = remainingContent.replace(/\bPM\b/i, '').trim();
                         }
                         
                         const parts = remainingContent.split('-').map(p => p.trim());
@@ -401,7 +401,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                                             task: task, 
                                             userId: user.uid, 
                                             userName: user.originalName,
-                                            type: shiftType, // Use parsed shift type
+                                            type: shiftType,
                                             date: shiftDate, 
                                             address: address, 
                                             bNumber: bNumber,
