@@ -45,6 +45,28 @@ const getInitials = (name?: string) => {
       .toUpperCase();
 };
 
+const extractLocation = (address: string | undefined): string => {
+    if (!address) return '';
+
+    const postcodeRegex = /(L|l)ondon\s+([A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2})/i;
+    const match = address.match(postcodeRegex);
+
+    if (match && match[0]) {
+        return match[0].trim();
+    }
+    
+    // Fallback for just a postcode if "London" isn't there
+    const genericPostcodeRegex = /([A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2})$/i;
+    const genericMatch = address.match(genericPostcodeRegex);
+    if (genericMatch && genericMatch[0]) {
+        return genericMatch[0].trim();
+    }
+    
+    // Fallback to the last part of the address if no postcode found
+    const parts = address.split(',');
+    return parts[parts.length - 1].trim();
+};
+
 export default function AvailabilityPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
       from: startOfDay(new Date()),
@@ -355,7 +377,7 @@ export default function AvailabilityPage() {
                                                         {d.type === 'full' && <span>All Day</span>}
                                                         {d.type === 'am' && <span>AM Free</span>}
                                                         {d.type === 'pm' && <span>PM Free</span>}
-                                                        {d.shiftLocation && <span className="text-muted-foreground text-[10px] truncate">(Busy at {d.shiftLocation})</span>}
+                                                        {d.shiftLocation && <span className="text-muted-foreground text-[10px] truncate">(Busy at {extractLocation(d.shiftLocation)})</span>}
                                                     </div>
                                                 ))}
                                               </div>
