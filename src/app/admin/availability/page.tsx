@@ -169,18 +169,16 @@ export default function AvailabilityPage() {
     } else {
       // Multi-day range logic
       const allDatesInRange = eachDayOfInterval({ start, end });
-      const available: AvailableUser[] = [];
-
-      usersToConsider.forEach(user => {
+      
+      return usersToConsider.map(user => {
         const userShiftsInRange = allShifts.filter(shift =>
           shift.userId === user.uid &&
-          isSameDay(getCorrectedLocalDate(shift.date), start) <= isSameDay(getCorrectedLocalDate(shift.date), end) &&
           getCorrectedLocalDate(shift.date) >= start && getCorrectedLocalDate(shift.date) <= end
         );
 
         if (userShiftsInRange.length === 0) {
           // User is fully available for the whole range
-          available.push({ user, availability: 'full' });
+          return { user, availability: 'full' as const };
         } else {
           // User has some shifts, find the days they are free and busy
           const shiftDates = new Set(userShiftsInRange.map(s => format(getCorrectedLocalDate(s.date), 'yyyy-MM-dd')));
@@ -196,16 +194,16 @@ export default function AvailabilityPage() {
           });
 
           if (datesAvailable.length > 0) {
-            available.push({
+            return {
               user,
-              availability: 'partial',
+              availability: 'partial' as const,
               availableDates: datesAvailable,
               unavailableDates: datesUnavailable,
-            });
+            };
           }
+          return null;
         }
-      });
-      return available;
+      }).filter((u): u is AvailableUser => u !== null);
     }
   }, [dateRange, allShifts, allUsers, selectedRoles, selectedUserIds]);
   
@@ -378,4 +376,3 @@ export default function AvailabilityPage() {
     </Card>
   );
 }
-
