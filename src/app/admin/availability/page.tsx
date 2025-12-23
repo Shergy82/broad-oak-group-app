@@ -25,10 +25,7 @@ type Role = 'user' | 'admin' | 'owner';
 
 interface AvailableUser {
   user: UserProfile;
-  availability: 'full' | 'am' | 'pm' | 'partial';
-  shiftLocation?: string;
-  availableDates?: Date[];
-  unavailableDates?: Date[];
+  availability: 'full' | 'am' | 'pm';
 }
 
 const getInitials = (name?: string) => {
@@ -133,77 +130,57 @@ export default function AvailabilityPage() {
     if (!dateRange?.from || allUsers.length === 0) {
       return [];
     }
-
+  
     const start = startOfDay(dateRange.from);
     const end = dateRange.to ? startOfDay(dateRange.to) : start;
     const isSingleDay = isSameDay(start, end);
-
+  
     const usersToConsider = allUsers.filter(
       (user) =>
         selectedRoles.has(user.role as Role) && selectedUserIds.has(user.uid)
     );
-    
+  
     if (isSingleDay) {
       const shiftsOnDate = allShifts.filter((shift) =>
         isSameDay(getCorrectedLocalDate(shift.date), start)
       );
-
-      return usersToConsider.map((user) => {
+  
+      return usersToConsider
+        .map((user) => {
           const userShifts = shiftsOnDate.filter((s) => s.userId === user.uid);
+          
           if (userShifts.length === 0) {
             return { user, availability: 'full' as const };
           }
-          if (userShifts.some((s) => s.type === 'all-day') || userShifts.length > 1) {
-            return null; // Busy all day
-          }
-          const shift = userShifts[0];
-          if (shift.type === 'am') {
-            return { user, availability: 'pm' as const, shiftLocation: shift.address };
-          }
-          if (shift.type === 'pm') {
-            return { user, availability: 'am' as const, shiftLocation: shift.address };
-          }
-          return null;
-        }).filter((u): u is AvailableUser => u !== null);
-
-    } else {
-      // Multi-day range logic
-      const allDatesInRange = eachDayOfInterval({ start, end });
-      
-      return usersToConsider.map(user => {
-        const userShiftsInRange = allShifts.filter(shift =>
-          shift.userId === user.uid &&
-          getCorrectedLocalDate(shift.date) >= start && getCorrectedLocalDate(shift.date) <= end
-        );
-
-        if (userShiftsInRange.length === 0) {
-          // User is fully available for the whole range
-          return { user, availability: 'full' as const };
-        } else {
-          // User has some shifts, find the days they are free and busy
-          const shiftDates = new Set(userShiftsInRange.map(s => format(getCorrectedLocalDate(s.date), 'yyyy-MM-dd')));
-          const datesAvailable: Date[] = [];
-          const datesUnavailable: Date[] = [];
-          
-          allDatesInRange.forEach(day => {
-            if (shiftDates.has(format(day, 'yyyy-MM-dd'))) {
-                datesUnavailable.push(day);
-            } else {
-                datesAvailable.push(day);
+  
+          if (userShifts.length === 1) {
+            const shift = userShifts[0];
+            if (shift.type === 'am') {
+              return { user, availability: 'pm' as const };
             }
-          });
-
-          if (datesAvailable.length > 0) {
-            return {
-              user,
-              availability: 'partial' as const,
-              availableDates: datesAvailable,
-              unavailableDates: datesUnavailable,
-            };
+            if (shift.type === 'pm') {
+              return { user, availability: 'am' as const };
+            }
           }
-          return null; // The user is busy for all days in the range.
-        }
-      }).filter((u): u is AvailableUser => u !== null);
+          
+          // User is busy if they have an 'all-day' shift or more than one shift.
+          return null;
+        })
+        .filter((u): u is AvailableUser => u !== null);
+  
+    } else {
+      // For multi-day ranges, only show users who are fully available for the entire duration.
+      return usersToConsider
+        .filter((user) => {
+          const hasShiftsInRange = allShifts.some(
+            (shift) =>
+              shift.userId === user.uid &&
+              getCorrectedLocalDate(shift.date) >= start &&
+              getCorrectedLocalDate(shift.date) <= end
+          );
+          return !hasShiftsInRange;
+        })
+        .map((user) => ({ user, availability: 'full' as const }));
     }
   }, [dateRange, allShifts, allUsers, selectedRoles, selectedUserIds]);
   
@@ -311,47 +288,19 @@ export default function AvailabilityPage() {
                     </h3>
                      {availableUsers.length > 0 ? (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                           {availableUsers.map(({ user, availability, shiftLocation, availableDates, unavailableDates }) => (
-                               <div key={user.uid} className="flex items-start gap-3 p-3 border rounded-md bg-muted/50">
-                                   <Avatar className="h-8 w-8 mt-1">
+                           {availableUsers.map(({ user, availability }) => (
+                               <div key={user.uid} className="flex items-center gap-3 p-3 border rounded-md bg-muted/50">
+                                   <Avatar className="h-8 w-8">
                                        <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                                    </Avatar>
-                                   <div className="flex-grow">
+                                   <div>
                                       <p className="text-sm font-medium">{user.name}</p>
                                       {availability === 'am' || availability === 'pm' ? (
-                                        <>
-                                          <Badge variant="secondary" className="capitalize mt-1">
-                                            {availability === 'am' && <Sun className="h-3 w-3 mr-1.5 text-orange-500" />}
-                                            {availability === 'pm' && <Moon className="h-3 w-3 mr-1.5 text-sky-500" />}
-                                            Available {availability.toUpperCase()}
-                                          </Badge>
-                                          {shiftLocation && (
-                                              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
-                                                  <MapPin className="h-3 w-3 shrink-0"/>
-                                                  <span className="truncate">Working at: {shiftLocation}</span>
-                                              </p>
-                                          )}
-                                        </>
-                                      ) : availability === 'partial' && availableDates ? (
-                                        <div className="mt-1">
-                                          <Badge variant="outline" className="border-blue-500/50 bg-blue-500/10 text-blue-700">Partially Available</Badge>
-                                           <div className="mt-2 text-xs space-y-1">
-                                                {availableDates.length > 0 && (
-                                                    <p className="flex items-center gap-1.5">
-                                                        <Check className="h-4 w-4 text-green-600 shrink-0"/>
-                                                        <span className="font-medium">Free:</span>
-                                                        <span className="text-muted-foreground">{availableDates.map(d => format(d, 'd MMM')).join(', ')}</span>
-                                                    </p>
-                                                )}
-                                                {unavailableDates && unavailableDates.length > 0 && (
-                                                    <p className="flex items-center gap-1.5">
-                                                        <X className="h-4 w-4 text-red-600 shrink-0"/>
-                                                        <span className="font-medium">Busy:</span>
-                                                        <span className="text-muted-foreground">{unavailableDates.map(d => format(d, 'd MMM')).join(', ')}</span>
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
+                                        <Badge variant="secondary" className="capitalize mt-1">
+                                          {availability === 'am' && <Sun className="h-3 w-3 mr-1.5 text-orange-500" />}
+                                          {availability === 'pm' && <Moon className="h-3 w-3 mr-1.5 text-sky-500" />}
+                                          Available {availability.toUpperCase()}
+                                        </Badge>
                                       ) : (
                                         <Badge variant="outline" className="mt-1 border-green-500/50 bg-green-500/10 text-green-700">Fully Available</Badge>
                                       )}
@@ -364,7 +313,7 @@ export default function AvailabilityPage() {
                             <Users className="h-4 w-4" />
                             <AlertTitle>No Operatives Available</AlertTitle>
                             <AlertDescription>
-                              No users match the current date and filter criteria. Try adjusting the date range or filters.
+                              No users match the current date and filter criteria.
                             </AlertDescription>
                         </Alert>
                     )}
