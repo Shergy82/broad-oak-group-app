@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { addDays, format, startOfDay, isSameDay, eachDayOfInterval, isBefore } from 'date-fns';
+import { addDays, format, startOfDay, isSameDay, eachDayOfInterval, isBefore, subDays } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
