@@ -373,7 +373,20 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                             continue;
                         }
                         
-                        const parts = cellContent.split('-').map(p => p.trim());
+                        // NEW LOGIC TO PARSE SHIFT TYPE, TASK, AND USER
+                        const contentUpper = cellContent.toUpperCase();
+                        let shiftType: 'am' | 'pm' | 'all-day' = 'all-day';
+                        let remainingContent = cellContent;
+
+                        if (contentUpper.includes('-AM')) {
+                            shiftType = 'am';
+                            remainingContent = cellContent.replace(/-AM/i, '').trim();
+                        } else if (contentUpper.includes('-PM')) {
+                            shiftType = 'pm';
+                            remainingContent = cellContent.replace(/-PM/i, '').trim();
+                        }
+                        
+                        const parts = remainingContent.split('-').map(p => p.trim());
                         if (parts.length > 1) {
                             const potentialUserNames = parts.pop()!;
                             const task = parts.join('-').trim();
@@ -388,7 +401,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                                             task: task, 
                                             userId: user.uid, 
                                             userName: user.originalName,
-                                            type: 'all-day',
+                                            type: shiftType, // Use parsed shift type
                                             date: shiftDate, 
                                             address: address, 
                                             bNumber: bNumber,
@@ -634,5 +647,3 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
     </div>
   );
 }
-
-    
