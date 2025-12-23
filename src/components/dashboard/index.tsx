@@ -285,13 +285,16 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
       
       <Tabs defaultValue="today" className="w-full">
         <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:inline-flex">
+          <TabsTrigger value="last-week" className="data-[state=active]:bg-amber-100 data-[state=active]:text-amber-800 dark:data-[state=active]:bg-amber-900/50 dark:data-[state=active]:text-amber-300">Last Week</TabsTrigger>
           <TabsTrigger value="today">Today</TabsTrigger>
           <TabsTrigger value="this-week">This Week</TabsTrigger>
-          <TabsTrigger value="last-week" className="data-[state=active]:bg-amber-100 data-[state=active]:text-amber-800 dark:data-[state=active]:bg-amber-900/50 dark:data-[state=active]:text-amber-300">Last Week</TabsTrigger>
           <TabsTrigger value="next-week">Next Week</TabsTrigger>
           <TabsTrigger value="week-3">Week 3</TabsTrigger>
           <TabsTrigger value="week-4">Week 4</TabsTrigger>
         </TabsList>
+        <TabsContent value="last-week">
+          {renderWeekView(lastWeekShifts, "last week", true)}
+        </TabsContent>
         <TabsContent value="today">
           {loading ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mt-4">
@@ -339,9 +342,6 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
         </TabsContent>
         <TabsContent value="week-4">
           {renderWeekView(week4Shifts, "week 4")}
-        </TabsContent>
-        <TabsContent value="last-week">
-          {renderWeekView(lastWeekShifts, "last week", true)}
         </TabsContent>
       </Tabs>
       
