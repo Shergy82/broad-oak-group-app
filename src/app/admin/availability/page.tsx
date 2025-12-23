@@ -20,6 +20,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuChe
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 
 type Role = 'user' | 'admin' | 'owner';
 
@@ -56,6 +57,7 @@ export default function AvailabilityPage() {
   const [selectedRoles, setSelectedRoles] = useState<Set<Role>>(new Set(['user', 'admin', 'owner']));
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [isUserFilterApplied, setIsUserFilterApplied] = useState(false);
+  const [locationFilter, setLocationFilter] = useState('');
 
 
   useEffect(() => {
@@ -137,51 +139,80 @@ export default function AvailabilityPage() {
     if (!dateRange?.from || allUsers.length === 0) {
       return [];
     }
-
+  
     const start = startOfDay(dateRange.from);
     const end = dateRange.to ? startOfDay(dateRange.to) : start;
     const intervalDays = eachDayOfInterval({ start, end });
-
+  
     const usersToConsider = allUsers.filter(
       (user) =>
         selectedRoles.has(user.role as Role) && selectedUserIds.has(user.uid)
     );
-
+  
     return usersToConsider
       .map((user): AvailableUser | null => {
-        const userShiftsOnDate = (date: Date) => allShifts.filter(shift =>
-            shift.userId === user.uid && isSameDay(getCorrectedLocalDate(shift.date), date)
+        const userShiftsInRange = allShifts.filter(shift =>
+            shift.userId === user.uid && 
+            isBefore(startOfDay(getCorrectedLocalDate(shift.date)), addDays(end, 1)) &&
+            isBefore(subDays(start, 1), startOfDay(getCorrectedLocalDate(shift.date)))
         );
 
+        // Location Filter Logic
+        const lowercasedFilter = locationFilter.trim().toLowerCase();
+        if (lowercasedFilter && userShiftsInRange.length > 0) {
+            const hasMatchingShift = userShiftsInRange.some(shift => 
+                shift.address.toLowerCase().includes(lowercasedFilter)
+            );
+            if (!hasMatchingShift) {
+                // If user has shifts but none match the location, filter them out.
+                // We keep fully available users regardless of location.
+                return null;
+            }
+        } else if (lowercasedFilter && userShiftsInRange.length === 0) {
+             // If filter is active but user has no shifts, they are still "fully available"
+             // and should be shown. So we don't filter them here.
+        }
+
+  
         const dayStates = intervalDays.map((day): DayAvailability => {
-            const shifts = userShiftsOnDate(day);
-            if (shifts.length === 0) {
+            const shiftsOnDay = userShiftsInRange.filter(shift => isSameDay(getCorrectedLocalDate(shift.date), day));
+            
+            if (shiftsOnDay.length === 0) {
                 return { date: day, type: 'full' };
             }
-            if (shifts.length === 1) {
-                const shift = shifts[0];
+            if (shiftsOnDay.length === 1) {
+                const shift = shiftsOnDay[0];
                 if (shift.type === 'am') return { date: day, type: 'pm', shiftLocation: shift.address };
                 if (shift.type === 'pm') return { date: day, type: 'am', shiftLocation: shift.address };
             }
             // Busy if all-day or multiple shifts
             return { date: day, type: 'busy' };
         });
-
+  
         const isFullyAvailable = dayStates.every(d => d.type === 'full');
         if (isFullyAvailable) {
+            // If location filter is on, and user has no shifts, they are still available.
             return { user, availability: 'full', dayStates: [] };
         }
-
+  
         const isPartiallyAvailable = dayStates.some(d => d.type !== 'busy');
         if (isPartiallyAvailable) {
             return { user, availability: 'partial', dayStates };
         }
         
+        // If a location filter is applied, and the user is busy every day,
+        // we still might want to show them if their busy shifts match the location.
+        // The logic above already handles filtering them *out* if they *don't* match.
+        // So, if we reach here, they are busy but at least one shift matches the location.
+        if (lowercasedFilter) {
+            return { user, availability: 'partial', dayStates };
+        }
+
         return null;
       })
       .filter((u): u is AvailableUser => u !== null);
       
-  }, [dateRange, allShifts, allUsers, selectedRoles, selectedUserIds]);
+  }, [dateRange, allShifts, allUsers, selectedRoles, selectedUserIds, locationFilter]);
   
 
   const selectedPeriodText = () => {
@@ -227,7 +258,7 @@ export default function AvailabilityPage() {
                 Filters
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col sm:flex-row gap-6">
+            <CardContent className="flex flex-col sm:flex-row gap-6 items-start">
               <div className="space-y-2">
                 <h4 className="font-medium text-sm">Roles</h4>
                 <div className="flex gap-4">
@@ -266,6 +297,15 @@ export default function AvailabilityPage() {
                     </ScrollArea>
                   </DropdownMenuContent>
                 </DropdownMenu>
+              </div>
+              <div className="space-y-2">
+                <h4 className="font-medium text-sm">Area / Postcode</h4>
+                <Input
+                    placeholder="e.g. London, SW1..."
+                    value={locationFilter}
+                    onChange={(e) => setLocationFilter(e.target.value)}
+                    className="w-full sm:w-[250px]"
+                />
               </div>
             </CardContent>
            </Card>
@@ -313,8 +353,8 @@ export default function AvailabilityPage() {
                                                         <CheckCircle className="h-3.5 w-3.5 text-green-600" />
                                                         <span className="font-medium">{format(d.date, 'EEE, dd MMM')}:</span>
                                                         {d.type === 'full' && <span>All Day</span>}
-                                                        {d.type === 'am' && <span>AM</span>}
-                                                        {d.type === 'pm' && <span>PM</span>}
+                                                        {d.type === 'am' && <span>AM Free</span>}
+                                                        {d.type === 'pm' && <span>PM Free</span>}
                                                         {d.shiftLocation && <span className="text-muted-foreground text-[10px] truncate">(Busy at {d.shiftLocation})</span>}
                                                     </div>
                                                 ))}
