@@ -12,9 +12,8 @@ import { Calendar } from '@/components/ui/calendar';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar as CalendarIcon, Users, UserCheck, UserX } from 'lucide-react';
+import { Calendar as CalendarIcon, Users, UserCheck } from 'lucide-react';
 import { getCorrectedLocalDate, isWithin } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
 
 const getInitials = (name?: string) => {
     if (!name) return '??';
@@ -74,9 +73,9 @@ export default function AvailabilityPage() {
     };
   }, []);
 
-  const { availableUsers } = useMemo(() => {
+  const availableUsers = useMemo(() => {
     if (!dateRange?.from || allUsers.length === 0) {
-      return { availableUsers: allUsers };
+      return [];
     }
     
     const start = startOfDay(dateRange.from);
@@ -94,9 +93,7 @@ export default function AvailabilityPage() {
         busyUserIds.add(shift.userId);
     });
     
-    const available = allUsers.filter(user => !busyUserIds.has(user.uid));
-
-    return { availableUsers: available };
+    return allUsers.filter(user => !busyUserIds.has(user.uid));
 
   }, [dateRange, allShifts, allUsers]);
 
@@ -177,4 +174,3 @@ export default function AvailabilityPage() {
     </Card>
   );
 }
-
