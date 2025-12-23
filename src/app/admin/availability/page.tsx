@@ -58,7 +58,9 @@ export default function AvailabilityPage() {
     const usersQuery = query(collection(db, 'users'));
     const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
         const fetchedUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
-        setAllUsers(fetchedUsers.filter(u => u.role === 'user').sort((a,b) => a.name.localeCompare(b.name)));
+        // This was the problem: it was filtering out admins/owners.
+        // Now it includes everyone.
+        setAllUsers(fetchedUsers.sort((a,b) => a.name.localeCompare(b.name)));
         usersLoaded = true;
         checkAllDataLoaded();
     }, (err) => {
