@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { addDays, format, startOfDay } from 'date-fns';
+import { addDays, format, startOfDay, isSameDay } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -12,15 +12,21 @@ import { Calendar } from '@/components/ui/calendar';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar as CalendarIcon, Users, UserCheck, Filter, ChevronDown, Check } from 'lucide-react';
+import { Calendar as CalendarIcon, Users, UserCheck, Filter, ChevronDown, Check, Clock, Sun, Moon } from 'lucide-react';
 import { getCorrectedLocalDate, isWithin } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
 
 type Role = 'user' | 'admin' | 'owner';
+
+interface AvailableUser {
+  user: UserProfile;
+  availability: 'full' | 'am' | 'pm';
+}
 
 const getInitials = (name?: string) => {
     if (!name) return '??';
@@ -71,7 +77,6 @@ export default function AvailabilityPage() {
     const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
         const fetchedUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
         setAllUsers(fetchedUsers.sort((a,b) => a.name.localeCompare(b.name)));
-        // Initially, select all users by default
         setSelectedUserIds(new Set(fetchedUsers.map(u => u.uid)));
         usersLoaded = true;
         checkAllDataLoaded();
@@ -107,14 +112,12 @@ export default function AvailabilityPage() {
           } else {
               newUserIds.add(userId);
           }
-          setIsUserFilterApplied(true); // Mark that a manual user selection has occurred
+          setIsUserFilterApplied(true);
           return newUserIds;
       });
   };
 
   useEffect(() => {
-    // This effect updates the user selection only when the roles change,
-    // and only if the user hasn't started manually picking individuals.
     if (!isUserFilterApplied) {
         const userIdsInSelectedRoles = allUsers
             .filter(u => selectedRoles.has(u.role as Role))
@@ -123,33 +126,59 @@ export default function AvailabilityPage() {
     }
   }, [selectedRoles, allUsers, isUserFilterApplied]);
 
-  const availableUsers = useMemo(() => {
+  const availableUsers: AvailableUser[] = useMemo(() => {
     if (!dateRange?.from || allUsers.length === 0) {
       return [];
     }
-    
+
     const start = startOfDay(dateRange.from);
     const end = dateRange.to ? startOfDay(dateRange.to) : start;
+    const isSingleDay = isSameDay(start, end);
 
-    const interval = { start, end };
-    
-    const shiftsInInterval = allShifts.filter(shift => {
-        const shiftDate = getCorrectedLocalDate(shift.date);
-        return isWithin(shiftDate, interval);
-    });
-
-    const busyUserIds = new Set<string>();
-    shiftsInInterval.forEach(shift => {
-        busyUserIds.add(shift.userId);
-    });
-    
-    return allUsers.filter(user => 
-      !busyUserIds.has(user.uid) && // Not busy
-      selectedRoles.has(user.role as Role) && // Role is selected
-      selectedUserIds.has(user.uid) // Individual user is selected
+    const usersToConsider = allUsers.filter(
+      (user) =>
+        selectedRoles.has(user.role as Role) && selectedUserIds.has(user.uid)
     );
+    
+    if (isSingleDay) {
+      const shiftsOnDate = allShifts.filter((shift) =>
+        isSameDay(getCorrectedLocalDate(shift.date), start)
+      );
 
+      return usersToConsider.map((user) => {
+          const userShifts = shiftsOnDate.filter((s) => s.userId === user.uid);
+          if (userShifts.length === 0) {
+            return { user, availability: 'full' };
+          }
+          if (userShifts.some((s) => s.type === 'all-day') || userShifts.length > 1) {
+            return null; // Busy all day
+          }
+          const shiftType = userShifts[0].type;
+          if (shiftType === 'am') {
+            return { user, availability: 'pm' };
+          }
+          if (shiftType === 'pm') {
+            return { user, availability: 'am' };
+          }
+          return null; // Should not happen with current logic, but safe to have
+        }).filter((u): u is AvailableUser => u !== null);
+
+    } else {
+        // Multi-day range logic
+        const interval = { start, end };
+        const shiftsInInterval = allShifts.filter((shift) => {
+            const shiftDate = getCorrectedLocalDate(shift.date);
+            return isWithin(shiftDate, interval);
+        });
+
+        const busyUserIds = new Set(shiftsInInterval.map(s => s.userId));
+        
+        return usersToConsider
+            .filter((user) => !busyUserIds.has(user.uid))
+            .map(user => ({ user, availability: 'full' }));
+    }
   }, [dateRange, allShifts, allUsers, selectedRoles, selectedUserIds]);
+  
 
   const selectedPeriodText = () => {
     if (!dateRange?.from) return 'No date selected';
@@ -254,12 +283,19 @@ export default function AvailabilityPage() {
                     </h3>
                      {availableUsers.length > 0 ? (
                         <div className="flex flex-wrap gap-4">
-                           {availableUsers.map(user => (
-                               <div key={user.uid} className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                           {availableUsers.map(({ user, availability }) => (
+                               <div key={user.uid} className="flex items-center gap-3 p-2 border rounded-md bg-muted/50">
                                    <Avatar className="h-8 w-8">
                                        <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                                    </Avatar>
                                    <p className="text-sm font-medium">{user.name}</p>
+                                   {availability !== 'full' && (
+                                     <Badge variant="secondary" className="capitalize">
+                                        {availability === 'am' && <Sun className="h-3 w-3 mr-1.5 text-orange-500" />}
+                                        {availability === 'pm' && <Moon className="h-3 w-3 mr-1.5 text-sky-500" />}
+                                        Available {availability.toUpperCase()}
+                                     </Badge>
+                                   )}
                                </div>
                            ))}
                         </div>
@@ -280,4 +316,3 @@ export default function AvailabilityPage() {
     </Card>
   );
 }
-
