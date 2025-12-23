@@ -50,6 +50,8 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
     thisWeekShifts, 
     lastWeekShifts,
     nextWeekShifts,
+    week3Shifts,
+    week4Shifts,
     historicalShifts,
   } = useMemo(() => {
     const today = new Date();
@@ -92,8 +94,20 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
 
     const activeNextWeekShifts = activeShifts.filter(s => {
         const shiftDate = getCorrectedLocalDate(s.date);
-        const startOfNextWeek = addDays(today, 7);
+        const startOfNextWeek = addDays(startOfWeek(today, { weekStartsOn: 1 }), 7);
         return isSameWeek(shiftDate, startOfNextWeek, { weekStartsOn: 1 });
+    });
+
+    const activeWeek3Shifts = activeShifts.filter(s => {
+        const shiftDate = getCorrectedLocalDate(s.date);
+        const startOfWeek3 = addDays(startOfWeek(today, { weekStartsOn: 1 }), 14);
+        return isSameWeek(shiftDate, startOfWeek3, { weekStartsOn: 1 });
+    });
+
+    const activeWeek4Shifts = activeShifts.filter(s => {
+        const shiftDate = getCorrectedLocalDate(s.date);
+        const startOfWeek4 = addDays(startOfWeek(today, { weekStartsOn: 1 }), 21);
+        return isSameWeek(shiftDate, startOfWeek4, { weekStartsOn: 1 });
     });
 
     return {
@@ -103,6 +117,8 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
       thisWeekShifts: groupShiftsByDay(activeThisWeekShifts),
       lastWeekShifts: groupShiftsByDay(activeLastWeekShifts),
       nextWeekShifts: groupShiftsByDay(activeNextWeekShifts),
+      week3Shifts: groupShiftsByDay(activeWeek3Shifts),
+      week4Shifts: groupShiftsByDay(activeWeek4Shifts),
       historicalShifts: historical,
     };
   }, [userShifts, dismissedShiftIds]);
@@ -268,11 +284,13 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
       )}
       
       <Tabs defaultValue="today" className="w-full">
-        <TabsList>
+        <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:inline-flex">
           <TabsTrigger value="today">Today</TabsTrigger>
           <TabsTrigger value="this-week">This Week</TabsTrigger>
-          <TabsTrigger value="next-week">Next Week</TabsTrigger>
           <TabsTrigger value="last-week" className="data-[state=active]:bg-amber-100 data-[state=active]:text-amber-800 dark:data-[state=active]:bg-amber-900/50 dark:data-[state=active]:text-amber-300">Last Week</TabsTrigger>
+          <TabsTrigger value="next-week">Next Week</TabsTrigger>
+          <TabsTrigger value="week-3">Week 3</TabsTrigger>
+          <TabsTrigger value="week-4">Week 4</TabsTrigger>
         </TabsList>
         <TabsContent value="today">
           {loading ? (
@@ -316,6 +334,12 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
         <TabsContent value="next-week">
           {renderWeekView(nextWeekShifts, "next week")}
         </TabsContent>
+        <TabsContent value="week-3">
+          {renderWeekView(week3Shifts, "week 3")}
+        </TabsContent>
+        <TabsContent value="week-4">
+          {renderWeekView(week4Shifts, "week 4")}
+        </TabsContent>
         <TabsContent value="last-week">
           {renderWeekView(lastWeekShifts, "last week", true)}
         </TabsContent>
@@ -346,5 +370,4 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
   );
 }
 
-    
     

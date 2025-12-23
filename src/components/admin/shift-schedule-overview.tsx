@@ -171,13 +171,13 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
   };
   
   const filteredShifts = useMemo(() => {
-    if (selectedUserId === 'all' || activeTab !== 'archive') {
+    if (selectedUserId === 'all' || activeTab === 'archive') {
       return shifts;
     }
     return shifts.filter(shift => shift.userId === selectedUserId);
   }, [shifts, selectedUserId, activeTab]);
 
-  const { todayShifts, thisWeekShifts, nextWeekShifts, archiveShifts } = useMemo(() => {
+  const { todayShifts, thisWeekShifts, nextWeekShifts, week3Shifts, week4Shifts, archiveShifts } = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -194,6 +194,18 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
         const startOfNextWeek = addDays(startOfWeek(today, { weekStartsOn: 1 }), 7);
         return isSameWeek(shiftDate, startOfNextWeek, { weekStartsOn: 1 });
     });
+
+    const week3Shifts = baseShifts.filter(s => {
+        const shiftDate = getCorrectedLocalDate(s.date);
+        const startOfWeek3 = addDays(startOfWeek(today, { weekStartsOn: 1 }), 14);
+        return isSameWeek(shiftDate, startOfWeek3, { weekStartsOn: 1 });
+    });
+    
+    const week4Shifts = baseShifts.filter(s => {
+        const shiftDate = getCorrectedLocalDate(s.date);
+        const startOfWeek4 = addDays(startOfWeek(today, { weekStartsOn: 1 }), 21);
+        return isSameWeek(shiftDate, startOfWeek4, { weekStartsOn: 1 });
+    });
     
     // Archive logic
     const sixWeeksAgo = startOfWeek(subWeeks(today, 5), { weekStartsOn: 1 });
@@ -209,7 +221,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
         (selectedUserId === 'all' || s.userId === selectedUserId)
     );
 
-    return { todayShifts, thisWeekShifts, nextWeekShifts, archiveShifts };
+    return { todayShifts, thisWeekShifts, nextWeekShifts, week3Shifts, week4Shifts, archiveShifts };
   }, [filteredShifts, shifts, selectedUserId, selectedArchiveWeek, activeTab]);
 
   const userNameMap = useMemo(() => {
@@ -1045,6 +1057,8 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                 <TabsTrigger value="today">Today</TabsTrigger>
                 <TabsTrigger value="this-week">This Week</TabsTrigger>
                 <TabsTrigger value="next-week">Next Week</TabsTrigger>
+                <TabsTrigger value="week-3">Week 3</TabsTrigger>
+                <TabsTrigger value="week-4">Week 4</TabsTrigger>
                 <TabsTrigger value="archive">Archive</TabsTrigger>
             </TabsList>
             <TabsContent value="today" className="mt-0">
@@ -1055,6 +1069,12 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
             </TabsContent>
             <TabsContent value="next-week" className="mt-0">
                 {renderWeekSchedule(nextWeekShifts)}
+            </TabsContent>
+             <TabsContent value="week-3" className="mt-0">
+                {renderWeekSchedule(week3Shifts)}
+            </TabsContent>
+             <TabsContent value="week-4" className="mt-0">
+                {renderWeekSchedule(week4Shifts)}
             </TabsContent>
             <TabsContent value="archive" className="mt-4">
                 <div className="flex flex-col sm:flex-row gap-4 items-center bg-muted/50 p-4 rounded-lg">
@@ -1088,3 +1108,5 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     </>
   );
 }
+
+    
