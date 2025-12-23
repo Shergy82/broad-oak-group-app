@@ -151,17 +151,17 @@ export default function AvailabilityPage() {
       return usersToConsider.map((user) => {
           const userShifts = shiftsOnDate.filter((s) => s.userId === user.uid);
           if (userShifts.length === 0) {
-            return { user, availability: 'full' };
+            return { user, availability: 'full' as const };
           }
           if (userShifts.some((s) => s.type === 'all-day') || userShifts.length > 1) {
             return null; // Busy all day
           }
           const shift = userShifts[0];
           if (shift.type === 'am') {
-            return { user, availability: 'pm', shiftLocation: shift.address };
+            return { user, availability: 'pm' as const, shiftLocation: shift.address };
           }
           if (shift.type === 'pm') {
-            return { user, availability: 'am', shiftLocation: shift.address };
+            return { user, availability: 'am' as const, shiftLocation: shift.address };
           }
           return null;
         }).filter((u): u is AvailableUser => u !== null);
@@ -201,7 +201,7 @@ export default function AvailabilityPage() {
               unavailableDates: datesUnavailable,
             };
           }
-          return null;
+          return null; // The user is busy for all days in the range.
         }
       }).filter((u): u is AvailableUser => u !== null);
     }
