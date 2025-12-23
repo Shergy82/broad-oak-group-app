@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -136,6 +137,8 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift, userProfile 
     if (!db) return;
     
     const selectedUserId = form.getValues('userId');
+    const selectedShiftType = form.getValues('type');
+
     if (!selectedUserId) {
         toast({
             variant: 'destructive',
@@ -158,9 +161,9 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift, userProfile 
     try {
         await addDoc(collection(db, 'shifts'), {
             userId: testUser.uid,
-            userName: testUser.name, // Also add userName to test shifts
+            userName: testUser.name,
             date: Timestamp.fromDate(new Date()),
-            type: 'all-day',
+            type: selectedShiftType,
             status: 'pending-confirmation',
             address: 'Test Shift Address',
             task: 'This is a test shift for notification.',
