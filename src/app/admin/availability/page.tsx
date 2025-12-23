@@ -12,7 +12,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar as CalendarIcon, Users, UserCheck, Filter, ChevronDown, Check, Clock, Sun, Moon } from 'lucide-react';
+import { Calendar as CalendarIcon, Users, UserCheck, Filter, ChevronDown, Check, Clock, Sun, Moon, MapPin } from 'lucide-react';
 import { getCorrectedLocalDate, isWithin } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -26,6 +26,7 @@ type Role = 'user' | 'admin' | 'owner';
 interface AvailableUser {
   user: UserProfile;
   availability: 'full' | 'am' | 'pm';
+  shiftLocation?: string;
 }
 
 const getInitials = (name?: string) => {
@@ -153,14 +154,14 @@ export default function AvailabilityPage() {
           if (userShifts.some((s) => s.type === 'all-day') || userShifts.length > 1) {
             return null; // Busy all day
           }
-          const shiftType = userShifts[0].type;
-          if (shiftType === 'am') {
-            return { user, availability: 'pm' };
+          const shift = userShifts[0];
+          if (shift.type === 'am') {
+            return { user, availability: 'pm', shiftLocation: shift.address };
           }
-          if (shiftType === 'pm') {
-            return { user, availability: 'am' };
+          if (shift.type === 'pm') {
+            return { user, availability: 'am', shiftLocation: shift.address };
           }
-          return null; // Should not happen with current logic, but safe to have
+          return null;
         }).filter((u): u is AvailableUser => u !== null);
 
     } else {
@@ -282,20 +283,32 @@ export default function AvailabilityPage() {
                          <span className="text-sm font-normal text-muted-foreground ml-2">{selectedPeriodText()}</span>
                     </h3>
                      {availableUsers.length > 0 ? (
-                        <div className="flex flex-wrap gap-4">
-                           {availableUsers.map(({ user, availability }) => (
-                               <div key={user.uid} className="flex items-center gap-3 p-2 border rounded-md bg-muted/50">
-                                   <Avatar className="h-8 w-8">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                           {availableUsers.map(({ user, availability, shiftLocation }) => (
+                               <div key={user.uid} className="flex items-start gap-3 p-3 border rounded-md bg-muted/50">
+                                   <Avatar className="h-8 w-8 mt-1">
                                        <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                                    </Avatar>
-                                   <p className="text-sm font-medium">{user.name}</p>
-                                   {availability !== 'full' && (
-                                     <Badge variant="secondary" className="capitalize">
-                                        {availability === 'am' && <Sun className="h-3 w-3 mr-1.5 text-orange-500" />}
-                                        {availability === 'pm' && <Moon className="h-3 w-3 mr-1.5 text-sky-500" />}
-                                        Available {availability.toUpperCase()}
-                                     </Badge>
-                                   )}
+                                   <div className="flex-grow">
+                                      <p className="text-sm font-medium">{user.name}</p>
+                                      {availability !== 'full' ? (
+                                        <>
+                                          <Badge variant="secondary" className="capitalize mt-1">
+                                            {availability === 'am' && <Sun className="h-3 w-3 mr-1.5 text-orange-500" />}
+                                            {availability === 'pm' && <Moon className="h-3 w-3 mr-1.5 text-sky-500" />}
+                                            Available {availability.toUpperCase()}
+                                          </Badge>
+                                          {shiftLocation && (
+                                              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
+                                                  <MapPin className="h-3 w-3 shrink-0"/>
+                                                  <span className="truncate">Working at: {shiftLocation}</span>
+                                              </p>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <Badge variant="outline" className="mt-1 border-green-500/50 bg-green-500/10 text-green-700">Fully Available</Badge>
+                                      )}
+                                   </div>
                                </div>
                            ))}
                         </div>
