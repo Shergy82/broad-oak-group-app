@@ -1,0 +1,51 @@
+
+{
+  "entities": {
+    "Trade": {
+      "title": "Trade",
+      "description": "Represents a specific trade, such as 'Plumber' or 'Electrician', and contains a list of standard tasks associated with that trade.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the trade (e.g., 'Plumber')."
+        },
+        "tasks": {
+          "type": "array",
+          "description": "A list of sub-tasks associated with the trade.",
+          "items": {
+            "$ref": "#/entities/TradeTask"
+          }
+        }
+      },
+      "required": ["name"]
+    },
+    "TradeTask": {
+      "title": "Trade Task",
+      "description": "A single task within a trade's checklist.",
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "The description of the task."
+        },
+        "photoRequired": {
+          "type": "boolean",
+          "description": "Whether a photo is required upon completion of this task."
+        }
+      },
+      "required": ["text", "photoRequired"]
+    }
+  },
+  "auth": {
+    "providers": ["email"]
+  },
+  "firestore": {
+    "/trade_tasks/{tradeId}": {
+      "schema": {
+        "$ref": "#/entities/Trade"
+      },
+      "description": "Stores the lists of standard tasks, organized by trade."
+    }
+  }
+}

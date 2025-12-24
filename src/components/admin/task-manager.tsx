@@ -13,7 +13,7 @@ import { Label } from '../ui/label';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, arrayUnion, arrayRemove, query, orderBy } from 'firebase/firestore';
 import { Spinner } from '../shared/spinner';
-import type { Trade } from '@/types';
+import type { Trade, TradeTask } from '@/types';
 
 export function TaskManager() {
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -38,7 +38,7 @@ export function TaskManager() {
       toast({
         variant: 'destructive',
         title: 'Error Loading Data',
-        description: 'Could not load tasks from the database.',
+        description: 'Could not load tasks from the database. Check Firestore rules.',
       });
       setLoading(false);
     });
@@ -62,7 +62,7 @@ export function TaskManager() {
       toast({ title: 'Success', description: `Trade "${newTradeName.trim()}" added.` });
     } catch (error) {
       console.error('Error adding trade: ', error);
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not add trade.' });
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not add trade. Check permissions.' });
     }
   };
 
@@ -101,7 +101,7 @@ export function TaskManager() {
     }
   };
 
-  const handleDeleteTask = async (tradeId: string, taskToDelete: { text: string, photoRequired: boolean }) => {
+  const handleDeleteTask = async (tradeId: string, taskToDelete: TradeTask) => {
     if (!db) return;
     const tradeDocRef = doc(db, 'trade_tasks', tradeId);
 
@@ -122,7 +122,7 @@ export function TaskManager() {
             <CardHeader>
                 <CardTitle>Task Management</CardTitle>
                 <CardDescription>
-                Create and manage reusable tasks organized by trade. This data is stored centrally for all users.
+                Create and manage reusable tasks organized by trade.
                 </CardDescription>
             </CardHeader>
             <CardContent>
