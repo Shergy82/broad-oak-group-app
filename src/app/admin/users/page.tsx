@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot, query, doc, updateDoc } from 'firebase/firestore';
 import { db, functions } from '@/lib/firebase';
 import { httpsCallable } from 'firebase/functions';
@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Download, Users, Trash2, UserCog } from 'lucide-react';
+import { Download, Users, Trash2, UserCog, Briefcase, User as UserIcon } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -91,6 +91,12 @@ export default function UserManagementPage() {
     return () => unsubscribe();
   }, [currentUserProfile, toast]);
   
+  const { adminsAndOwners, operatives } = useMemo(() => {
+    const adminsAndOwners = users.filter(u => ['admin', 'owner'].includes(u.role));
+    const operatives = users.filter(u => u.role === 'user');
+    return { adminsAndOwners, operatives };
+  }, [users]);
+
   const getStatusBadge = (status?: 'active' | 'suspended' | 'pending-approval') => {
       switch (status) {
           case 'active':
@@ -266,6 +272,187 @@ export default function UserManagementPage() {
       });
     }
   };
+  
+  const renderUserTableRows = (userList: UserProfile[]) => {
+      return userList.map((user) => (
+            <TableRow key={user.uid} className={user.status === 'suspended' ? 'bg-muted/30' : ''}>
+              <TableCell className="font-medium">{user.name}</TableCell>
+              <TableCell>
+                {isPrivilegedUser ? (
+                  <Input
+                    defaultValue={user.operativeId || ''}
+                    onBlur={(e) => handleFieldChange(user.uid, 'operativeId', e.target.value)}
+                    className="h-8 w-24"
+                    placeholder="Set ID"
+                    disabled={!isPrivilegedUser}
+                  />
+                ) : (
+                  user.operativeId || <Badge variant="outline">N/A</Badge>
+                )}
+              </TableCell>
+              <TableCell>
+                {isPrivilegedUser && !['admin', 'owner'].includes(user.role) ? (
+                  <Input
+                    defaultValue={user.trade || ''}
+                    onBlur={(e) => handleFieldChange(user.uid, 'trade', e.target.value)}
+                    className="h-8 w-32"
+                    placeholder="Set Trade"
+                    disabled={!isPrivilegedUser}
+                  />
+                ) : (
+                  <Badge variant="outline">N/A</Badge>
+                )}
+              </TableCell>
+              <TableCell>{user.phoneNumber || 'N/A'}</TableCell>
+              <TableCell>
+                <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
+                    {user.role}
+                </Badge>
+              </TableCell>
+              <TableCell>
+                  {getStatusBadge(user.status)}
+              </TableCell>
+              {isPrivilegedUser && (
+                  <TableCell>
+                      {['admin', 'owner'].includes(user.role) ? (
+                          <Badge variant="outline">N/A</Badge>
+                      ) : (
+                          <Select
+                              value={user.employmentType || ''}
+                              onValueChange={(value) => handleEmploymentTypeChange(user.uid, value as 'direct' | 'subbie')}
+                              disabled={!isPrivilegedUser}
+                          >
+                              <SelectTrigger className="w-[120px]">
+                                  <SelectValue placeholder="Set Type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                  <SelectItem value="direct">Direct</SelectItem>
+                                  <SelectItem value="subbie">Subbie</SelectItem>
+                              </SelectContent>
+                          </Select>
+                      )}
+                  </TableCell>
+              )}
+              <TableCell className="text-right">
+                  {isOwner && user.uid !== currentUserProfile?.uid && (
+                    <div className="flex gap-2 justify-end">
+                       <Button variant="outline" size="sm" onClick={() => handleManageUser(user.uid)}>
+                        <UserCog className="mr-2 h-4 w-4" /> Manage
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleUserStatusChange(user.uid, user.status)}>
+                          {user.status === 'suspended' || user.status === 'pending-approval' ? 'Activate' : 'Suspend'}
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="sm"><Trash2 className="h-4 w-4" /></Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>This will permanently delete the user "{user.name}". This action cannot be undone.</AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeleteUser(user.uid)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  )}
+              </TableCell>
+            </TableRow>
+        ));
+  }
+  
+  const renderUserCards = (userList: UserProfile[]) => {
+      return userList.map((user) => (
+            <Card key={user.uid} className={user.status === 'suspended' ? 'bg-muted/50' : ''}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">{user.name}</CardTitle>
+                    {getStatusBadge(user.status)}
+                </div>
+                <CardDescription>{user.phoneNumber || 'No phone number'}</CardDescription>
+              </CardHeader>
+              <CardContent className="text-sm space-y-3">
+                 <div className="flex items-center gap-2">
+                    <strong>Role:</strong>
+                    <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
+                        {user.role}
+                    </Badge>
+                  </div>
+                 
+                 {isPrivilegedUser && (
+                    <>
+                      <div className="flex items-center gap-2 pt-2">
+                        <strong className="shrink-0">ID:</strong>
+                        <Input
+                            defaultValue={user.operativeId || ''}
+                            onBlur={(e) => handleFieldChange(user.uid, 'operativeId', e.target.value)}
+                            className="h-8"
+                            placeholder="Set ID"
+                            disabled={!isPrivilegedUser}
+                          />
+                      </div>
+                      {!['admin', 'owner'].includes(user.role) && (
+                        <div className="flex items-center gap-2 pt-2">
+                          <strong className="shrink-0">Trade:</strong>
+                          <Input
+                              defaultValue={user.trade || ''}
+                              onBlur={(e) => handleFieldChange(user.uid, 'trade', e.target.value)}
+                              className="h-8"
+                              placeholder="Set Trade"
+                              disabled={!isPrivilegedUser}
+                            />
+                        </div>
+                      )}
+                      {!['admin', 'owner'].includes(user.role) && (
+                          <div className="flex items-center gap-2 pt-2">
+                            <strong className="shrink-0">Type:</strong>
+                            <Select
+                              value={user.employmentType || ''}
+                              onValueChange={(value) => handleEmploymentTypeChange(user.uid, value as 'direct' | 'subbie')}
+                              disabled={!isPrivilegedUser}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Set Type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="direct">Direct</SelectItem>
+                                <SelectItem value="subbie">Subbie</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                      )}
+                    </>
+                 )}
+              </CardContent>
+              {isOwner && user.uid !== currentUserProfile?.uid && (
+                <CardFooter className="grid grid-cols-2 gap-2 p-2 bg-muted/20">
+                  <Button variant="outline" size="sm" onClick={() => handleManageUser(user.uid)} className="w-full">
+                    <UserCog className="mr-2 h-4 w-4" /> Manage
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleUserStatusChange(user.uid, user.status)} className="w-full">
+                      {user.status === 'suspended' || user.status === 'pending-approval' ? 'Activate' : 'Suspend'}
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm" className="w-full col-span-2"><Trash2 className="mr-2 h-4 w-4" /> Delete</Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete "{user.name}".</AlertDialogDescription></AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDeleteUser(user.uid)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </CardFooter>
+              )}
+            </Card>
+          ));
+  }
+
 
   return (
     <Card>
@@ -317,179 +504,49 @@ export default function UserManagementPage() {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {users.map((user) => (
-                        <TableRow key={user.uid} className={user.status === 'suspended' ? 'bg-muted/30' : ''}>
-                          <TableCell className="font-medium">{user.name}</TableCell>
-                          <TableCell>
-                            {isPrivilegedUser ? (
-                              <Input
-                                defaultValue={user.operativeId || ''}
-                                onBlur={(e) => handleFieldChange(user.uid, 'operativeId', e.target.value)}
-                                className="h-8 w-24"
-                                placeholder="Set ID"
-                                disabled={!isPrivilegedUser}
-                              />
-                            ) : (
-                              user.operativeId || <Badge variant="outline">N/A</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {isPrivilegedUser && !['admin', 'owner'].includes(user.role) ? (
-                              <Input
-                                defaultValue={user.trade || ''}
-                                onBlur={(e) => handleFieldChange(user.uid, 'trade', e.target.value)}
-                                className="h-8 w-32"
-                                placeholder="Set Trade"
-                                disabled={!isPrivilegedUser}
-                              />
-                            ) : (
-                              user.trade || <Badge variant="outline">N/A</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>{user.phoneNumber || 'N/A'}</TableCell>
-                          <TableCell>
-                            <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
-                                {user.role}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                              {getStatusBadge(user.status)}
-                          </TableCell>
-                          {isPrivilegedUser && (
-                              <TableCell>
-                                  <Select
-                                      value={user.employmentType || ''}
-                                      onValueChange={(value) => handleEmploymentTypeChange(user.uid, value as 'direct' | 'subbie')}
-                                      disabled={!isPrivilegedUser}
-                                  >
-                                      <SelectTrigger className="w-[120px]">
-                                          <SelectValue placeholder="Set Type" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                          <SelectItem value="direct">Direct</SelectItem>
-                                          <SelectItem value="subbie">Subbie</SelectItem>
-                                      </SelectContent>
-                                  </Select>
-                              </TableCell>
-                          )}
-                          <TableCell className="text-right">
-                              {isOwner && user.uid !== currentUserProfile?.uid && (
-                                <div className="flex gap-2 justify-end">
-                                   <Button variant="outline" size="sm" onClick={() => handleManageUser(user.uid)}>
-                                    <UserCog className="mr-2 h-4 w-4" /> Manage
-                                  </Button>
-                                  <Button variant="outline" size="sm" onClick={() => handleUserStatusChange(user.uid, user.status)}>
-                                      {user.status === 'suspended' || user.status === 'pending-approval' ? 'Activate' : 'Suspend'}
-                                  </Button>
-                                  <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                      <Button variant="destructive" size="sm"><Trash2 className="h-4 w-4" /></Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                      <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>This will permanently delete the user "{user.name}". This action cannot be undone.</AlertDialogDescription>
-                                      </AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => handleDeleteUser(user.uid)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
-                                      </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                  </AlertDialog>
-                                </div>
-                              )}
-                          </TableCell>
-                        </TableRow>
-                    ))}
+                    {adminsAndOwners.length > 0 && renderUserTableRows(adminsAndOwners)}
+
+                    {operatives.length > 0 && (
+                        <>
+                            <TableRow>
+                                <TableCell colSpan={isOwner ? 8 : 7} className="bg-muted/60">
+                                    <h3 className="font-semibold text-muted-foreground flex items-center gap-2">
+                                        <Briefcase className="h-5 w-5" />
+                                        Operatives
+                                    </h3>
+                                </TableCell>
+                            </TableRow>
+                            {renderUserTableRows(operatives)}
+                        </>
+                    )}
                 </TableBody>
                 </Table>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:hidden">
-              {users.map((user) => (
-                <Card key={user.uid} className={user.status === 'suspended' ? 'bg-muted/50' : ''}>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">{user.name}</CardTitle>
-                        {getStatusBadge(user.status)}
+            <div className="space-y-6 md:hidden">
+              {adminsAndOwners.length > 0 && (
+                <div>
+                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-muted-foreground">
+                        <UserCog className="h-5 w-5" />
+                        Admins & Owners
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {renderUserCards(adminsAndOwners)}
                     </div>
-                    <CardDescription>{user.phoneNumber || 'No phone number'}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="text-sm space-y-3">
-                     <div className="flex items-center gap-2">
-                        <strong>Role:</strong>
-                        <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
-                            {user.role}
-                        </Badge>
-                      </div>
-                     
-                     {isPrivilegedUser && (
-                        <>
-                          <div className="flex items-center gap-2 pt-2">
-                            <strong className="shrink-0">ID:</strong>
-                            <Input
-                                defaultValue={user.operativeId || ''}
-                                onBlur={(e) => handleFieldChange(user.uid, 'operativeId', e.target.value)}
-                                className="h-8"
-                                placeholder="Set ID"
-                                disabled={!isPrivilegedUser}
-                              />
-                          </div>
-                          {!['admin', 'owner'].includes(user.role) && (
-                            <div className="flex items-center gap-2 pt-2">
-                              <strong className="shrink-0">Trade:</strong>
-                              <Input
-                                  defaultValue={user.trade || ''}
-                                  onBlur={(e) => handleFieldChange(user.uid, 'trade', e.target.value)}
-                                  className="h-8"
-                                  placeholder="Set Trade"
-                                  disabled={!isPrivilegedUser}
-                                />
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2 pt-2">
-                            <strong className="shrink-0">Type:</strong>
-                            <Select
-                              value={user.employmentType || ''}
-                              onValueChange={(value) => handleEmploymentTypeChange(user.uid, value as 'direct' | 'subbie')}
-                              disabled={!isPrivilegedUser}
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Set Type" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="direct">Direct</SelectItem>
-                                <SelectItem value="subbie">Subbie</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </>
-                     )}
-                  </CardContent>
-                  {isOwner && user.uid !== currentUserProfile?.uid && (
-                    <CardFooter className="grid grid-cols-2 gap-2 p-2 bg-muted/20">
-                      <Button variant="outline" size="sm" onClick={() => handleManageUser(user.uid)} className="w-full">
-                        <UserCog className="mr-2 h-4 w-4" /> Manage
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleUserStatusChange(user.uid, user.status)} className="w-full">
-                          {user.status === 'suspended' || user.status === 'pending-approval' ? 'Activate' : 'Suspend'}
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="destructive" size="sm" className="w-full col-span-2"><Trash2 className="mr-2 h-4 w-4" /> Delete</Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete "{user.name}".</AlertDialogDescription></AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteUser(user.uid)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </CardFooter>
-                  )}
-                </Card>
-              ))}
+                </div>
+              )}
+
+              {operatives.length > 0 && (
+                 <div>
+                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-muted-foreground">
+                        <UserIcon className="h-5 w-5" />
+                        Operatives
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {renderUserCards(operatives)}
+                    </div>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -498,4 +555,3 @@ export default function UserManagementPage() {
   );
 }
 
-    
