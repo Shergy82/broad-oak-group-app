@@ -83,3 +83,14 @@ export interface Acknowledgement {
     userName: string;
     acknowledgedAt: Timestamp;
 }
+
+export interface TradeTask {
+  text: string;
+  photoRequired: boolean;
+}
+
+export interface Trade {
+  id: string;
+  name: string;
+  tasks: TradeTask[];
+}

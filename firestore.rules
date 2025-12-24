@@ -84,5 +84,14 @@ service cloud.firestore {
         // Only the owner can read or write to the global notification setting.
         allow read, write: if isRole(request.auth.uid, 'owner');
     }
+    
+    // Trade Tasks Collection
+    match /trade_tasks/{tradeId} {
+      // Any logged-in user can read the task lists.
+      allow read: if request.auth != null;
+      
+      // Only privileged users can create, update, or delete task lists.
+      allow write: if isPrivilegedUser(request.auth.uid);
+    }
   }
 }

@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
-import { doc, updateDoc, deleteField } from 'firebase/firestore';
+import { doc, updateDoc, deleteField, collection, query, where, getDocs } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Clock, Sunrise, Sunset, ThumbsUp, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Trash2, HardHat, ListChecks, Camera } from 'lucide-react';
 import { Spinner } from '@/components/shared/spinner';
-import type { Shift, ShiftStatus, UserProfile } from '@/types';
+import type { Shift, ShiftStatus, UserProfile, TradeTask, Trade } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import {
   Dialog,
@@ -27,16 +27,6 @@ import { Label } from '@/components/ui/label';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../ui/alert-dialog';
 import { Checkbox } from '../ui/checkbox';
 
-interface TradeTask {
-  text: string;
-  photoRequired: boolean;
-}
-
-interface Trade {
-  id: string;
-  name: string;
-  tasks: TradeTask[];
-}
 
 interface ShiftCardProps {
   shift: Shift;
@@ -59,7 +49,6 @@ const statusDetails: { [key in ShiftStatus]: { label: string; variant: 'default'
   rejected: { label: 'Rejected', variant: 'destructive', className: 'bg-destructive/80 hover:bg-destructive/90 text-white border-destructive/80', icon: XCircle },
 };
 
-const LS_TRADES_KEY = 'tradeTasks_v2';
 const LS_SHIFT_TASKS_KEY = 'shiftTaskCompletion';
 
 export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
@@ -84,20 +73,23 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
   const allTasksCompleted = tradeTasks.length === 0 || completedTasks.size === tradeTasks.length;
 
   useEffect(() => {
-    if (userProfile?.trade) {
-      try {
-        const savedTradesData = localStorage.getItem(LS_TRADES_KEY);
-        if (savedTradesData) {
-          const allTrades: Trade[] = JSON.parse(savedTradesData);
-          const userTrade = allTrades.find(t => t.name.toLowerCase() === userProfile.trade?.toLowerCase());
-          if (userTrade) {
-            setTradeTasks(userTrade.tasks);
+    async function fetchTradeTasks() {
+      if (userProfile?.trade && db) {
+        try {
+          const q = query(collection(db, 'trade_tasks'), where('name', '==', userProfile.trade));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const tradeData = querySnapshot.docs[0].data() as Trade;
+            setTradeTasks(tradeData.tasks || []);
+          } else {
+            setTradeTasks([]);
           }
+        } catch (e) {
+          console.error("Failed to load trade tasks from Firestore", e);
         }
-      } catch (e) {
-        console.error("Failed to load trade tasks from localStorage", e);
       }
     }
+    fetchTradeTasks();
   }, [userProfile?.trade]);
 
   useEffect(() => {

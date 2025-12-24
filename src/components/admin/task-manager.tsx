@@ -10,120 +10,136 @@ import { PlusCircle, Trash2, Camera } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
-
-interface Task {
-  text: string;
-  photoRequired: boolean;
-}
-
-interface Trade {
-  id: string;
-  name: string;
-  tasks: Task[];
-}
-
-const LOCAL_STORAGE_KEY = 'tradeTasks_v2'; // New key for the new data structure
+import { db } from '@/lib/firebase';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, arrayUnion, arrayRemove, query, orderBy } from 'firebase/firestore';
+import { Spinner } from '../shared/spinner';
+import type { Trade } from '@/types';
 
 export function TaskManager() {
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [loading, setLoading] = useState(true);
   const [newTradeName, setNewTradeName] = useState('');
   const [newSubTaskText, setNewSubTaskText] = useState<{ [key: string]: string }>({});
   const [newSubTaskPhotoRequired, setNewSubTaskPhotoRequired] = useState<{ [key: string]: boolean }>({});
   const { toast } = useToast();
 
   useEffect(() => {
-    try {
-      const savedTrades = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (savedTrades) {
-        setTrades(JSON.parse(savedTrades));
-      } else {
-        // Migration from old format if it exists
-        const oldSavedTrades = localStorage.getItem('tradeTasks');
-        if (oldSavedTrades) {
-          const oldTrades: Array<{id: string, name: string, tasks: string[]}> = JSON.parse(oldSavedTrades);
-          const migratedTrades: Trade[] = oldTrades.map(trade => ({
-            ...trade,
-            tasks: trade.tasks.map(taskText => ({ text: taskText, photoRequired: false }))
-          }));
-          saveTrades(migratedTrades);
-          localStorage.removeItem('tradeTasks');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to parse trades from localStorage', error);
+    if (!db) {
+      setLoading(false);
+      return;
+    }
+    const q = query(collection(db, 'trade_tasks'), orderBy('name'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedTrades = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Trade));
+      setTrades(fetchedTrades);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching trades: ", error);
       toast({
         variant: 'destructive',
         title: 'Error Loading Data',
-        description: 'Could not load previously saved tasks.',
+        description: 'Could not load tasks from the database.',
       });
-    }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [toast]);
 
-  const saveTrades = (updatedTrades: Trade[]) => {
-    setTrades(updatedTrades);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedTrades));
-  };
-
-  const handleAddTrade = () => {
+  const handleAddTrade = async () => {
     if (!newTradeName.trim()) {
       toast({ variant: 'destructive', title: 'Trade name cannot be empty.' });
       return;
     }
-    const newTrade: Trade = {
-      id: Date.now().toString(),
-      name: newTradeName.trim(),
-      tasks: [],
-    };
-    saveTrades([...trades, newTrade]);
-    setNewTradeName('');
-    toast({ title: 'Success', description: `Trade "${newTrade.name}" added.` });
+    if (!db) return;
+
+    try {
+      await addDoc(collection(db, 'trade_tasks'), {
+        name: newTradeName.trim(),
+        tasks: [],
+      });
+      setNewTradeName('');
+      toast({ title: 'Success', description: `Trade "${newTradeName.trim()}" added.` });
+    } catch (error) {
+      console.error('Error adding trade: ', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not add trade.' });
+    }
   };
 
-  const handleDeleteTrade = (tradeId: string) => {
-    const updatedTrades = trades.filter((trade) => trade.id !== tradeId);
-    saveTrades(updatedTrades);
-    toast({ title: 'Success', description: 'Trade deleted.' });
+  const handleDeleteTrade = async (tradeId: string) => {
+    if (!db) return;
+    try {
+      await deleteDoc(doc(db, 'trade_tasks', tradeId));
+      toast({ title: 'Success', description: 'Trade deleted.' });
+    } catch (error) {
+      console.error('Error deleting trade: ', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not delete trade.' });
+    }
   };
 
-  const handleAddTask = (tradeId: string) => {
+  const handleAddTask = async (tradeId: string) => {
     const taskName = newSubTaskText[tradeId]?.trim();
     if (!taskName) {
       toast({ variant: 'destructive', title: 'Task name cannot be empty.' });
       return;
     }
+    if (!db) return;
+
     const photoRequired = newSubTaskPhotoRequired[tradeId] || false;
+    const tradeDocRef = doc(db, 'trade_tasks', tradeId);
 
-    const updatedTrades = trades.map((trade) => {
-      if (trade.id === tradeId) {
-        return { ...trade, tasks: [...trade.tasks, { text: taskName, photoRequired }] };
-      }
-      return trade;
-    });
-
-    saveTrades(updatedTrades);
-    setNewSubTaskText({ ...newSubTaskText, [tradeId]: '' });
-    setNewSubTaskPhotoRequired({ ...newSubTaskPhotoRequired, [tradeId]: false });
-    toast({ title: 'Success', description: `Task added.` });
+    try {
+      await updateDoc(tradeDocRef, {
+        tasks: arrayUnion({ text: taskName, photoRequired })
+      });
+      setNewSubTaskText({ ...newSubTaskText, [tradeId]: '' });
+      setNewSubTaskPhotoRequired({ ...newSubTaskPhotoRequired, [tradeId]: false });
+      toast({ title: 'Success', description: `Task added.` });
+    } catch (error) {
+      console.error('Error adding task: ', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not add task.' });
+    }
   };
 
-  const handleDeleteTask = (tradeId: string, taskIndex: number) => {
-    const updatedTrades = trades.map((trade) => {
-      if (trade.id === tradeId) {
-        const updatedTasks = trade.tasks.filter((_, i) => i !== taskIndex);
-        return { ...trade, tasks: updatedTasks };
-      }
-      return trade;
-    });
-    saveTrades(updatedTrades);
-    toast({ title: 'Success', description: 'Task deleted.' });
+  const handleDeleteTask = async (tradeId: string, taskToDelete: { text: string, photoRequired: boolean }) => {
+    if (!db) return;
+    const tradeDocRef = doc(db, 'trade_tasks', tradeId);
+
+    try {
+      await updateDoc(tradeDocRef, {
+        tasks: arrayRemove(taskToDelete)
+      });
+      toast({ title: 'Success', description: 'Task deleted.' });
+    } catch (error) {
+      console.error('Error deleting task: ', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not delete task.' });
+    }
   };
+
+  if (loading) {
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Task Management</CardTitle>
+                <CardDescription>
+                Create and manage reusable tasks organized by trade. This data is stored centrally for all users.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="flex items-center justify-center h-48">
+                    <Spinner size="lg" />
+                </div>
+            </CardContent>
+        </Card>
+    )
+  }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Task Management</CardTitle>
         <CardDescription>
-          Create and manage reusable tasks organized by trade. This data is saved in your browser.
+          Create and manage reusable tasks organized by trade. This data is stored centrally for all users.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -170,7 +186,7 @@ export function TaskManager() {
                       />
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
-                          <Checkbox 
+                          <Checkbox
                             id={`photo-required-${trade.id}`}
                             checked={newSubTaskPhotoRequired[trade.id] || false}
                             onCheckedChange={(checked) => setNewSubTaskPhotoRequired({ ...newSubTaskPhotoRequired, [trade.id]: !!checked })}
@@ -182,7 +198,7 @@ export function TaskManager() {
                         </Button>
                       </div>
                     </div>
-                    {trade.tasks.length > 0 && (
+                    {trade.tasks?.length > 0 && (
                       <ul className="space-y-2">
                         {trade.tasks.map((task, index) => (
                           <li
@@ -197,7 +213,7 @@ export function TaskManager() {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => handleDeleteTask(trade.id, index)}
+                              onClick={() => handleDeleteTask(trade.id, task)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
