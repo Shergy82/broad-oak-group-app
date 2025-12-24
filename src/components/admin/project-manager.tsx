@@ -344,7 +344,7 @@ function FileManagerDialog({ project, open, onOpenChange, userProfile }: { proje
                                                           <Download className="h-4 w-4" />
                                                       </Button>
                                                     </a>
-                                                     {(userProfile.uid === file.uploaderId || ['admin', 'owner'].includes(userProfile.role)) && (
+                                                     {(userProfile.uid === file.uploaderId || ['admin', 'owner', 'manager'].includes(userProfile.role)) && (
                                                         <AlertDialog>
                                                             <AlertDialogTrigger asChild>
                                                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10">
@@ -418,7 +418,7 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
   };
   
   const handleDeleteProject = async (project: Project) => {
-    if (!['admin', 'owner'].includes(userProfile.role)) {
+    if (!['admin', 'owner', 'manager'].includes(userProfile.role)) {
         toast({ variant: 'destructive', title: 'Permission Denied', description: 'You do not have permission to delete projects.' });
         return;
     }
@@ -549,7 +549,7 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
                             <FolderOpen className="mr-2 h-4 w-4" />
                             Files
                             </Button>
-                            {['admin', 'owner'].includes(userProfile.role) && (
+                            {['admin', 'owner', 'manager'].includes(userProfile.role) && (
                                  <AlertDialog>
                                     <AlertDialogTrigger asChild>
                                         <Button variant="destructive" size="sm">
@@ -597,7 +597,7 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
                                 <FolderOpen className="mr-2 h-4 w-4" />
                                 Manage Files
                             </Button>
-                             {['admin', 'owner'].includes(userProfile.role) && (
+                             {['admin', 'owner', 'manager'].includes(userProfile.role) && (
                                 <AlertDialog>
                                     <AlertDialogTrigger asChild>
                                         <Button variant="destructive" className="w-full">
@@ -631,5 +631,3 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
     </div>
   );
 }
-
-    

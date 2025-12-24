@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -23,7 +24,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const isPrivilegedUser = userProfile && ['admin', 'owner'].includes(userProfile.role);
+  const isPrivilegedUser = userProfile && ['admin', 'owner', 'manager'].includes(userProfile.role);
 
   useEffect(() => {
     if (!isAuthLoading && !user) {

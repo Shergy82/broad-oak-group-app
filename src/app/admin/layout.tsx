@@ -45,8 +45,8 @@ export default function AdminLayout({
     );
   }
 
-  // This is the key guard. It must allow both 'admin' and 'owner'.
-  if (!['admin', 'owner'].includes(userProfile.role)) {
+  // This is the key guard. It must allow 'admin', 'owner', and 'manager'.
+  if (!['admin', 'owner', 'manager'].includes(userProfile.role)) {
     return (
       <div className="flex min-h-screen w-full flex-col">
         <Header />
@@ -55,7 +55,7 @@ export default function AdminLayout({
                 <Terminal className="h-4 w-4" />
                 <AlertTitle>Access Denied</AlertTitle>
                 <AlertDescription>
-                    You do not have permission to view this page. Access is restricted to Admins and the Owner.
+                    You do not have permission to view this page. Access is restricted to Admins, Owners, and Managers.
                 </AlertDescription>
             </Alert>
         </main>
@@ -63,7 +63,7 @@ export default function AdminLayout({
     );
   }
 
-  // If the user is an admin or owner, render the page content.
+  // If the user is an admin, owner, or manager, render the page content.
   return (
     <div className="flex min-h-screen w-full flex-col">
       <Header />

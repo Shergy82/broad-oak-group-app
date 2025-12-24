@@ -205,7 +205,7 @@ export function ProjectFiles({ project, userProfile }: ProjectFilesProps) {
                                     <Download className="h-4 w-4" />
                                 </Button>
                             </a>
-                            {(userProfile.uid === file.uploaderId || ['admin', 'owner'].includes(userProfile.role)) && (
+                            {(userProfile.uid === file.uploaderId || ['admin', 'owner', 'manager'].includes(userProfile.role)) && (
                                 <AlertDialog>
                                     <AlertDialogTrigger asChild>
                                         <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10">
@@ -257,5 +257,3 @@ export function ProjectFiles({ project, userProfile }: ProjectFilesProps) {
     </div>
   );
 }
-
-    

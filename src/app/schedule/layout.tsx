@@ -43,7 +43,7 @@ export default function ScheduleLayout({
     );
   }
 
-  if (!['admin', 'owner'].includes(userProfile.role)) {
+  if (!['admin', 'owner', 'manager'].includes(userProfile.role)) {
     return (
       <div className="flex min-h-screen w-full flex-col">
         <Header />

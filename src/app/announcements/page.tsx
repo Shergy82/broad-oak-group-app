@@ -40,7 +40,7 @@ export default function AnnouncementsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
 
-  const isPrivilegedUser = userProfile && ['admin', 'owner'].includes(userProfile.role);
+  const isPrivilegedUser = userProfile && ['admin', 'owner', 'manager'].includes(userProfile.role);
 
   useEffect(() => {
     if (!isAuthLoading && !user) {

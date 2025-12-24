@@ -439,7 +439,7 @@ export const deleteProjectAndFiles = functions.region("europe-west2").https.onCa
     const userDoc = await db.collection("users").doc(uid).get();
     const userProfile = userDoc.data();
 
-    if (!userProfile || !['admin', 'owner'].includes(userProfile.role)) {
+    if (!userProfile || !['admin', 'owner', 'manager'].includes(userProfile.role)) {
         throw new functions.https.HttpsError("permission-denied", "You do not have permission to perform this action.");
     }
     
@@ -521,10 +521,10 @@ export const deleteProjectFile = functions.region("europe-west2").https.onCall(a
         // 2. Permission check: Is the user the uploader, or an admin/owner?
         const userDoc = await db.collection("users").doc(uid).get();
         const userProfile = userDoc.data();
-        const isOwnerOrAdmin = userProfile && ['admin', 'owner'].includes(userProfile.role);
+        const isPrivilegedUser = userProfile && ['admin', 'owner', 'manager'].includes(userProfile.role);
         const isUploader = uid === uploaderId;
 
-        if (!isOwnerOrAdmin && !isUploader) {
+        if (!isPrivilegedUser && !isUploader) {
             throw new functions.https.HttpsError("permission-denied", "You do not have permission to delete this file.");
         }
 
@@ -754,5 +754,3 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
     throw new functions.https.HttpsError("internal", `An unexpected error occurred while deleting the user: ${error.message}`);
   }
 });
-
-    

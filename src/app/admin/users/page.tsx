@@ -34,7 +34,7 @@ export default function UserManagementPage() {
   const { toast } = useToast();
   
   const isOwner = currentUserProfile?.role === 'owner';
-  const isPrivilegedUser = isOwner || currentUserProfile?.role === 'admin';
+  const isPrivilegedUser = isOwner || currentUserProfile?.role === 'admin' || currentUserProfile?.role === 'manager';
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 
   useEffect(() => {
@@ -92,7 +92,7 @@ export default function UserManagementPage() {
   }, [currentUserProfile, toast]);
   
   const { adminsAndOwners, operatives } = useMemo(() => {
-    const adminsAndOwners = users.filter(u => ['admin', 'owner'].includes(u.role));
+    const adminsAndOwners = users.filter(u => ['admin', 'owner', 'manager'].includes(u.role));
     const operatives = users.filter(u => u.role === 'user');
     return { adminsAndOwners, operatives };
   }, [users]);
@@ -195,7 +195,7 @@ export default function UserManagementPage() {
       finalY = (doc as any).lastAutoTable.finalY + 15;
     };
     
-    const isOperative = (u: UserProfile) => !['admin', 'owner'].includes(u.role);
+    const isOperative = (u: UserProfile) => !['admin', 'owner', 'manager'].includes(u.role);
 
     const directUsers = users.filter(u => u.employmentType === 'direct' && isOperative(u));
     const subbieUsers = users.filter(u => u.employmentType === 'subbie' && isOperative(u));
@@ -291,7 +291,7 @@ export default function UserManagementPage() {
                 )}
               </TableCell>
               <TableCell>
-                {isPrivilegedUser && !['admin', 'owner'].includes(user.role) ? (
+                {isPrivilegedUser && !['admin', 'owner', 'manager'].includes(user.role) ? (
                   <Input
                     defaultValue={user.trade || ''}
                     onBlur={(e) => handleFieldChange(user.uid, 'trade', e.target.value)}
@@ -305,7 +305,7 @@ export default function UserManagementPage() {
               </TableCell>
               <TableCell>{user.phoneNumber || 'N/A'}</TableCell>
               <TableCell>
-                <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
+                <Badge variant={user.role === 'owner' ? 'default' : (user.role === 'admin' || user.role === 'manager') ? 'secondary' : 'outline'} className="capitalize">
                     {user.role}
                 </Badge>
               </TableCell>
@@ -314,7 +314,7 @@ export default function UserManagementPage() {
               </TableCell>
               {isPrivilegedUser && (
                   <TableCell>
-                      {['admin', 'owner'].includes(user.role) ? (
+                      {['admin', 'owner', 'manager'].includes(user.role) ? (
                           <Badge variant="outline">N/A</Badge>
                       ) : (
                           <Select
@@ -377,7 +377,7 @@ export default function UserManagementPage() {
               <CardContent className="text-sm space-y-3">
                  <div className="flex items-center gap-2">
                     <strong>Role:</strong>
-                    <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className="capitalize">
+                    <Badge variant={user.role === 'owner' ? 'default' : (user.role === 'admin' || user.role === 'manager') ? 'secondary' : 'outline'} className="capitalize">
                         {user.role}
                     </Badge>
                   </div>
@@ -394,7 +394,7 @@ export default function UserManagementPage() {
                             disabled={!isPrivilegedUser}
                           />
                       </div>
-                      {!['admin', 'owner'].includes(user.role) && (
+                      {!['admin', 'owner', 'manager'].includes(user.role) && (
                         <div className="flex items-center gap-2 pt-2">
                           <strong className="shrink-0">Trade:</strong>
                           <Input
@@ -406,7 +406,7 @@ export default function UserManagementPage() {
                             />
                         </div>
                       )}
-                      {!['admin', 'owner'].includes(user.role) && (
+                      {!['admin', 'owner', 'manager'].includes(user.role) && (
                           <div className="flex items-center gap-2 pt-2">
                             <strong className="shrink-0">Type:</strong>
                             <Select
@@ -528,7 +528,7 @@ export default function UserManagementPage() {
                 <div>
                     <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-muted-foreground">
                         <UserCog className="h-5 w-5" />
-                        Admins & Owners
+                        Admins, Owners & Managers
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {renderUserCards(adminsAndOwners)}
@@ -554,4 +554,3 @@ export default function UserManagementPage() {
     </Card>
   );
 }
-

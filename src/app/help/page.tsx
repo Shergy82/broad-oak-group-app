@@ -10,7 +10,7 @@ import { useUserProfile } from '@/hooks/use-user-profile';
 
 export default function HelpPage() {
   const { userProfile } = useUserProfile();
-  const isPrivilegedUser = userProfile && ['admin', 'owner'].includes(userProfile.role);
+  const isPrivilegedUser = userProfile && ['admin', 'owner', 'manager'].includes(userProfile.role);
 
   return (
     <div className="flex min-h-screen w-full flex-col">
@@ -165,7 +165,7 @@ export default function HelpPage() {
                         <AccordionContent className="space-y-4">
                           <p>The Team Schedule provides a master view of all shifts for all users. You can filter by user and view shifts for today, this week, and next week. It also includes an archive of completed/incomplete shifts from the last 6 weeks.</p>
                           <ul className="list-disc pl-6 space-y-2">
-                              <li><strong>Add/Edit/Delete Shifts:</strong> Owners can manually manage shifts directly from this view.</li>
+                              <li><strong>Add/Edit/Delete Shifts:</strong> Privileged users can manually manage shifts directly from this view.</li>
                               <li><strong>Download Reports:</strong> Download PDF reports for the day or week, providing a summary of all activities.</li>
                           </ul>
                         </AccordionContent>

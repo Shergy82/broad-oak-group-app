@@ -32,7 +32,7 @@ export function Header() {
     }
   };
 
-  const isPrivilegedUser = userProfile && ['admin', 'owner'].includes(userProfile.role);
+  const isPrivilegedUser = userProfile && ['admin', 'owner', 'manager'].includes(userProfile.role);
 
   const getInitials = (name?: string) => {
     if (!name) return <User className="h-5 w-5" />;

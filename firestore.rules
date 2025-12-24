@@ -1,3 +1,4 @@
+
 rules_version = '2';
 
 service cloud.firestore {
@@ -11,7 +12,7 @@ service cloud.firestore {
     // Helper function to check if a user is an admin or owner.
     function isPrivilegedUser(uid) {
       let userRole = get(/databases/$(database)/documents/users/$(uid)).data.role;
-      return userRole == 'admin' || userRole == 'owner';
+      return userRole == 'admin' || userRole == 'owner' || userRole == 'manager';
     }
 
     // Users Collection
