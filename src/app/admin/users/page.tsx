@@ -69,8 +69,8 @@ export default function UserManagementPage() {
         if (employmentTypes[user.uid]) {
             user.employmentType = employmentTypes[user.uid];
         }
-        // Apply locally stored trade if it exists and there isn't one from Firestore
-        if (trades[user.uid] && !user.trade) {
+        // Apply locally stored trade if it exists
+        if (trades[user.uid]) {
             user.trade = trades[user.uid];
         }
         fetchedUsers.push(user);
@@ -334,7 +334,7 @@ export default function UserManagementPage() {
                             )}
                           </TableCell>
                           <TableCell>
-                            {isPrivilegedUser ? (
+                            {isPrivilegedUser && !['admin', 'owner'].includes(user.role) ? (
                               <Input
                                 defaultValue={user.trade || ''}
                                 onBlur={(e) => handleFieldChange(user.uid, 'trade', e.target.value)}
@@ -435,16 +435,18 @@ export default function UserManagementPage() {
                                 disabled={!isPrivilegedUser}
                               />
                           </div>
-                          <div className="flex items-center gap-2 pt-2">
-                            <strong className="shrink-0">Trade:</strong>
-                            <Input
-                                defaultValue={user.trade || ''}
-                                onBlur={(e) => handleFieldChange(user.uid, 'trade', e.target.value)}
-                                className="h-8"
-                                placeholder="Set Trade"
-                                disabled={!isPrivilegedUser}
-                              />
-                          </div>
+                          {!['admin', 'owner'].includes(user.role) && (
+                            <div className="flex items-center gap-2 pt-2">
+                              <strong className="shrink-0">Trade:</strong>
+                              <Input
+                                  defaultValue={user.trade || ''}
+                                  onBlur={(e) => handleFieldChange(user.uid, 'trade', e.target.value)}
+                                  className="h-8"
+                                  placeholder="Set Trade"
+                                  disabled={!isPrivilegedUser}
+                                />
+                            </div>
+                          )}
                           <div className="flex items-center gap-2 pt-2">
                             <strong className="shrink-0">Type:</strong>
                             <Select
