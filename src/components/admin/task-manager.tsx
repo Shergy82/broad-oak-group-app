@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -5,21 +6,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { PlusCircle, Trash2 } from 'lucide-react';
+import { PlusCircle, Trash2, Camera } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Checkbox } from '../ui/checkbox';
+import { Label } from '../ui/label';
+
+interface Task {
+  text: string;
+  photoRequired: boolean;
+}
 
 interface Trade {
   id: string;
   name: string;
-  tasks: string[];
+  tasks: Task[];
 }
 
-const LOCAL_STORAGE_KEY = 'tradeTasks';
+const LOCAL_STORAGE_KEY = 'tradeTasks_v2'; // New key for the new data structure
 
 export function TaskManager() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [newTradeName, setNewTradeName] = useState('');
-  const [newSubTask, setNewSubTask] = useState<{ [key: string]: string }>({});
+  const [newSubTaskText, setNewSubTaskText] = useState<{ [key: string]: string }>({});
+  const [newSubTaskPhotoRequired, setNewSubTaskPhotoRequired] = useState<{ [key: string]: boolean }>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -27,6 +36,18 @@ export function TaskManager() {
       const savedTrades = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (savedTrades) {
         setTrades(JSON.parse(savedTrades));
+      } else {
+        // Migration from old format if it exists
+        const oldSavedTrades = localStorage.getItem('tradeTasks');
+        if (oldSavedTrades) {
+          const oldTrades: Array<{id: string, name: string, tasks: string[]}> = JSON.parse(oldSavedTrades);
+          const migratedTrades: Trade[] = oldTrades.map(trade => ({
+            ...trade,
+            tasks: trade.tasks.map(taskText => ({ text: taskText, photoRequired: false }))
+          }));
+          saveTrades(migratedTrades);
+          localStorage.removeItem('tradeTasks');
+        }
       }
     } catch (error) {
       console.error('Failed to parse trades from localStorage', error);
@@ -65,20 +86,24 @@ export function TaskManager() {
   };
 
   const handleAddTask = (tradeId: string) => {
-    const taskName = newSubTask[tradeId]?.trim();
+    const taskName = newSubTaskText[tradeId]?.trim();
     if (!taskName) {
       toast({ variant: 'destructive', title: 'Task name cannot be empty.' });
       return;
     }
+    const photoRequired = newSubTaskPhotoRequired[tradeId] || false;
+
     const updatedTrades = trades.map((trade) => {
       if (trade.id === tradeId) {
-        return { ...trade, tasks: [...trade.tasks, taskName] };
+        return { ...trade, tasks: [...trade.tasks, { text: taskName, photoRequired }] };
       }
       return trade;
     });
+
     saveTrades(updatedTrades);
-    setNewSubTask({ ...newSubTask, [tradeId]: '' });
-     toast({ title: 'Success', description: `Task added.` });
+    setNewSubTaskText({ ...newSubTaskText, [tradeId]: '' });
+    setNewSubTaskPhotoRequired({ ...newSubTaskPhotoRequired, [tradeId]: false });
+    toast({ title: 'Success', description: `Task added.` });
   };
 
   const handleDeleteTask = (tradeId: string, taskIndex: number) => {
@@ -136,16 +161,26 @@ export function TaskManager() {
                 </AccordionTrigger>
                 <AccordionContent className="p-4 bg-muted/30 rounded-b-md">
                   <div className="space-y-4">
-                    <div className="flex gap-2">
+                    <div className="space-y-2">
                       <Input
                         placeholder="Add a new sub-task..."
-                        value={newSubTask[trade.id] || ''}
-                        onChange={(e) => setNewSubTask({ ...newSubTask, [trade.id]: e.target.value })}
+                        value={newSubTaskText[trade.id] || ''}
+                        onChange={(e) => setNewSubTaskText({ ...newSubTaskText, [trade.id]: e.target.value })}
                         onKeyPress={(e) => e.key === 'Enter' && handleAddTask(trade.id)}
                       />
-                      <Button size="sm" onClick={() => handleAddTask(trade.id)}>
-                        Add Task
-                      </Button>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox 
+                            id={`photo-required-${trade.id}`}
+                            checked={newSubTaskPhotoRequired[trade.id] || false}
+                            onCheckedChange={(checked) => setNewSubTaskPhotoRequired({ ...newSubTaskPhotoRequired, [trade.id]: !!checked })}
+                          />
+                          <Label htmlFor={`photo-required-${trade.id}`} className="text-sm text-muted-foreground">Photo Required</Label>
+                        </div>
+                        <Button size="sm" onClick={() => handleAddTask(trade.id)}>
+                          Add Task
+                        </Button>
+                      </div>
                     </div>
                     {trade.tasks.length > 0 && (
                       <ul className="space-y-2">
@@ -154,7 +189,10 @@ export function TaskManager() {
                             key={index}
                             className="flex items-center justify-between p-2 bg-background rounded-md border"
                           >
-                            <span>{task}</span>
+                            <div className="flex items-center gap-2">
+                              <span>{task.text}</span>
+                              {task.photoRequired && <Camera className="h-4 w-4 text-muted-foreground" />}
+                            </div>
                             <Button
                               variant="ghost"
                               size="icon"
