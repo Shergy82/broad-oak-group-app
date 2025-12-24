@@ -57,6 +57,8 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isNoteDialogOpen, setIsNoteDialogOpen] = useState(false);
+  const [isPhotoDialogOpen, setIsPhotoDialogOpen] = useState(false);
+  const [selectedPhotoTaskIndex, setSelectedPhotoTaskIndex] = useState<number | null>(null);
   const [note, setNote] = useState('');
 
   const [tradeTasks, setTradeTasks] = useState<TradeTask[]>([]);
@@ -109,15 +111,8 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
     }
   }, [shift.id, tradeTasks.length]);
 
-  const handleTaskToggle = (taskIndex: number) => {
-    const newCompletedTasks = new Set(completedTasks);
-    if (newCompletedTasks.has(taskIndex)) {
-      newCompletedTasks.delete(taskIndex);
-    } else {
-      newCompletedTasks.add(taskIndex);
-    }
+  const updateAndStoreCompletedTasks = (newCompletedTasks: Set<number>) => {
     setCompletedTasks(newCompletedTasks);
-
     try {
         const allShiftTasks = JSON.parse(localStorage.getItem(LS_SHIFT_TASKS_KEY) || '{}');
         allShiftTasks[shift.id] = Array.from(newCompletedTasks);
@@ -125,6 +120,33 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
     } catch (e) {
       console.error("Failed to save shift task completion state", e);
     }
+  }
+
+  const handleTaskToggle = (taskIndex: number) => {
+    const task = tradeTasks[taskIndex];
+    if (task.photoRequired && !completedTasks.has(taskIndex)) {
+        setSelectedPhotoTaskIndex(taskIndex);
+        setIsPhotoDialogOpen(true);
+        return;
+    }
+
+    const newCompletedTasks = new Set(completedTasks);
+    if (newCompletedTasks.has(taskIndex)) {
+      newCompletedTasks.delete(taskIndex);
+    } else {
+      newCompletedTasks.add(taskIndex);
+    }
+    updateAndStoreCompletedTasks(newCompletedTasks);
+  };
+  
+  const handleConfirmPhotoUpload = () => {
+    if (selectedPhotoTaskIndex !== null) {
+      const newCompletedTasks = new Set(completedTasks);
+      newCompletedTasks.add(selectedPhotoTaskIndex);
+      updateAndStoreCompletedTasks(newCompletedTasks);
+    }
+    setIsPhotoDialogOpen(false);
+    setSelectedPhotoTaskIndex(null);
   };
 
 
@@ -182,7 +204,7 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
   }
 
   const renderTaskList = () => {
-    if (shift.status !== 'on-site') return null;
+    if (shift.status !== 'on-site' || tradeTasks.length === 0) return null;
 
     return (
       <div className="mt-4 p-4 border-t">
@@ -318,6 +340,24 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
             <Button onClick={handleIncompleteSubmit} disabled={isLoading} className="bg-amber-600 hover:bg-amber-700">
                 {isLoading ? <Spinner /> : 'Submit Note'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isPhotoDialogOpen} onOpenChange={setIsPhotoDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Camera /> Photo Required</DialogTitle>
+            <DialogDescription>
+              This task requires a photo. Please take the necessary photo and upload it to the relevant project in the "Projects" section of the app.
+            </DialogDescription>
+          </DialogHeader>
+           <div className="py-4 text-sm text-muted-foreground">
+              Once you have uploaded the photo, you can confirm this task is complete.
+           </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPhotoDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleConfirmPhotoUpload}>I've Uploaded the Photo</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
