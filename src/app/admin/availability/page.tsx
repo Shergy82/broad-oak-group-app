@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 
 type Role = 'user' | 'admin' | 'owner';
 
@@ -80,6 +81,7 @@ export default function AvailabilityPage() {
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [isUserFilterApplied, setIsUserFilterApplied] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
+  const [viewMode, setViewMode] = useState<'detailed' | 'simple'>('detailed');
 
 
   useEffect(() => {
@@ -138,10 +140,10 @@ export default function AvailabilityPage() {
   const handleUserToggle = (userId: string) => {
       setSelectedUserIds(prev => {
           const newUserIds = new Set(prev);
-          if (newUserIds.has(user.uid)) {
-              newUserIds.delete(user.uid);
+          if (newUserIds.has(userId)) {
+              newUserIds.delete(userId);
           } else {
-              newUserIds.add(user.uid);
+              newUserIds.add(userId);
           }
           setIsUserFilterApplied(true);
           return newUserIds;
@@ -250,13 +252,25 @@ export default function AvailabilityPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Operative Availability</CardTitle>
-        <CardDescription>
-          Select a date or a date range to view which operatives are available.
-        </CardDescription>
+        <div className="flex justify-between items-center">
+            <div>
+                <CardTitle>Operative Availability</CardTitle>
+                <CardDescription>
+                  Select a date or a date range to view which operatives are available.
+                </CardDescription>
+            </div>
+            <div className="flex items-center space-x-2">
+                <Label htmlFor="view-mode-toggle">Simple View</Label>
+                <Switch
+                    id="view-mode-toggle"
+                    checked={viewMode === 'simple'}
+                    onCheckedChange={(checked) => setViewMode(checked ? 'simple' : 'detailed')}
+                />
+            </div>
+        </div>
       </CardHeader>
-      <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="md:col-span-1 flex justify-center">
+      <CardContent className={`grid grid-cols-1 ${viewMode === 'detailed' ? 'md:grid-cols-3' : 'md:grid-cols-1'} gap-8`}>
+        <div className="flex justify-center">
              <Calendar
                 mode="range"
                 selected={dateRange}
@@ -269,148 +283,150 @@ export default function AvailabilityPage() {
                 }}
                 className="rounded-md border"
                 defaultMonth={dateRange?.from}
-                numberOfMonths={1}
+                numberOfMonths={viewMode === 'simple' ? 2 : 1}
             />
         </div>
-        <div className="md:col-span-2 space-y-6">
-           <Card className="bg-muted/30">
-            <CardHeader className="py-4">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Filter className="h-4 w-4" />
-                Filters
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col sm:flex-row gap-6 items-start">
-              <div className="space-y-2">
-                <h4 className="font-medium text-sm">Roles</h4>
-                <div className="flex gap-4">
-                  {(['user', 'admin', 'owner'] as Role[]).map(role => (
-                    <div key={role} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`role-${role}`}
-                        checked={selectedRoles.has(role)}
-                        onCheckedChange={() => handleRoleToggle(role)}
-                      />
-                      <Label htmlFor={`role-${role}`} className="capitalize">{role}</Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <h4 className="font-medium text-sm">Users</h4>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="w-full sm:w-[250px] justify-between">
-                      <span>{selectedUserIds.size} of {allUsers.length} users selected</span>
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)]">
-                    <ScrollArea className="h-72">
-                      {allUsers.map(user => (
-                        <DropdownMenuCheckboxItem
-                          key={user.uid}
-                          checked={selectedUserIds.has(user.uid)}
-                          onCheckedChange={() => handleUserToggle(user.uid)}
-                        >
-                          <span className="truncate">{user.name}</span>
-                        </DropdownMenuCheckboxItem>
-                      ))}
-                    </ScrollArea>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-              <div className="space-y-2">
-                <h4 className="font-medium text-sm">Area / Postcode</h4>
-                <Input
-                    placeholder="e.g. London, SW1..."
-                    value={locationFilter}
-                    onChange={(e) => setLocationFilter(e.target.value)}
-                    className="w-full sm:w-[250px]"
-                />
-              </div>
-            </CardContent>
-           </Card>
-
-           {loading ? (
-             <div className="space-y-4">
-                 <Skeleton className="h-8 w-1/2" />
-                 <Skeleton className="h-32 w-full" />
-             </div>
-           ) : !dateRange?.from ? (
-            <Alert>
-                <CalendarIcon className="h-4 w-4" />
-                <AlertTitle>Select a Date</AlertTitle>
-                <AlertDescription>
-                    Click on the calendar to select a date or drag to select a range.
-                </AlertDescription>
-            </Alert>
-           ) : (
-             <div className="space-y-6">
-                <div>
-                    <h3 className="text-lg font-semibold flex items-center gap-2 mb-3">
-                        <UserCheck className="text-green-600 h-5 w-5"/>
-                        Available Operatives ({availableUsers.length})
-                         <span className="text-sm font-normal text-muted-foreground ml-2">{selectedPeriodText()}</span>
-                    </h3>
-                     {availableUsers.length > 0 ? (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                           {availableUsers.map(({ user, availability, dayStates }) => (
-                               <div key={user.uid} className="flex items-start gap-3 p-3 border rounded-md bg-muted/50">
-                                   <Avatar className="h-8 w-8">
-                                       <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
-                                   </Avatar>
-                                   <div className="flex-1">
-                                      <p className="text-sm font-medium">{user.name}</p>
-                                      {availability === 'full' && (
-                                          <Badge variant="outline" className="mt-1 border-green-500/50 bg-green-500/10 text-green-700">Fully Available</Badge>
-                                      )}
-                                      {availability === 'partial' && (
-                                          <div className="text-xs mt-1 space-y-2">
-                                              <Badge variant="outline" className="border-blue-500/50 bg-blue-500/10 text-blue-700">Partially Available</Badge>
-                                              
-                                              <div className="space-y-1 pt-1">
-                                                {dayStates.filter(d => d.type !== 'busy').map(d => (
-                                                    <div key={d.date.toISOString()} className="flex items-center gap-2">
-                                                        <CheckCircle className="h-3.5 w-3.5 text-green-600" />
-                                                        <span className="font-medium">{format(d.date, 'EEE, dd MMM')}:</span>
-                                                        {d.type === 'full' && <span>All Day</span>}
-                                                        {d.type === 'am' && <span>AM Free</span>}
-                                                        {d.type === 'pm' && <span>PM Free</span>}
-                                                        {d.shiftLocation && <span className="text-muted-foreground text-[10px] truncate">(Busy at {extractLocation(d.shiftLocation)})</span>}
-                                                    </div>
-                                                ))}
-                                              </div>
-                                              
-                                              <div className="space-y-1 pt-1">
-                                                 {dayStates.filter(d => d.type === 'busy').map(d => (
-                                                    <div key={d.date.toISOString()} className="flex items-center gap-2 text-muted-foreground">
-                                                        <XCircle className="h-3.5 w-3.5 text-destructive" />
-                                                        <span className="font-medium">{format(d.date, 'EEE, dd MMM')}:</span>
-                                                        <span>Unavailable</span>
-                                                    </div>
-                                                ))}
-                                              </div>
-
-                                          </div>
-                                      )}
-                                   </div>
-                               </div>
-                           ))}
+        {viewMode === 'detailed' && (
+            <div className="md:col-span-2 space-y-6">
+                <Card className="bg-muted/30">
+                    <CardHeader className="py-4">
+                    <CardTitle className="text-base flex items-center gap-2">
+                        <Filter className="h-4 w-4" />
+                        Filters
+                    </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex flex-col sm:flex-row gap-6 items-start">
+                    <div className="space-y-2">
+                        <h4 className="font-medium text-sm">Roles</h4>
+                        <div className="flex gap-4">
+                        {(['user', 'admin', 'owner'] as Role[]).map(role => (
+                            <div key={role} className="flex items-center space-x-2">
+                            <Checkbox
+                                id={`role-${role}`}
+                                checked={selectedRoles.has(role)}
+                                onCheckedChange={() => handleRoleToggle(role)}
+                            />
+                            <Label htmlFor={`role-${role}`} className="capitalize">{role}</Label>
+                            </div>
+                        ))}
                         </div>
-                    ) : (
-                         <Alert className="border-dashed">
-                            <Users className="h-4 w-4" />
-                            <AlertTitle>No Operatives Available</AlertTitle>
-                            <AlertDescription>
-                              No users match the current date and filter criteria.
-                            </AlertDescription>
-                        </Alert>
-                    )}
-                </div>
-             </div>
-           )}
-        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <h4 className="font-medium text-sm">Users</h4>
+                        <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" className="w-full sm:w-[250px] justify-between">
+                            <span>{selectedUserIds.size} of {allUsers.length} users selected</span>
+                            <ChevronDown className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)]">
+                            <ScrollArea className="h-72">
+                            {allUsers.map(user => (
+                                <DropdownMenuCheckboxItem
+                                key={user.uid}
+                                checked={selectedUserIds.has(user.uid)}
+                                onCheckedChange={() => handleUserToggle(user.uid)}
+                                >
+                                <span className="truncate">{user.name}</span>
+                                </DropdownMenuCheckboxItem>
+                            ))}
+                            </ScrollArea>
+                        </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                    <div className="space-y-2">
+                        <h4 className="font-medium text-sm">Area / Postcode</h4>
+                        <Input
+                            placeholder="e.g. London, SW1..."
+                            value={locationFilter}
+                            onChange={(e) => setLocationFilter(e.target.value)}
+                            className="w-full sm:w-[250px]"
+                        />
+                    </div>
+                    </CardContent>
+                </Card>
+
+                {loading ? (
+                    <div className="space-y-4">
+                        <Skeleton className="h-8 w-1/2" />
+                        <Skeleton className="h-32 w-full" />
+                    </div>
+                ) : !dateRange?.from ? (
+                    <Alert>
+                        <CalendarIcon className="h-4 w-4" />
+                        <AlertTitle>Select a Date</AlertTitle>
+                        <AlertDescription>
+                            Click on the calendar to select a date or drag to select a range.
+                        </AlertDescription>
+                    </Alert>
+                ) : (
+                    <div className="space-y-6">
+                        <div>
+                            <h3 className="text-lg font-semibold flex items-center gap-2 mb-3">
+                                <UserCheck className="text-green-600 h-5 w-5"/>
+                                Available Operatives ({availableUsers.length})
+                                <span className="text-sm font-normal text-muted-foreground ml-2">{selectedPeriodText()}</span>
+                            </h3>
+                            {availableUsers.length > 0 ? (
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                {availableUsers.map(({ user, availability, dayStates }) => (
+                                    <div key={user.uid} className="flex items-start gap-3 p-3 border rounded-md bg-muted/50">
+                                        <Avatar className="h-8 w-8">
+                                            <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex-1">
+                                        <p className="text-sm font-medium">{user.name}</p>
+                                        {availability === 'full' && (
+                                            <Badge variant="outline" className="mt-1 border-green-500/50 bg-green-500/10 text-green-700">Fully Available</Badge>
+                                        )}
+                                        {availability === 'partial' && (
+                                            <div className="text-xs mt-1 space-y-2">
+                                                <Badge variant="outline" className="border-blue-500/50 bg-blue-500/10 text-blue-700">Partially Available</Badge>
+                                                
+                                                <div className="space-y-1 pt-1">
+                                                    {dayStates.filter(d => d.type !== 'busy').map(d => (
+                                                        <div key={d.date.toISOString()} className="flex items-center gap-2">
+                                                            <CheckCircle className="h-3.5 w-3.5 text-green-600" />
+                                                            <span className="font-medium">{format(d.date, 'EEE, dd MMM')}:</span>
+                                                            {d.type === 'full' && <span>All Day</span>}
+                                                            {d.type === 'am' && <span>AM Free</span>}
+                                                            {d.type === 'pm' && <span>PM Free</span>}
+                                                            {d.shiftLocation && <span className="text-muted-foreground text-[10px] truncate">(Busy at {extractLocation(d.shiftLocation)})</span>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                
+                                                <div className="space-y-1 pt-1">
+                                                    {dayStates.filter(d => d.type === 'busy').map(d => (
+                                                        <div key={d.date.toISOString()} className="flex items-center gap-2 text-muted-foreground">
+                                                            <XCircle className="h-3.5 w-3.5 text-destructive" />
+                                                            <span className="font-medium">{format(d.date, 'EEE, dd MMM')}:</span>
+                                                            <span>Unavailable</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                            </div>
+                                        )}
+                                        </div>
+                                    </div>
+                                ))}
+                                </div>
+                            ) : (
+                                <Alert className="border-dashed">
+                                    <Users className="h-4 w-4" />
+                                    <AlertTitle>No Operatives Available</AlertTitle>
+                                    <AlertDescription>
+                                    No users match the current date and filter criteria.
+                                    </AlertDescription>
+                                </Alert>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+        )}
       </CardContent>
     </Card>
   );
