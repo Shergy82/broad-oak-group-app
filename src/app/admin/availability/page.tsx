@@ -295,55 +295,57 @@ export default function AvailabilityPage() {
                         Filters
                     </CardTitle>
                     </CardHeader>
-                    <CardContent className="flex flex-col sm:flex-row gap-6 items-start">
-                    <div className="space-y-2">
-                        <h4 className="font-medium text-sm">Roles</h4>
-                        <div className="flex gap-4">
-                        {(['user', 'admin', 'owner'] as Role[]).map(role => (
-                            <div key={role} className="flex items-center space-x-2">
-                            <Checkbox
-                                id={`role-${role}`}
-                                checked={selectedRoles.has(role)}
-                                onCheckedChange={() => handleRoleToggle(role)}
-                            />
-                            <Label htmlFor={`role-${role}`} className="capitalize">{role}</Label>
-                            </div>
-                        ))}
-                        </div>
-                    </div>
-                    <div className="space-y-2">
-                        <h4 className="font-medium text-sm">Users</h4>
-                        <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline" className="w-full sm:w-[250px] justify-between">
-                            <span>{selectedUserIds.size} of {allUsers.length} users selected</span>
-                            <ChevronDown className="h-4 w-4" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)]">
-                            <ScrollArea className="h-72">
-                            {allUsers.map(user => (
-                                <DropdownMenuCheckboxItem
-                                key={user.uid}
-                                checked={selectedUserIds.has(user.uid)}
-                                onCheckedChange={() => handleUserToggle(user.uid)}
-                                >
-                                <span className="truncate">{user.name}</span>
-                                </DropdownMenuCheckboxItem>
+                    <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-start">
+                        <div className="space-y-2">
+                            <h4 className="font-medium text-sm">Roles</h4>
+                            <div className="flex gap-4">
+                            {(['user', 'admin', 'owner'] as Role[]).map(role => (
+                                <div key={role} className="flex items-center space-x-2">
+                                <Checkbox
+                                    id={`role-${role}`}
+                                    checked={selectedRoles.has(role)}
+                                    onCheckedChange={() => handleRoleToggle(role)}
+                                />
+                                <Label htmlFor={`role-${role}`} className="capitalize">{role}</Label>
+                                </div>
                             ))}
-                            </ScrollArea>
-                        </DropdownMenuContent>
-                        </DropdownMenu>
-                    </div>
-                    <div className="space-y-2">
-                        <h4 className="font-medium text-sm">Area / Postcode</h4>
-                        <Input
-                            placeholder="e.g. London, SW1..."
-                            value={locationFilter}
-                            onChange={(e) => setLocationFilter(e.target.value)}
-                            className="w-full sm:w-[250px]"
-                        />
-                    </div>
+                            </div>
+                        </div>
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <h4 className="font-medium text-sm">Users</h4>
+                                <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" className="w-full sm:w-[250px] justify-between">
+                                    <span>{selectedUserIds.size} of {allUsers.length} users selected</span>
+                                    <ChevronDown className="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)]">
+                                    <ScrollArea className="h-72">
+                                    {allUsers.map(user => (
+                                        <DropdownMenuCheckboxItem
+                                        key={user.uid}
+                                        checked={selectedUserIds.has(user.uid)}
+                                        onCheckedChange={() => handleUserToggle(user.uid)}
+                                        >
+                                        <span className="truncate">{user.name}</span>
+                                        </DropdownMenuCheckboxItem>
+                                    ))}
+                                    </ScrollArea>
+                                </DropdownMenuContent>
+                                </DropdownMenu>
+                            </div>
+                            <div className="space-y-2">
+                                <h4 className="font-medium text-sm">Area / Postcode</h4>
+                                <Input
+                                    placeholder="e.g. London, SW1..."
+                                    value={locationFilter}
+                                    onChange={(e) => setLocationFilter(e.target.value)}
+                                    className="w-full sm:w-[250px]"
+                                />
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
 
