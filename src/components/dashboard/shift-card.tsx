@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { doc, updateDoc, deleteField } from 'firebase/firestore';
@@ -9,9 +10,9 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Clock, Sunrise, Sunset, ThumbsUp, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Trash2, HardHat } from 'lucide-react';
+import { Clock, Sunrise, Sunset, ThumbsUp, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Trash2, HardHat, ListChecks, Camera } from 'lucide-react';
 import { Spinner } from '@/components/shared/spinner';
-import type { Shift, ShiftStatus } from '@/types';
+import type { Shift, ShiftStatus, UserProfile } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import {
   Dialog,
@@ -24,9 +25,22 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '../ui/alert-dialog';
+import { Checkbox } from '../ui/checkbox';
+
+interface TradeTask {
+  text: string;
+  photoRequired: boolean;
+}
+
+interface Trade {
+  id: string;
+  name: string;
+  tasks: TradeTask[];
+}
 
 interface ShiftCardProps {
   shift: Shift;
+  userProfile: UserProfile | null;
   onDismiss?: (shiftId: string) => void;
 }
 
@@ -45,13 +59,19 @@ const statusDetails: { [key in ShiftStatus]: { label: string; variant: 'default'
   rejected: { label: 'Rejected', variant: 'destructive', className: 'bg-destructive/80 hover:bg-destructive/90 text-white border-destructive/80', icon: XCircle },
 };
 
-export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
+const LS_TRADES_KEY = 'tradeTasks_v2';
+const LS_SHIFT_TASKS_KEY = 'shiftTaskCompletion';
+
+export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
   const router = useRouter();
   const { user } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isNoteDialogOpen, setIsNoteDialogOpen] = useState(false);
   const [note, setNote] = useState('');
+
+  const [tradeTasks, setTradeTasks] = useState<TradeTask[]>([]);
+  const [completedTasks, setCompletedTasks] = useState<Set<number>>(new Set());
 
   const d = shift.date.toDate();
   const shiftDate = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -61,6 +81,60 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
   const StatusIcon = statusInfo.icon;
   
   const isHistorical = shift.status === 'completed' || shift.status === 'incomplete';
+  const allTasksCompleted = tradeTasks.length === 0 || completedTasks.size === tradeTasks.length;
+
+  useEffect(() => {
+    if (userProfile?.trade) {
+      try {
+        const savedTradesData = localStorage.getItem(LS_TRADES_KEY);
+        if (savedTradesData) {
+          const allTrades: Trade[] = JSON.parse(savedTradesData);
+          const userTrade = allTrades.find(t => t.name.toLowerCase() === userProfile.trade?.toLowerCase());
+          if (userTrade) {
+            setTradeTasks(userTrade.tasks);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load trade tasks from localStorage", e);
+      }
+    }
+  }, [userProfile?.trade]);
+
+  useEffect(() => {
+    if (tradeTasks.length > 0) {
+      try {
+        const allShiftTasks = JSON.parse(localStorage.getItem(LS_SHIFT_TASKS_KEY) || '{}');
+        const shiftCompletedTasks = allShiftTasks[shift.id];
+        if (shiftCompletedTasks) {
+          setCompletedTasks(new Set(shiftCompletedTasks));
+        } else {
+          setCompletedTasks(new Set());
+        }
+      } catch (e) {
+        console.error("Failed to load shift task completion state", e);
+        setCompletedTasks(new Set());
+      }
+    }
+  }, [shift.id, tradeTasks.length]);
+
+  const handleTaskToggle = (taskIndex: number) => {
+    const newCompletedTasks = new Set(completedTasks);
+    if (newCompletedTasks.has(taskIndex)) {
+      newCompletedTasks.delete(taskIndex);
+    } else {
+      newCompletedTasks.add(taskIndex);
+    }
+    setCompletedTasks(newCompletedTasks);
+
+    try {
+        const allShiftTasks = JSON.parse(localStorage.getItem(LS_SHIFT_TASKS_KEY) || '{}');
+        allShiftTasks[shift.id] = Array.from(newCompletedTasks);
+        localStorage.setItem(LS_SHIFT_TASKS_KEY, JSON.stringify(allShiftTasks));
+    } catch (e) {
+      console.error("Failed to save shift task completion state", e);
+    }
+  };
+
 
   const handleUpdateStatus = async (newStatus: ShiftStatus, notes?: string) => {
     if (!isFirebaseConfigured || !db || !user) {
@@ -115,6 +189,32 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
       handleUpdateStatus('incomplete', note.trim());
   }
 
+  const renderTaskList = () => {
+    if (tradeTasks.length === 0 || shift.status === 'pending-confirmation' || isHistorical) return null;
+
+    return (
+      <div className="mt-4 p-4 border-t">
+        <h4 className="font-semibold text-sm mb-3 flex items-center gap-2 text-muted-foreground"><ListChecks/> Checklist</h4>
+        <div className="space-y-3">
+          {tradeTasks.map((task, index) => (
+            <div key={index} className="flex items-center space-x-3">
+              <Checkbox
+                id={`task-${shift.id}-${index}`}
+                checked={completedTasks.has(index)}
+                onCheckedChange={() => handleTaskToggle(index)}
+                disabled={isLoading}
+              />
+              <Label htmlFor={`task-${shift.id}-${index}`} className="text-sm font-normal text-foreground flex-grow cursor-pointer">
+                {task.text}
+              </Label>
+              {task.photoRequired && <Camera className="h-4 w-4 text-muted-foreground" />}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Card className="flex flex-col overflow-hidden transition-all hover:shadow-xl border-border hover:border-primary/40">
@@ -145,6 +245,7 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
             </div>
           )}
         </CardContent>
+        {renderTaskList()}
         <CardFooter className="p-2 bg-muted/30 grid grid-cols-1 gap-2">
           {shift.status === 'pending-confirmation' && (
             <Button onClick={() => handleUpdateStatus('confirmed')} className="w-full bg-accent text-accent-foreground hover:bg-accent/90" disabled={isLoading}>
@@ -160,7 +261,7 @@ export function ShiftCard({ shift, onDismiss }: ShiftCardProps) {
 
           {shift.status === 'on-site' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                 <Button onClick={() => handleUpdateStatus('completed')} className="w-full bg-green-500 text-white hover:bg-green-600" disabled={isLoading}>
+                 <Button onClick={() => handleUpdateStatus('completed')} className="w-full bg-green-500 text-white hover:bg-green-600" disabled={isLoading || !allTasksCompleted}>
                     {isLoading ? <Spinner /> : <><CheckCircle2 className="mr-2 h-4 w-4" /> Complete</>}
                 </Button>
                  <Button variant="destructive" onClick={() => setIsNoteDialogOpen(true)} className="w-full bg-amber-600 hover:bg-amber-700" disabled={isLoading}>
