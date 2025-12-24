@@ -1,18 +1,19 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
-import { doc, updateDoc, deleteField, collection, query, where, getDocs } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { doc, updateDoc, deleteField, collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { db, isFirebaseConfigured, storage } from '@/lib/firebase';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Clock, Sunrise, Sunset, ThumbsUp, CheckCircle2, XCircle, AlertTriangle, RotateCcw, Trash2, HardHat, ListChecks, Camera } from 'lucide-react';
 import { Spinner } from '@/components/shared/spinner';
-import type { Shift, ShiftStatus, UserProfile, TradeTask, Trade } from '@/types';
+import type { Shift, ShiftStatus, UserProfile, TradeTask, Trade, Project } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import {
   Dialog,
@@ -57,12 +58,13 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isNoteDialogOpen, setIsNoteDialogOpen] = useState(false);
-  const [isPhotoDialogOpen, setIsPhotoDialogOpen] = useState(false);
-  const [selectedPhotoTaskIndex, setSelectedPhotoTaskIndex] = useState<number | null>(null);
   const [note, setNote] = useState('');
 
   const [tradeTasks, setTradeTasks] = useState<TradeTask[]>([]);
   const [completedTasks, setCompletedTasks] = useState<Set<number>>(new Set());
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<number | null>(null);
 
   const d = shift.date.toDate();
   const shiftDate = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -125,8 +127,10 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
   const handleTaskToggle = (taskIndex: number) => {
     const task = tradeTasks[taskIndex];
     if (task.photoRequired && !completedTasks.has(taskIndex)) {
-        setSelectedPhotoTaskIndex(taskIndex);
-        setIsPhotoDialogOpen(true);
+        if (fileInputRef.current) {
+            fileInputRef.current.setAttribute('data-task-index', taskIndex.toString());
+            fileInputRef.current.click();
+        }
         return;
     }
 
@@ -139,14 +143,62 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
     updateAndStoreCompletedTasks(newCompletedTasks);
   };
   
-  const handleConfirmPhotoUpload = () => {
-    if (selectedPhotoTaskIndex !== null) {
-      const newCompletedTasks = new Set(completedTasks);
-      newCompletedTasks.add(selectedPhotoTaskIndex);
-      updateAndStoreCompletedTasks(newCompletedTasks);
+  const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    const taskIndexString = event.target.getAttribute('data-task-index');
+    if (!file || taskIndexString === null) return;
+    
+    const taskIndex = parseInt(taskIndexString, 10);
+    setIsUploadingPhoto(taskIndex);
+    
+    try {
+        if (!db || !storage || !userProfile) throw new Error("Services not ready");
+
+        // Find the project ID based on the shift's address
+        const projectsQuery = query(collection(db, 'projects'), where('address', '==', shift.address));
+        const projectSnapshot = await getDocs(projectsQuery);
+        
+        if (projectSnapshot.empty) {
+            toast({ variant: 'destructive', title: 'Project Not Found', description: `No project found with address: ${shift.address}` });
+            throw new Error("Project not found");
+        }
+        const projectId = projectSnapshot.docs[0].id;
+
+        const storagePath = `project_files/${projectId}/${Date.now()}-${file.name}`;
+        const storageRef = ref(storage, storagePath);
+        const uploadTask = uploadBytesResumable(storageRef, file);
+
+        await uploadTask;
+        
+        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+        
+        await addDoc(collection(db, `projects/${projectId}/files`), {
+            name: `Task Photo - ${tradeTasks[taskIndex].text} - ${format(new Date(), 'yyyy-MM-dd')}`,
+            url: downloadURL,
+            fullPath: storagePath,
+            size: file.size,
+            type: file.type,
+            uploadedAt: serverTimestamp(),
+            uploaderId: userProfile.uid,
+            uploaderName: userProfile.name,
+        });
+
+        const newCompletedTasks = new Set(completedTasks);
+        newCompletedTasks.add(taskIndex);
+        updateAndStoreCompletedTasks(newCompletedTasks);
+
+        toast({ title: 'Photo Uploaded', description: 'The task has been marked as complete.' });
+
+    } catch (error: any) {
+        console.error("Photo upload failed:", error);
+        toast({ variant: 'destructive', title: 'Upload Failed', description: error.message || 'Could not upload the photo.' });
+    } finally {
+        setIsUploadingPhoto(null);
+        // Reset file input
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
     }
-    setIsPhotoDialogOpen(false);
-    setSelectedPhotoTaskIndex(null);
   };
 
 
@@ -216,14 +268,22 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
                 id={`task-${shift.id}-${index}`}
                 checked={completedTasks.has(index)}
                 onCheckedChange={() => handleTaskToggle(index)}
-                disabled={isLoading}
+                disabled={isLoading || isUploadingPhoto === index}
               />
-              <Label htmlFor={`task-${shift.id}-${index}`} className="text-sm font-normal text-foreground flex-grow cursor-pointer">
-                {task.text}
+              <Label htmlFor={`task-${shift.id}-${index}`} className="text-sm font-normal text-foreground flex-grow cursor-pointer flex items-center justify-between">
+                <span>{task.text}</span>
+                {isUploadingPhoto === index ? <Spinner size="sm" /> : (task.photoRequired && <Camera className="h-4 w-4 text-muted-foreground" />)}
               </Label>
-              {task.photoRequired && <Camera className="h-4 w-4 text-muted-foreground" />}
             </div>
           ))}
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            ref={fileInputRef}
+            onChange={handlePhotoUpload}
+            className="hidden"
+           />
         </div>
       </div>
     );
@@ -343,24 +403,8 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <Dialog open={isPhotoDialogOpen} onOpenChange={setIsPhotoDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Camera /> Photo Required</DialogTitle>
-            <DialogDescription>
-              This task requires a photo. Please take the necessary photo and upload it to the relevant project in the "Projects" section of the app.
-            </DialogDescription>
-          </DialogHeader>
-           <div className="py-4 text-sm text-muted-foreground">
-              Once you have uploaded the photo, you can confirm this task is complete.
-           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPhotoDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleConfirmPhotoUpload}>I've Uploaded the Photo</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
+
+    
