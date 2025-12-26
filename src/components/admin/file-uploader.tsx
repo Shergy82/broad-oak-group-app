@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useCallback } from 'react';
@@ -299,11 +298,11 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                 
                 let manager = jsonData[blockStartRowIndex + 1]?.[0] || 'Unknown Manager';
                 let address = '';
-                let eNumber = '';
+                let bNumber = '';
                 let dateRow: (Date | null)[] = [];
                 let dateRowIndex = -1;
 
-                const addressKeywords = ['road', 'street', 'avenue', 'lane', 'drive', 'court', 'close', 'crescent', 'place'];
+                const addressKeywords = ['road', 'street', 'avenue', 'lane', 'drive', 'court', 'close', 'crescent', 'place', 'gardens', 'grove'];
                 for (let r = blockStartRowIndex; r < blockEndRowIndex; r++) {
                     const row = jsonData[r] || [];
                     const cellAValue = row[0];
@@ -313,15 +312,9 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                         if (addressKeywords.some(keyword => lowerCellValue.includes(keyword))) {
                             const parts = cellAValue.split('\n');
                             const firstLine = parts[0].trim();
-                            
-                            // Check if the first part of the address is an E-Number
-                            const eNumberMatch = firstLine.match(/^E\d+/);
-                            if (eNumberMatch) {
-                                eNumber = eNumberMatch[0];
-                                // The rest of the line is part of the address
-                                const addressPart = firstLine.substring(eNumber.length).trim();
-                                const remainingParts = parts.slice(1).join(', ').trim();
-                                address = [addressPart, remainingParts].filter(Boolean).join(', ');
+                            if (firstLine.length < 15 && firstLine.match(/^[a-zA-Z]?\d+/)) {
+                                bNumber = firstLine;
+                                address = parts.slice(1).join(', ').trim();
                             } else {
                                 address = parts.join(', ').trim();
                             }
@@ -410,7 +403,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                                             type: shiftType,
                                             date: shiftDate, 
                                             address: address, 
-                                            eNumber: eNumber,
+                                            bNumber: bNumber,
                                             manager: manager,
                                         });
                                     } else {
@@ -476,7 +469,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             const existingShift = existingShiftsMap.get(key);
             if (existingShift) {
                 if (
-                    existingShift.eNumber !== (excelShift.eNumber || '') || 
+                    existingShift.bNumber !== (excelShift.bNumber || '') || 
                     existingShift.manager !== (excelShift.manager || '')
                 ) {
                      if (!protectedStatuses.includes(existingShift.status)) {
@@ -515,7 +508,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                   reviewDate.setDate(reviewDate.getDate() + 28);
                   const newProject = {
                       address: shift.address,
-                      eNumber: shift.eNumber || '',
+                      bNumber: shift.bNumber || '',
                       manager: shift.manager || '',
                       createdAt: serverTimestamp(),
                       nextReviewDate: Timestamp.fromDate(reviewDate),
@@ -527,7 +520,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
 
           toUpdate.forEach(({ old, new: newShift }) => {
               batch.update(doc(db, 'shifts', old.id), { 
-                  eNumber: newShift.eNumber || '',
+                  bNumber: newShift.bNumber || '',
                   manager: newShift.manager || '',
               });
           });
