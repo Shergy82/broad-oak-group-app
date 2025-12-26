@@ -558,7 +558,10 @@ export default function AvailabilityPage() {
                 <div className="space-y-2">
                     {users.map(({user, shiftLocation}) => (
                         <div key={user.uid} className="flex items-center justify-between p-2 bg-muted/50 rounded-md text-sm">
-                            <span>{user.name}</span>
+                            <div className="flex flex-col">
+                                <span>{user.name}</span>
+                                <Badge variant="outline" className="text-xs w-fit mt-1 capitalize">{user.trade || user.role}</Badge>
+                            </div>
                             {shiftLocation && <span className="text-xs text-muted-foreground truncate max-w-[150px]">Busy at {extractLocation(shiftLocation)}</span>}
                         </div>
                     ))}
