@@ -12,7 +12,7 @@ export interface Shift {
   status: ShiftStatus;
   address: string;
   task: string;
-  bNumber?: string;
+  eNumber?: string;
   manager?: string;
   notes?: string;
   createdAt: Timestamp;
@@ -35,7 +35,7 @@ export interface UserProfile {
 export interface Project {
   id: string; // Firestore document ID
   address: string;
-  bNumber?: string;
+  eNumber?: string;
   council?: string;
   manager: string;
   createdAt?: Timestamp;

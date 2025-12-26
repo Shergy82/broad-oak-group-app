@@ -747,6 +747,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                                                 </TooltipContent>
                                             </Tooltip>
                                             <div className="text-xs text-muted-foreground">{shift.address}</div>
+                                            {shift.eNumber && <div className="text-xs text-muted-foreground">E-Number: {shift.eNumber}</div>}
                                         </TableCell>
                                         <TableCell className="text-xs text-muted-foreground">{shift.manager || 'N/A'}</TableCell>
                                         <TableCell className="text-right">
@@ -816,6 +817,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                         <CardContent className="text-sm text-muted-foreground space-y-1">
                             { (selectedUserId === 'all' || activeTab === 'archive') && <div><strong>Operative:</strong> {userNameMap.get(shift.userId) || 'Unknown'}</div> }
                             <div><strong>Date:</strong> {format(getCorrectedLocalDate(shift.date), 'eeee, MMM d')}</div>
+                            {shift.eNumber && <div><strong>E-Number:</strong> {shift.eNumber}</div>}
                              {shift.manager && <div><strong>Manager:</strong> {shift.manager}</div>}
                         </CardContent>
                         <CardFooter className="p-2 bg-muted/30 flex justify-between items-center">
@@ -1108,5 +1110,3 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     </>
   );
 }
-
-    

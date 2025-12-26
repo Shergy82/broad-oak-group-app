@@ -310,7 +310,7 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
         <CardContent className="p-4 text-left grow flex flex-col justify-center space-y-1">
           <p className="font-semibold text-sm">{shift.task}</p>
           <p className="text-xs text-muted-foreground">{shift.address}</p>
-          {shift.bNumber && <p className="text-xs text-muted-foreground">B-Number: {shift.bNumber}</p>}
+          {shift.eNumber && <p className="text-xs text-muted-foreground">E-Number: {shift.eNumber}</p>}
           {shift.manager && <p className="text-xs text-muted-foreground">Manager: {shift.manager}</p>}
           {(shift.status === 'incomplete' || shift.status === 'rejected') && shift.notes && (
             <div className="mt-3 p-3 bg-destructive/10 border-l-4 border-destructive rounded-r-md">
@@ -406,5 +406,3 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
     </>
   );
 }
-
-    

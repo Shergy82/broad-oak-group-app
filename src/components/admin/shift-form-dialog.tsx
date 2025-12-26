@@ -29,7 +29,7 @@ const formSchema = z.object({
   type: z.enum(['am', 'pm', 'all-day'], { required_error: 'Shift type is required.' }),
   task: z.string().min(1, 'Task description is required.'),
   address: z.string().min(1, 'Address is required.'),
-  bNumber: z.string().optional(),
+  eNumber: z.string().optional(),
 });
 
 interface ShiftFormDialogProps {
@@ -55,7 +55,7 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift, userProfile 
       type: 'all-day',
       task: '',
       address: '',
-      bNumber: '',
+      eNumber: '',
     },
   });
   
@@ -74,7 +74,7 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift, userProfile 
           type: shift.type,
           task: shift.task,
           address: shift.address,
-          bNumber: shift.bNumber || '',
+          eNumber: shift.eNumber || '',
         });
       } else {
         form.reset({
@@ -83,7 +83,7 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift, userProfile 
           type: 'all-day',
           task: '',
           address: '',
-          bNumber: '',
+          eNumber: '',
         });
       }
     }
@@ -108,7 +108,7 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift, userProfile 
       ...values,
       userName: selectedUser.name, // Add userName to the shift data
       date: Timestamp.fromDate(correctedDate),
-      bNumber: values.bNumber || '',
+      eNumber: values.eNumber || '',
     };
     
     try {
@@ -167,7 +167,7 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift, userProfile 
             status: 'pending-confirmation',
             address: 'Test Shift Address',
             task: 'This is a test shift for notification.',
-            bNumber: 'B-TEST',
+            eNumber: 'E-TEST',
             createdAt: serverTimestamp(),
         });
         toast({
@@ -323,12 +323,12 @@ export function ShiftFormDialog({ open, onOpenChange, users, shift, userProfile 
             
             <FormField
               control={form.control}
-              name="bNumber"
+              name="eNumber"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>B Number (Optional)</FormLabel>
+                  <FormLabel>E Number (Optional)</FormLabel>
                   <FormControl>
-                    <Input placeholder="B-..." {...field} />
+                    <Input placeholder="E..." {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

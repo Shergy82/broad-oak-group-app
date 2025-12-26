@@ -3,6 +3,7 @@
 import * as functions from "firebase-functions";
 import admin from "firebase-admin";
 import * as webPush from "web-push";
+import { query } from "firebase/firestore";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -147,7 +148,7 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
         // --- Auto-create project if it doesn't exist ---
         if (shiftDataAfter?.address) {
             const projectsRef = db.collection('projects');
-            const projectQuery = query(projectsRef, where('address', '==', shiftDataAfter.address));
+            const projectQuery = projectsRef.where('address', '==', shiftDataAfter.address);
             
             try {
                 const querySnapshot = await projectQuery.get();
@@ -158,7 +159,7 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
                     
                     const newProject = {
                         address: shiftDataAfter.address,
-                        bNumber: shiftDataAfter.bNumber || '',
+                        eNumber: shiftDataAfter.eNumber || '',
                         manager: shiftDataAfter.manager || '',
                         createdAt: admin.firestore.FieldValue.serverTimestamp(),
                         nextReviewDate: admin.firestore.Timestamp.fromDate(reviewDate),
@@ -200,8 +201,8 @@ export const sendShiftNotification = functions.region("europe-west2").firestore.
       if ((before.address || "").trim() !== (after.address || "").trim()) {
           changedFields.push('location');
       }
-      if ((before.bNumber || "").trim() !== (after.bNumber || "").trim()) {
-          changedFields.push('B Number');
+      if ((before.eNumber || "").trim() !== (after.eNumber || "").trim()) {
+          changedFields.push('E Number');
       }
       if (before.type !== after.type) {
           changedFields.push('time (AM/PM)');

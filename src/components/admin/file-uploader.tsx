@@ -299,7 +299,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                 
                 let manager = jsonData[blockStartRowIndex + 1]?.[0] || 'Unknown Manager';
                 let address = '';
-                let bNumber = '';
+                let eNumber = '';
                 let dateRow: (Date | null)[] = [];
                 let dateRowIndex = -1;
 
@@ -313,9 +313,15 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                         if (addressKeywords.some(keyword => lowerCellValue.includes(keyword))) {
                             const parts = cellAValue.split('\n');
                             const firstLine = parts[0].trim();
-                            if (firstLine.length < 15 && firstLine.match(/^[a-zA-Z]?\d+/)) {
-                                bNumber = firstLine;
-                                address = parts.slice(1).join(', ').trim();
+                            
+                            // Check if the first part of the address is an E-Number
+                            const eNumberMatch = firstLine.match(/^E\d+/);
+                            if (eNumberMatch) {
+                                eNumber = eNumberMatch[0];
+                                // The rest of the line is part of the address
+                                const addressPart = firstLine.substring(eNumber.length).trim();
+                                const remainingParts = parts.slice(1).join(', ').trim();
+                                address = [addressPart, remainingParts].filter(Boolean).join(', ');
                             } else {
                                 address = parts.join(', ').trim();
                             }
@@ -404,7 +410,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                                             type: shiftType,
                                             date: shiftDate, 
                                             address: address, 
-                                            bNumber: bNumber,
+                                            eNumber: eNumber,
                                             manager: manager,
                                         });
                                     } else {
@@ -470,7 +476,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             const existingShift = existingShiftsMap.get(key);
             if (existingShift) {
                 if (
-                    existingShift.bNumber !== (excelShift.bNumber || '') || 
+                    existingShift.eNumber !== (excelShift.eNumber || '') || 
                     existingShift.manager !== (excelShift.manager || '')
                 ) {
                      if (!protectedStatuses.includes(existingShift.status)) {
@@ -509,7 +515,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                   reviewDate.setDate(reviewDate.getDate() + 28);
                   const newProject = {
                       address: shift.address,
-                      bNumber: shift.bNumber || '',
+                      eNumber: shift.eNumber || '',
                       manager: shift.manager || '',
                       createdAt: serverTimestamp(),
                       nextReviewDate: Timestamp.fromDate(reviewDate),
@@ -521,7 +527,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
 
           toUpdate.forEach(({ old, new: newShift }) => {
               batch.update(doc(db, 'shifts', old.id), { 
-                  bNumber: newShift.bNumber || '',
+                  eNumber: newShift.eNumber || '',
                   manager: newShift.manager || '',
               });
           });

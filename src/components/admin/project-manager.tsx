@@ -64,7 +64,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 
 const projectSchema = z.object({
   address: z.string().min(1, 'Address is required.'),
-  bNumber: z.string().min(1, 'B Number is required.'),
+  eNumber: z.string().min(1, 'E Number is required.'),
   council: z.string().min(1, 'Council is required.'),
   manager: z.string().min(1, 'Manager is required.'),
 });
@@ -81,7 +81,7 @@ function CreateProjectDialog({ open, onOpenChange, userProfile }: CreateProjectD
   
   const form = useForm<z.infer<typeof projectSchema>>({
     resolver: zodResolver(projectSchema),
-    defaultValues: { address: '', bNumber: '', council: '', manager: '' },
+    defaultValues: { address: '', eNumber: '', council: '', manager: '' },
   });
 
   const handleCreateProject = async (values: z.infer<typeof projectSchema>) => {
@@ -126,8 +126,8 @@ function CreateProjectDialog({ open, onOpenChange, userProfile }: CreateProjectD
             <FormField control={form.control} name="address" render={({ field }) => (
                 <FormItem><FormLabel>Address</FormLabel><FormControl><Input placeholder="123 Main Street..." {...field} /></FormControl><FormMessage /></FormItem>
             )}/>
-            <FormField control={form.control} name="bNumber" render={({ field }) => (
-                <FormItem><FormLabel>B Number</FormLabel><FormControl><Input placeholder="B-..." {...field} /></FormControl><FormMessage /></FormItem>
+            <FormField control={form.control} name="eNumber" render={({ field }) => (
+                <FormItem><FormLabel>E Number</FormLabel><FormControl><Input placeholder="E..." {...field} /></FormControl><FormMessage /></FormItem>
             )}/>
             <FormField control={form.control} name="council" render={({ field }) => (
                 <FormItem><FormLabel>Council</FormLabel><FormControl><Input placeholder="Council Name" {...field} /></FormControl><FormMessage /></FormItem>
@@ -407,7 +407,7 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
   const filteredProjects = useMemo(() => {
     return projects.filter(project =>
       project.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.bNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      project.eNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       project.council?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       project.manager?.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -528,7 +528,7 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
                 <TableHeader>
                     <TableRow>
                     <TableHead>Address</TableHead>
-                    <TableHead>B Number</TableHead>
+                    <TableHead>E Number</TableHead>
                     <TableHead>Manager</TableHead>
                     <TableHead>Created At</TableHead>
                     <TableHead>Created By</TableHead>
@@ -540,7 +540,7 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
                     {filteredProjects.map(project => (
                         <TableRow key={project.id}>
                         <TableCell className="font-medium">{project.address}</TableCell>
-                        <TableCell>{project.bNumber}</TableCell>
+                        <TableCell>{project.eNumber}</TableCell>
                         <TableCell>{project.manager}</TableCell>
                         <TableCell>{project.createdAt ? format(project.createdAt.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
                         <TableCell>{project.createdBy ?? 'N/A'}</TableCell>
@@ -586,7 +586,7 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
                     <Card key={project.id}>
                         <CardHeader>
                             <CardTitle>{project.address}</CardTitle>
-                            <CardDescription>B-Number: {project.bNumber || 'N/A'}</CardDescription>
+                            <CardDescription>E-Number: {project.eNumber || 'N/A'}</CardDescription>
                         </CardHeader>
                         <CardContent className="text-sm space-y-2">
                              <div><strong>Manager:</strong> {project.manager || 'N/A'}</div>
