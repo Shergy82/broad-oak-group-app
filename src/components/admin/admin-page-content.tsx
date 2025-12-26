@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -105,8 +104,8 @@ export default function AdminPageContent() {
 
     const { toCreate, toUpdate, toDelete, failed } = importReport.dryRun;
 
-    const sortedCreate = [...toCreate].sort((a, b) => (userNameMap.get(a.userId) || a.userId).localeCompare(userNameMap.get(b.userId) || b.userId) || a.date.getTime() - b.date.getTime());
-    const sortedUpdate = [...toUpdate].sort((a, b) => (userNameMap.get(a.new.userId) || a.new.userId).localeCompare(userNameMap.get(b.new.userId) || b.new.userId) || a.new.date.getTime() - b.new.date.getTime());
+    const sortedCreate = [...toCreate].sort((a, b) => (userNameMap.get(a.userId) || a.userId).localeCompare(userNameMap.get(b.userId) || b.userId) || new Date(a.date).getTime() - new Date(b.date).getTime());
+    const sortedUpdate = [...toUpdate].sort((a, b) => (userNameMap.get(a.new.userId) || a.new.userId).localeCompare(userNameMap.get(b.new.userId) || b.new.userId) || new Date(a.new.date).getTime() - new Date(b.new.date).getTime());
     const sortedDelete = [...toDelete].sort((a, b) => (userNameMap.get(a.userId) || a.userId).localeCompare(userNameMap.get(b.userId) || b.userId) || a.date.toDate().getTime() - b.date.toDate().getTime());
 
     return (
