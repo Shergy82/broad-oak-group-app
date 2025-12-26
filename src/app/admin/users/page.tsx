@@ -94,7 +94,7 @@ export default function UserManagementPage() {
   
   const { adminsAndOwners, operatives } = useMemo(() => {
     const adminsAndOwners = users.filter(u => ['admin', 'owner', 'manager'].includes(u.role));
-    const operatives = users.filter(u => u.role === 'user');
+    const operatives = users.filter(u => u.role === 'user' || u.role === 'TLO');
     return { adminsAndOwners, operatives };
   }, [users]);
 
@@ -329,10 +329,11 @@ export default function UserManagementPage() {
                       <SelectItem value="user">User</SelectItem>
                       <SelectItem value="admin">Admin</SelectItem>
                       <SelectItem value="manager">Manager</SelectItem>
+                      <SelectItem value="TLO">TLO</SelectItem>
                     </SelectContent>
                   </Select>
                 ) : (
-                  <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className={`capitalize ${user.role === 'manager' ? 'bg-orange-500 hover:bg-orange-600 text-white' : ''}`}>
+                  <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className={`capitalize ${user.role === 'manager' ? 'bg-orange-500 hover:bg-orange-600 text-white' : ''} ${user.role === 'TLO' ? 'bg-purple-500 hover:bg-purple-600 text-white' : ''}`}>
                     {user.role}
                   </Badge>
                 )}
@@ -419,10 +420,11 @@ export default function UserManagementPage() {
                           <SelectItem value="user">User</SelectItem>
                           <SelectItem value="admin">Admin</SelectItem>
                           <SelectItem value="manager">Manager</SelectItem>
+                           <SelectItem value="TLO">TLO</SelectItem>
                         </SelectContent>
                       </Select>
                     ) : (
-                      <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className={`capitalize ${user.role === 'manager' ? 'bg-orange-500 hover:bg-orange-600 text-white' : ''}`}>
+                      <Badge variant={user.role === 'owner' ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className={`capitalize ${user.role === 'manager' ? 'bg-orange-500 hover:bg-orange-600 text-white' : ''} ${user.role === 'TLO' ? 'bg-purple-500 hover:bg-purple-600 text-white' : ''}`}>
                           {user.role}
                       </Badge>
                     )}
@@ -464,8 +466,8 @@ export default function UserManagementPage() {
                                 <SelectValue placeholder="Set Type" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="direct">Direct</SelectItem>
-                                <SelectItem value="subbie">Subbie</SelectItem>
+                                  <SelectItem value="direct">Direct</SelectItem>
+                                  <SelectItem value="subbie">Subbie</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>

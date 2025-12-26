@@ -24,7 +24,7 @@ export interface UserProfile {
   name: string;
   email: string;
   phoneNumber: string;
-  role: 'user' | 'admin' | 'owner' | 'manager';
+  role: 'user' | 'admin' | 'owner' | 'manager' | 'TLO';
   createdAt?: Timestamp;
   status?: 'active' | 'suspended' | 'pending-approval';
   employmentType?: 'direct' | 'subbie';

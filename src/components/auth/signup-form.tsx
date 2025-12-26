@@ -71,7 +71,8 @@ export function SignUpForm() {
       });
 
       // Step 3: Determine the user's role.
-      const userRole = values.email.toLowerCase() === 'phil.s@broadoakgroup.com' ? 'owner' : 'user';
+      const ownerEmails = ['phil.s@broadoakgroup.com', 'jodie.lindop@broadoakgroup.com'];
+      const userRole = ownerEmails.includes(values.email.toLowerCase()) ? 'owner' : 'user';
 
       // Step 4: Create the user's document in Firestore.
       const userDocRef = doc(db, 'users', user.uid);
