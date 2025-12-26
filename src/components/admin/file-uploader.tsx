@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useCallback } from 'react';
@@ -38,6 +39,7 @@ export interface DryRunResult {
 interface FileUploaderProps {
     onImportComplete: (failedShifts: FailedShift[], onConfirm: () => Promise<void>, dryRunResult?: DryRunResult) => void;
     onFileSelect: () => void;
+    userProfile: UserProfile;
 }
 
 
@@ -160,7 +162,7 @@ const parseDate = (dateValue: any): Date | null => {
 const LOCAL_STORAGE_KEY = 'shiftImport_selectedSheets';
 
 
-export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderProps) {
+export function FileUploader({ onImportComplete, onFileSelect, userProfile }: FileUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -229,10 +231,10 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
       }
   }
 
-  const getShiftKey = (shift: { userId: string; date: Date | Timestamp; task: string; address: string }): string => {
+  const getShiftKey = (shift: { userId: string; date: Date | Timestamp; task: string; address: string; type: 'am' | 'pm' | 'all-day' }): string => {
     const d = (shift.date as any).toDate ? (shift.date as Timestamp).toDate() : (shift.date as Date);
     const normalizedDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    return `${''}${normalizedDate.toISOString().slice(0, 10)}-${shift.userId}-${normalizeText(shift.address)}-${normalizeText(shift.task)}`;
+    return `${normalizedDate.toISOString().slice(0, 10)}-${shift.userId}-${shift.type}-${normalizeText(shift.address)}-${normalizeText(shift.task)}`;
   };
 
 
@@ -505,7 +507,6 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
               };
               batch.set(doc(collection(db, 'shifts')), newShiftData);
               
-              // Project creation logic moved here
               if (shift.address && !existingProjectAddresses.has(shift.address)) {
                   const reviewDate = new Date();
                   reviewDate.setDate(reviewDate.getDate() + 28);
@@ -514,10 +515,12 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
                       eNumber: shift.eNumber || '',
                       manager: shift.manager || '',
                       createdAt: serverTimestamp(),
+                      createdBy: userProfile.name,
+                      creatorId: userProfile.uid,
                       nextReviewDate: Timestamp.fromDate(reviewDate),
                   };
                   batch.set(doc(projectsRef), newProject);
-                  existingProjectAddresses.add(shift.address); // Avoid re-creating in the same batch
+                  existingProjectAddresses.add(shift.address);
               }
           });
 
@@ -560,11 +563,9 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
             return;
         }
 
-        // This part runs if commitChanges is true (i.e., not a dry run)
         await onConfirm();
         onImportComplete(allFailedShifts, onConfirm);
         
-        // Reset file input after successful import
         handleClear();
 
       } catch (err: any) {
@@ -582,7 +583,7 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
     }
 
     reader.readAsArrayBuffer(file);
-  }, [file, selectedSheets, toast, onImportComplete, onFileSelect]);
+  }, [file, selectedSheets, toast, onImportComplete, onFileSelect, userProfile]);
 
   const handleImport = () => {
     runImport(isDryRun === false);
@@ -667,3 +668,5 @@ export function FileUploader({ onImportComplete, onFileSelect }: FileUploaderPro
     </div>
   );
 }
+
+    

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -150,7 +151,7 @@ export default function AdminPageContent() {
                             <TableHeader><TableRow><TableHead>Operative</TableHead><TableHead>Date</TableHead><TableHead>Task</TableHead><TableHead>Changes</TableHead></TableRow></TableHeader>
                             <TableBody>
                                 {sortedUpdate.map(({old, new: newShift}, index) => (
-                                    <TableRow key={index}><TableCell>{userNameMap.get(newShift.userId) || newShift.userId}</TableCell><TableCell>{format(newShift.date, 'dd/MM/yy')}</TableCell><TableCell>{newShift.task}</TableCell><TableCell className="text-xs">Manager: {old.manager} -> {newShift.manager}</TableCell></TableRow>
+                                    <TableRow key={index}><TableCell>{userNameMap.get(newShift.userId) || newShift.userId}</TableCell><TableCell>{format(newShift.date, 'dd/MM/yy')}</TableCell><TableCell>{newShift.task}</TableCell><TableCell className="text-xs">Manager: {old.manager} -&gt; {newShift.manager}</TableCell></TableRow>
                                 ))}
                             </TableBody>
                         </Table>
@@ -209,7 +210,7 @@ export default function AdminPageContent() {
   return (
     <div className="space-y-8">
       
-      {isPrivilegedUser && !importAttempted && (
+      {isPrivilegedUser && userProfile && !importAttempted && (
         <Card>
           <CardHeader>
             <CardTitle>Import Weekly Shifts from Excel</CardTitle>
@@ -218,7 +219,7 @@ export default function AdminPageContent() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <FileUploader onImportComplete={handleImportComplete} onFileSelect={handleFileSelection} />
+            <FileUploader onImportComplete={handleImportComplete} onFileSelect={handleFileSelection} userProfile={userProfile} />
           </CardContent>
         </Card>
       )}
@@ -290,3 +291,5 @@ export default function AdminPageContent() {
     </div>
   );
 }
+
+    
