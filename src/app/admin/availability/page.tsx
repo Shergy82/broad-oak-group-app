@@ -25,7 +25,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 type Role = 'user' | 'admin' | 'owner' | 'manager' | 'TLO';
-const ALL_ROLES: Role[] = ['user', 'admin', 'owner', 'manager', 'TLO'];
+const ALL_ROLES: Role[] = ['user', 'TLO', 'manager', 'admin', 'owner'];
 
 
 interface DayAvailability {
@@ -617,27 +617,22 @@ export default function AvailabilityPage() {
                                 </div>
                                 <div className="space-y-2">
                                      <h4 className="font-medium text-sm">Trades</h4>
-                                     <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="outline" className="w-full sm:w-[250px] justify-between">
-                                                <span>{selectedTrades.size} of {availableTrades.length} trades selected</span>
-                                                <ChevronDown className="h-4 w-4" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)]">
-                                            <ScrollArea className="h-48">
+                                     {availableTrades.length > 0 ? (
+                                        <div className="flex flex-wrap gap-x-4 gap-y-2">
                                             {availableTrades.map(trade => (
-                                                <DropdownMenuCheckboxItem
-                                                key={trade}
-                                                checked={selectedTrades.has(trade)}
-                                                onCheckedChange={() => handleTradeToggle(trade)}
-                                                >
-                                                <span className="truncate">{trade}</span>
-                                                </DropdownMenuCheckboxItem>
+                                                <div key={trade} className="flex items-center space-x-2">
+                                                    <Checkbox
+                                                        id={`trade-${trade}`}
+                                                        checked={selectedTrades.has(trade)}
+                                                        onCheckedChange={() => handleTradeToggle(trade)}
+                                                    />
+                                                    <Label htmlFor={`trade-${trade}`} className="capitalize font-normal">{trade}</Label>
+                                                </div>
                                             ))}
-                                            </ScrollArea>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
+                                        </div>
+                                     ) : (
+                                        <p className="text-xs text-muted-foreground">No trades assigned to users.</p>
+                                     )}
                                 </div>
                            </div>
                             <div className="space-y-2">
@@ -752,5 +747,7 @@ export default function AvailabilityPage() {
     </Card>
   );
 }
+
+    
 
     
