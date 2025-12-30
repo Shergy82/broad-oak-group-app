@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
@@ -285,17 +284,18 @@ export default function Dashboard({ userShifts, loading }: { userShifts: Shift[]
       )}
       
       <Tabs defaultValue="today" className="w-full">
-        <ScrollArea className="w-full whitespace-nowrap rounded-lg">
-          <TabsList className="inline-flex">
-            <TabsTrigger value="last-week" className="data-[state=active]:bg-amber-100 data-[state=active]:text-amber-800 dark:data-[state=active]:bg-amber-900/50 dark:data-[state=active]:text-amber-300">Last Week</TabsTrigger>
-            <TabsTrigger value="today">Today</TabsTrigger>
-            <TabsTrigger value="this-week">This Week</TabsTrigger>
-            <TabsTrigger value="next-week">Next Week</TabsTrigger>
-            <TabsTrigger value="week-3">Week 3</TabsTrigger>
-            <TabsTrigger value="week-4">Week 4</TabsTrigger>
-          </TabsList>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+        <div className="flex flex-col space-y-2">
+            <TabsList className="grid grid-cols-3">
+              <TabsTrigger value="last-week" className="data-[state=active]:bg-amber-100 data-[state=active]:text-amber-800 dark:data-[state=active]:bg-amber-900/50 dark:data-[state=active]:text-amber-300">Last Week</TabsTrigger>
+              <TabsTrigger value="today">Today</TabsTrigger>
+              <TabsTrigger value="this-week">This Week</TabsTrigger>
+            </TabsList>
+            <TabsList className="grid grid-cols-3">
+              <TabsTrigger value="next-week">Next Week</TabsTrigger>
+              <TabsTrigger value="week-3">Week 3</TabsTrigger>
+              <TabsTrigger value="week-4">Week 4</TabsTrigger>
+            </TabsList>
+        </div>
         <TabsContent value="last-week">
           {renderWeekView(lastWeekShifts, "last week", true)}
         </TabsContent>

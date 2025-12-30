@@ -1055,45 +1055,49 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
         </CardHeader>
         <CardContent>
             <Tabs defaultValue="today" onValueChange={setActiveTab}>
-            <TabsList>
-                <TabsTrigger value="today">Today</TabsTrigger>
-                <TabsTrigger value="this-week">This Week</TabsTrigger>
-                <TabsTrigger value="next-week">Next Week</TabsTrigger>
-                <TabsTrigger value="week-3">Week 3</TabsTrigger>
-                <TabsTrigger value="week-4">Week 4</TabsTrigger>
-                <TabsTrigger value="archive">Archive</TabsTrigger>
-            </TabsList>
-            <TabsContent value="today" className="mt-0">
-                {renderWeekSchedule(todayShifts)}
-            </TabsContent>
-            <TabsContent value="this-week" className="mt-0">
-                {renderWeekSchedule(thisWeekShifts)}
-            </TabsContent>
-            <TabsContent value="next-week" className="mt-0">
-                {renderWeekSchedule(nextWeekShifts)}
-            </TabsContent>
-             <TabsContent value="week-3" className="mt-0">
-                {renderWeekSchedule(week3Shifts)}
-            </TabsContent>
-             <TabsContent value="week-4" className="mt-0">
-                {renderWeekSchedule(week4Shifts)}
-            </TabsContent>
-            <TabsContent value="archive" className="mt-4">
-                <div className="flex flex-col sm:flex-row gap-4 items-center bg-muted/50 p-4 rounded-lg">
-                    <p className="text-sm font-medium text-muted-foreground">View completed and incomplete shifts from the last 6 weeks.</p>
-                     <Select value={selectedArchiveWeek} onValueChange={setSelectedArchiveWeek}>
-                        <SelectTrigger className="w-full sm:w-[250px]">
-                            <SelectValue placeholder="Select a week" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {archiveWeekOptions.map(option => (
-                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                <div className="flex flex-col space-y-2">
+                    <TabsList className="grid grid-cols-3">
+                        <TabsTrigger value="today">Today</TabsTrigger>
+                        <TabsTrigger value="this-week">This Week</TabsTrigger>
+                        <TabsTrigger value="next-week">Next Week</TabsTrigger>
+                    </TabsList>
+                    <TabsList className="grid grid-cols-4">
+                        <TabsTrigger value="week-3">Week 3</TabsTrigger>
+                        <TabsTrigger value="week-4">Week 4</TabsTrigger>
+                        <TabsTrigger value="archive">Archive</TabsTrigger>
+                    </TabsList>
                 </div>
-                {renderArchiveView()}
-            </TabsContent>
+                <TabsContent value="today" className="mt-4">
+                    {renderWeekSchedule(todayShifts)}
+                </TabsContent>
+                <TabsContent value="this-week" className="mt-4">
+                    {renderWeekSchedule(thisWeekShifts)}
+                </TabsContent>
+                <TabsContent value="next-week" className="mt-4">
+                    {renderWeekSchedule(nextWeekShifts)}
+                </TabsContent>
+                <TabsContent value="week-3" className="mt-4">
+                    {renderWeekSchedule(week3Shifts)}
+                </TabsContent>
+                <TabsContent value="week-4" className="mt-4">
+                    {renderWeekSchedule(week4Shifts)}
+                </TabsContent>
+                <TabsContent value="archive" className="mt-4">
+                    <div className="flex flex-col sm:flex-row gap-4 items-center bg-muted/50 p-4 rounded-lg">
+                        <p className="text-sm font-medium text-muted-foreground">View completed and incomplete shifts from the last 6 weeks.</p>
+                         <Select value={selectedArchiveWeek} onValueChange={setSelectedArchiveWeek}>
+                            <SelectTrigger className="w-full sm:w-[250px]">
+                                <SelectValue placeholder="Select a week" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {archiveWeekOptions.map(option => (
+                                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    {renderArchiveView()}
+                </TabsContent>
             </Tabs>
         </CardContent>
         </Card>
