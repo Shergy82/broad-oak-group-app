@@ -214,7 +214,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
         return shiftDate >= sixWeeksAgo && shiftDate < startOfWeek(today, {weekStartsOn: 1}) && ['completed', 'incomplete'].includes(s.status);
     });
     
-    const selectedArchiveDate = startOfWeek(subWeeks(today, parseInt(selectedArchiveWeek)), {weekStartsOn: 1});
+    const selectedArchiveDate = startOfWeek(subWeeks(today, parseInt(selectedArchiveWeek)), { weekStartsOn: 1 });
 
     const archiveShifts = historicalShifts.filter(s => 
         isSameWeek(getCorrectedLocalDate(s.date), selectedArchiveDate, { weekStartsOn: 1 }) &&
@@ -1061,7 +1061,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
                         <TabsTrigger value="this-week">This Week</TabsTrigger>
                         <TabsTrigger value="next-week">Next Week</TabsTrigger>
                     </TabsList>
-                    <TabsList className="grid grid-cols-4">
+                    <TabsList className="grid grid-cols-3">
                         <TabsTrigger value="week-3">Week 3</TabsTrigger>
                         <TabsTrigger value="week-4">Week 4</TabsTrigger>
                         <TabsTrigger value="archive">Archive</TabsTrigger>
