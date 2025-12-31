@@ -1,16 +1,19 @@
-import * as functions from "firebase-functions";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import admin from "firebase-admin";
 import * as webPush from "web-push";
-import JSZip from "jszip";
+import { logger } from "firebase-functions/v2";
+import { getAppConfig } from "firebase-functions/params";
+import JSZip = require("jszip");
+
 
 // Initialize admin SDK only once
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 const db = admin.firestore();
+const webpushConfig = getAppConfig("webpush");
 
 // Define a converter for the PushSubscription type for robust data handling.
 const pushSubscriptionConverter = {
@@ -37,9 +40,9 @@ export const getVapidPublicKey = onCall({ region: europeWest2 }, (request) => {
     if (!request.auth) {
         throw new HttpsError("unauthenticated", "You must be logged in.");
     }
-    const publicKey = functions.config().webpush?.public_key;
+    const publicKey = webpushConfig.public_key as string;
     if (!publicKey) {
-        functions.logger.error("CRITICAL: VAPID public key (webpush.public_key) not set in function configuration.");
+        logger.error("CRITICAL: VAPID public key (webpush.public_key) not set in function configuration.");
         throw new HttpsError('not-found', 'VAPID public key is not configured on the server.');
     }
     return { publicKey };
@@ -72,7 +75,7 @@ export const setNotificationStatus = onCall({ region: europeWest2 }, async (requ
         throw new HttpsError("invalid-argument", "The 'enabled' field must be a boolean.");
     }
     await db.collection('settings').doc('notifications').set({ enabled: request.data.enabled }, { merge: true });
-    functions.logger.log(`Owner ${request.auth.uid} set global notifications to: ${request.data.enabled}`);
+    logger.log(`Owner ${request.auth.uid} set global notifications to: ${request.data.enabled}`);
     return { success: true };
 });
 
@@ -82,15 +85,15 @@ export const sendShiftNotification = onDocumentWritten({ document: "shifts/{shif
     
     const settingsDoc = await db.collection('settings').doc('notifications').get();
     if (settingsDoc.exists() && settingsDoc.data()?.enabled === false) {
-        functions.logger.log('Global notifications are disabled. Aborting.');
+        logger.log('Global notifications are disabled. Aborting.');
         return;
     }
     
-    const config = functions.config();
-    const publicKey = config.webpush?.public_key;
-    const privateKey = config.webpush?.private_key;
+    const publicKey = webpushConfig.public_key as string;
+    const privateKey = webpushConfig.private_key as string;
+
     if (!publicKey || !privateKey) {
-        functions.logger.error("CRITICAL: VAPID keys are not configured.");
+        logger.error("CRITICAL: VAPID keys are not configured.");
         return;
     }
     webPush.setVapidDetails("mailto:example@your-project.com", publicKey, privateKey);
@@ -153,7 +156,7 @@ export const sendShiftNotification = onDocumentWritten({ document: "shifts/{shif
         const subscription = subDoc.data();
         return webPush.sendNotification(subscription, JSON.stringify(payload)).catch((error: any) => {
             if (error.statusCode === 410 || error.statusCode === 404) return subDoc.ref.delete();
-            functions.logger.error(`Error sending notification to user ${userId}:`, error);
+            logger.error(`Error sending notification to user ${userId}:`, error);
             return null;
         });
     });
@@ -162,11 +165,140 @@ export const sendShiftNotification = onDocumentWritten({ document: "shifts/{shif
 
 
 export const projectReviewNotifier = onSchedule({ schedule: "every 24 hours", region: europeWest2 }, async (event) => {
-    // Logic remains the same, just wrapped in onSchedule
+    logger.log("Running daily project review notifier.");
+    const settingsDoc = await db.collection('settings').doc('notifications').get();
+    if (settingsDoc.exists() && settingsDoc.data()?.enabled === false) {
+      logger.log('Global notifications are disabled by the owner. Aborting project review notifier.');
+      return;
+    }
+    const publicKey = webpushConfig.public_key as string;
+    const privateKey = webpushConfig.private_key as string;
+    if (!publicKey || !privateKey) {
+      logger.error("CRITICAL: VAPID keys are not configured. Cannot send project review notifications.");
+      return;
+    }
+    webPush.setVapidDetails("mailto:example@your-project.com", publicKey, privateKey);
+    const now = admin.firestore.Timestamp.now();
+    const projectsToReviewQuery = db.collection("projects").where("nextReviewDate", "<=", now);
+    try {
+        const querySnapshot = await projectsToReviewQuery.get();
+        if (querySnapshot.empty) {
+            logger.log("No projects due for review today.");
+            return;
+        }
+        logger.log(`Found ${querySnapshot.size} projects to review.`);
+        const batch = db.batch();
+        for (const projectDoc of querySnapshot.docs) {
+            const projectData = projectDoc.data();
+            const { creatorId, address } = projectData;
+            if (!creatorId) {
+                logger.warn(`Project ${projectDoc.id} (${address}) is due for review but has no creatorId. Skipping.`);
+                continue;
+            }
+            const payload = JSON.stringify({
+                title: "Project Review Reminder",
+                body: `It's time to review the project at ${address}. Please check if it can be archived.`,
+                data: { url: "/projects" },
+            });
+            const subscriptionsSnapshot = await db
+                .collection("users")
+                .doc(creatorId)
+                .collection("pushSubscriptions")
+                .withConverter(pushSubscriptionConverter)
+                .get();
+            if (subscriptionsSnapshot.empty) {
+                logger.warn(`Creator ${creatorId} for project ${address} has no push subscriptions.`);
+            } else {
+                logger.log(`Sending review notification for project ${address} to creator ${creatorId}.`);
+                const sendPromises = subscriptionsSnapshot.docs.map((subDoc) => {
+                    const subscription = subDoc.data();
+                    return webPush.sendNotification(subscription, payload).catch((error: any) => {
+                        logger.error(`Error sending notification to user ${creatorId}:`, error);
+                        if (error.statusCode === 410 || error.statusCode === 404) {
+                            logger.log(`Deleting invalid subscription for user ${creatorId}.`);
+                            return subDoc.ref.delete();
+                        }
+                        return null;
+                    });
+                });
+                await Promise.all(sendPromises);
+            }
+            const newReviewDate = new Date();
+            newReviewDate.setDate(newReviewDate.getDate() + 28);
+            batch.update(projectDoc.ref, { nextReviewDate: admin.firestore.Timestamp.fromDate(newReviewDate) });
+        }
+        await batch.commit();
+        logger.log("Finished processing project reviews and updated next review dates.");
+    } catch (error) {
+        logger.error("Error running project review notifier:", error);
+    }
 });
 
 export const pendingShiftNotifier = onSchedule({ schedule: "every 1 hours", region: europeWest2 }, async (event) => {
-    // Logic remains the same, just wrapped in onSchedule
+    logger.log("Running hourly pending shift notifier.");
+    const settingsDoc = await db.collection('settings').doc('notifications').get();
+    if (settingsDoc.exists() && settingsDoc.data()?.enabled === false) {
+      logger.log('Global notifications are disabled by the owner. Aborting pending shift notifier.');
+      return;
+    }
+    const publicKey = webpushConfig.public_key as string;
+    const privateKey = webpushConfig.private_key as string;
+    if (!publicKey || !privateKey) {
+      logger.error("CRITICAL: VAPID keys are not configured. Cannot send pending shift reminders.");
+      return;
+    }
+    webPush.setVapidDetails("mailto:example@your-project.com", publicKey, privateKey);
+    try {
+      const pendingShiftsQuery = db.collection("shifts").where("status", "==", "pending-confirmation");
+      const querySnapshot = await pendingShiftsQuery.get();
+      if (querySnapshot.empty) {
+        logger.log("No pending shifts found.");
+        return;
+      }
+      const shiftsByUser = new Map<string, any[]>();
+      querySnapshot.forEach(doc => {
+        const shift = doc.data();
+        if (shift.userId) {
+          if (!shiftsByUser.has(shift.userId)) {
+            shiftsByUser.set(shift.userId, []);
+          }
+          shiftsByUser.get(shift.userId)!.push(shift);
+        }
+      });
+      for (const [userId, userShifts] of shiftsByUser.entries()) {
+        const subscriptionsSnapshot = await db
+          .collection("users")
+          .doc(userId)
+          .collection("pushSubscriptions")
+          .withConverter(pushSubscriptionConverter)
+          .get();
+        if (subscriptionsSnapshot.empty) {
+          logger.warn(`User ${userId} has ${userShifts.length} pending shift(s) but no push subscriptions.`);
+          continue;
+        }
+        const notificationPayload = JSON.stringify({
+          title: "Pending Shifts Reminder",
+          body: `You have ${userShifts.length} shift(s) awaiting your confirmation. Please review them in the app.`,
+          data: { url: "/dashboard" },
+        });
+        logger.log(`Sending reminder to user ${userId} for ${userShifts.length} pending shift(s).`);
+        const sendPromises = subscriptionsSnapshot.docs.map(subDoc => {
+          const subscription = subDoc.data();
+          return webPush.sendNotification(subscription, notificationPayload).catch((error: any) => {
+            logger.error(`Error sending notification to user ${userId}:`, error);
+            if (error.statusCode === 410 || error.statusCode === 404) {
+              logger.log(`Deleting invalid subscription for user ${userId}.`);
+              return subDoc.ref.delete();
+            }
+            return null;
+          });
+        });
+        await Promise.all(sendPromises);
+      }
+      logger.log("Finished processing pending shift reminders.");
+    } catch (error) {
+      logger.error("Error running pendingShiftNotifier:", error);
+    }
 });
 
 
@@ -310,68 +442,72 @@ export const deleteUser = onCall({ region: europeWest2 }, async (request) => {
 
 
 export const zipProjectFiles = onCall(
-    { region: europeWest2, timeoutSeconds: 300, memory: "1GiB" },
-    async (request) => {
-        if (!request.auth) {
-            throw new HttpsError("unauthenticated", "You must be logged in to perform this action.");
-        }
-        
-        const { projectId } = request.data;
-        if (!projectId) {
-            throw new HttpsError("invalid-argument", "A 'projectId' must be provided.");
-        }
-
-        const zip = new JSZip();
-        const bucket = admin.storage().bucket();
-        
-        try {
-            const filesCollectionRef = db.collection('projects').doc(projectId).collection('files');
-            const filesSnapshot = await filesCollectionRef.get();
-
-            if (filesSnapshot.empty) {
-                throw new HttpsError("not-found", "No files found for this project to zip.");
-            }
-
-            for (const fileDoc of filesSnapshot.docs) {
-                const fileData = fileDoc.data();
-                if (fileData && fileData.fullPath && fileData.name) {
-                    try {
-                        const [fileContents] = await bucket.file(fileData.fullPath).download();
-                        zip.file(fileData.name, fileContents);
-                    } catch (downloadError: any) {
-                        functions.logger.error(`Failed to download file ${fileData.fullPath}. Skipping.`, downloadError);
-                    }
-                } else {
-                    functions.logger.warn(`Skipping file with missing data in project ${projectId}: ${fileDoc.id}`);
-                }
-            }
-            
-            if (Object.keys(zip.files).length === 0) {
-                 throw new HttpsError("internal", "Failed to add any files to the archive. See function logs for details.");
-            }
-            
-            const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
-            
-            const zipFileName = `project_${projectId}_${Date.now()}.zip`;
-            const tempZipPath = `temp_zips/${zipFileName}`;
-            const zipFile = bucket.file(tempZipPath);
-            
-            await zipFile.save(zipBuffer, { contentType: 'application/zip' });
-            
-            const [signedUrl] = await zipFile.getSignedUrl({
-                action: 'read',
-                expires: Date.now() + 15 * 60 * 1000, // URL is valid for 15 minutes
-                version: 'v4',
-            });
-            
-            return { downloadUrl: signedUrl };
-
-        } catch(error: any) {
-            functions.logger.error(`CRITICAL: Zipping function failed for project ${projectId}`, error);
-            if (error instanceof HttpsError) {
-              throw error;
-            }
-            throw new HttpsError("internal", `An unexpected server error occurred. Check logs for project ID: ${projectId}`);
-        }
+  { region: europeWest2, timeoutSeconds: 300, memory: "1GiB" },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "You must be logged in.");
     }
+
+    const projectId = request.data?.projectId;
+    if (!projectId) {
+      throw new HttpsError("invalid-argument", "projectId is required.");
+    }
+
+    const bucket = admin.storage().bucket();
+    const zip = new JSZip();
+
+    const filesSnap = await db
+      .collection("projects")
+      .doc(projectId)
+      .collection("files")
+      .get();
+
+    if (filesSnap.empty) {
+      throw new HttpsError("not-found", "No files to zip.");
+    }
+
+    let added = 0;
+
+    for (const doc of filesSnap.docs) {
+      const data = doc.data();
+
+      if (!data.fullPath || !data.name) {
+        logger.warn("Skipping file with missing data", doc.id);
+        continue;
+      }
+
+      try {
+        const [buffer] = await bucket.file(data.fullPath).download();
+        zip.file(data.name, buffer);
+        added++;
+      } catch (err) {
+        logger.error("Download failed:", data.fullPath, err);
+      }
+    }
+
+    if (added === 0) {
+      throw new HttpsError(
+        "internal",
+        "Files exist in Firestore but none could be downloaded from Storage."
+      );
+    }
+
+    const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
+
+    const zipPath = `temp_zips/project_${projectId}_${Date.now()}.zip`;
+    const zipFile = bucket.file(zipPath);
+
+    await zipFile.save(zipBuffer, {
+      contentType: "application/zip",
+      resumable: false,
+    });
+
+    const [url] = await zipFile.getSignedUrl({
+      action: "read",
+      expires: Date.now() + 15 * 60 * 1000,
+      version: "v4",
+    });
+
+    return { downloadUrl: url };
+  }
 );
