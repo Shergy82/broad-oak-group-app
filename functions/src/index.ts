@@ -1,4 +1,3 @@
-
 'use server';
 import * as functions from "firebase-functions";
 import admin from "firebase-admin";
@@ -734,10 +733,7 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
   const callerProfile = callerDoc.data() as { role: string } | undefined;
 
   if (!callerProfile || callerProfile.role !== 'owner') {
-    throw new functions.https.aI have made the changes to the `functions/src/index.ts` file as you requested.
-
-The zip functionality is still missing, however. If you would like me to implement it correctly using the server-side zipping strategy we've discussed, please let me know.
-HttpsError("permission-denied", "Only the account owner can delete users.");
+    throw new functions.https.HttpsError("permission-denied", "Only the account owner can delete users.");
   }
 
   const { uid } = data;
@@ -790,52 +786,82 @@ HttpsError("permission-denied", "Only the account owner can delete users.");
 
 
 export const zipProjectFiles = functions.runWith({timeoutSeconds: 300, memory: '1GB'}).region("europe-west2").https.onCall(async (data, context) => {
+    functions.logger.log("Zipping function triggered for project:", data.projectId);
     if (!context.auth) {
+        functions.logger.error("Unauthenticated user tried to zip files.");
         throw new functions.https.HttpsError("unauthenticated", "Login required.");
     }
     const { projectId } = data;
     if (!projectId) {
+        functions.logger.error("Missing projectId in request.");
         throw new functions.https.HttpsError("invalid-argument", "projectId is required.");
     }
 
-    const projectRef = db.collection('projects').doc(projectId);
-    const filesSnapshot = await projectRef.collection('files').get();
+    try {
+        const projectRef = db.collection('projects').doc(projectId);
+        const filesSnapshot = await projectRef.collection('files').get();
 
-    if (filesSnapshot.empty) {
-        throw new functions.https.HttpsError("not-found", "No files found for this project.");
-    }
-
-    const bucket = admin.storage().bucket();
-    const zip = new JSZip();
-
-    for (const fileDoc of filesSnapshot.docs) {
-        const fileData = fileDoc.data();
-        if (!fileData.fullPath) continue;
-
-        try {
-            const [fileContents] = await bucket.file(fileData.fullPath).download();
-            zip.file(fileData.name, fileContents);
-        } catch (error) {
-            functions.logger.error(`Failed to download file: ${fileData.fullPath}`, error);
-            // We'll skip files that fail to download instead of failing the whole operation.
+        if (filesSnapshot.empty) {
+            functions.logger.warn("No files found for project:", projectId);
+            throw new functions.https.HttpsError("not-found", "No files found for this project.");
         }
+        
+        functions.logger.log(`Found ${filesSnapshot.size} files to zip for project ${projectId}.`);
+
+        const bucket = admin.storage().bucket();
+        const zip = new JSZip();
+
+        for (const fileDoc of filesSnapshot.docs) {
+            const fileData = fileDoc.data();
+            if (!fileData.fullPath) {
+                functions.logger.warn("Skipping file with no fullPath:", fileDoc.id);
+                continue;
+            };
+
+            try {
+                functions.logger.log(`Downloading file: ${fileData.fullPath}`);
+                const [fileContents] = await bucket.file(fileData.fullPath).download();
+                zip.file(fileData.name, fileContents);
+                functions.logger.log(`Added ${fileData.name} to zip.`);
+            } catch (error) {
+                functions.logger.error(`Failed to download or add file to zip: ${fileData.fullPath}`, error);
+                // We'll skip files that fail to download instead of failing the whole operation.
+            }
+        }
+        
+        functions.logger.log("Generating zip buffer...");
+        const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+        functions.logger.log("Zip buffer generated successfully.");
+
+        const zipFileName = `project_${projectId}_${Date.now()}.zip`;
+        const tempZipPath = `temp_zips/${zipFileName}`;
+        const zipFile = bucket.file(tempZipPath);
+        
+        functions.logger.log(`Uploading zip file to: ${tempZipPath}`);
+        await zipFile.save(zipBuffer, {
+            contentType: 'application/zip',
+            // Make the file public for a short time to get a simple URL.
+            // A signed URL is more secure but adds complexity. This is a simpler alternative.
+            predefinedAcl: 'publicRead',
+        });
+        functions.logger.log("Zip file uploaded successfully.");
+
+        // Clean up the temporary public file after 15 minutes.
+        setTimeout(async () => {
+            try {
+                await zipFile.delete();
+                functions.logger.log(`Cleaned up temporary zip file: ${tempZipPath}`);
+            } catch (error) {
+                functions.logger.error(`Failed to clean up temporary zip file: ${tempZipPath}`, error);
+            }
+        }, 15 * 60 * 1000);
+        
+        const downloadUrl = zipFile.publicUrl();
+        functions.logger.log("Returning public URL:", downloadUrl);
+        return { downloadUrl };
+
+    } catch(error: any) {
+        functions.logger.error(`CRITICAL: Zipping function failed for project ${projectId}`, error);
+        throw new functions.https.HttpsError("internal", `An unexpected error occurred: ${error.message || 'Check function logs for details.'}`);
     }
-
-    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-    const zipFileName = `project_${projectId}_${Date.now()}.zip`;
-    const tempZipPath = `temp_zips/${zipFileName}`;
-    const zipFile = bucket.file(tempZipPath);
-    
-    await zipFile.save(zipBuffer, {
-        contentType: 'application/zip',
-    });
-
-    const [signedUrl] = await zipFile.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 15 * 60 * 1000, // 15 minutes
-    });
-
-    return { downloadUrl: signedUrl };
 });
-
-    
