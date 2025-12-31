@@ -284,7 +284,11 @@ function FileManagerDialog({ project, open, onOpenChange, userProfile }: { proje
 
         try {
             const idToken = await auth.currentUser.getIdToken();
-            const response = await fetch(`https://europe-west2-${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}.cloudfunctions.net/zipProjectFiles`, {
+            
+            // The URL is constructed using the project ID from environment variables
+            const functionUrl = `https://europe-west2-${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}.cloudfunctions.net/zipProjectFiles`;
+            
+            const response = await fetch(functionUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -299,13 +303,21 @@ function FileManagerDialog({ project, open, onOpenChange, userProfile }: { proje
             }
 
             const result = await response.json();
-            const { downloadUrl } = result;
             
+            if (!result.downloadUrl) {
+                throw new Error("Function did not return a download URL.");
+            }
+
             toast({ title: 'Zip created!', description: 'Your download will begin shortly.' });
-            window.location.href = downloadUrl;
+            window.location.href = result.downloadUrl;
+
         } catch (error: any) {
             console.error("Error zipping files:", error);
-            toast({ variant: 'destructive', title: 'Zipping Failed', description: error.message || 'Could not create zip file.' });
+            toast({ 
+                variant: 'destructive', 
+                title: 'Zipping Failed', 
+                description: error.message || 'Failed to fetch. Check console for details.' 
+            });
         } finally {
             setIsZipping(false);
         }
@@ -695,5 +707,3 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
     </div>
   );
 }
-
-    
