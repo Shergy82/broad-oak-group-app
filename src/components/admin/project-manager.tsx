@@ -6,8 +6,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { db, storage, app, functions } from '@/lib/firebase';
-import { httpsCallable } from 'firebase/functions';
+import { db, storage, httpsCallable, functions } from '@/lib/firebase';
 import {
   collection,
   onSnapshot,
@@ -154,7 +153,7 @@ function FileUploader({ project, userProfile }: { project: Project; userProfile:
   const { toast } = useToast();
 
   const handleFileUpload = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0 || !storage) return;
     setIsUploading(true);
 
     const uploadPromises = Array.from(files).map(file => {
@@ -176,6 +175,10 @@ function FileUploader({ project, userProfile }: { project: Project; userProfile:
             reject(error);
           },
           async () => {
+            if (!db) {
+                reject(new Error("Firestore not available"));
+                return;
+            }
             try {
               const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
               await addDoc(collection(db, `projects/${project.id}/files`), {
@@ -256,7 +259,7 @@ function FileManagerDialog({ project, open, onOpenChange, userProfile }: { proje
     const [isZipping, setIsZipping] = useState(false);
     
     useEffect(() => {
-        if (!project) return;
+        if (!project || !db) return;
         setIsLoading(true);
         const q = query(collection(db, `projects/${project.id}/files`), orderBy('uploadedAt', 'desc'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -286,7 +289,7 @@ function FileManagerDialog({ project, open, onOpenChange, userProfile }: { proje
             const zipProjectFilesFn = httpsCallable<{ projectId: string }, { downloadUrl: string }>(functions, 'zipProjectFiles');
             const result = await zipProjectFilesFn({ projectId: project.id });
 
-            const downloadUrl = (result.data as any)?.downloadUrl;
+            const downloadUrl = result.data?.downloadUrl;
             if (!downloadUrl) {
               throw new Error("Cloud Function did not return a download URL.");
             }
@@ -448,6 +451,11 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
   const { toast } = useToast();
   
   useEffect(() => {
+    if (!db) {
+        setProjects([]);
+        setLoading(false);
+        return;
+    }
     const q = query(collection(db, 'projects'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setProjects(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)));

@@ -5,15 +5,18 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import admin from "firebase-admin";
 import * as webPush from "web-push";
 import { logger } from "firebase-functions/v2";
-import * as functions from "firebase-functions";
-import JSZip = require("jszip");
-
+import { defineString } from "firebase-functions/params";
+import JSZip from "jszip";
 
 // Initialize admin SDK only once
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 const db = admin.firestore();
+
+// Define params for environment variables
+const webpushPublicKey = defineString("WEBPUSH_PUBLIC_KEY");
+const webpushPrivateKey = defineString("WEBPUSH_PRIVATE_KEY");
 
 // Define a converter for the PushSubscription type for robust data handling.
 const pushSubscriptionConverter = {
@@ -36,13 +39,12 @@ const europeWest2 = "europe-west2";
 
 // Callable function to securely provide the VAPID public key to the client.
 export const getVapidPublicKey = onCall({ region: europeWest2 }, (request) => {
-    // This check is for v2, ensuring the user is authenticated.
     if (!request.auth) {
         throw new HttpsError("unauthenticated", "You must be logged in.");
     }
-    const publicKey = functions.config().webpush.public_key as string;
+    const publicKey = webpushPublicKey.value();
     if (!publicKey) {
-        logger.error("CRITICAL: VAPID public key (webpush.public_key) not set in function configuration.");
+        logger.error("CRITICAL: WEBPUSH_PUBLIC_KEY not set in function configuration.");
         throw new HttpsError('not-found', 'VAPID public key is not configured on the server.');
     }
     return { publicKey };
@@ -60,7 +62,6 @@ export const getNotificationStatus = onCall({ region: europeWest2 }, async (requ
     const settingsDoc = await db.collection('settings').doc('notifications').get();
     return { enabled: settingsDoc.exists && Boolean(settingsDoc.data()?.enabled) !== false };
 });
-
 
 // Callable function for the owner to enable/disable all notifications globally.
 export const setNotificationStatus = onCall({ region: europeWest2 }, async (request) => {
@@ -81,16 +82,14 @@ export const setNotificationStatus = onCall({ region: europeWest2 }, async (requ
 
 // Firestore trigger that sends a push notification when a shift is created, updated, or deleted.
 export const sendShiftNotification = onDocumentWritten({ document: "shifts/{shiftId}", region: europeWest2 }, async (event) => {
-    const shiftId = event.params.shiftId;
-    
     const settingsDoc = await db.collection('settings').doc('notifications').get();
     if (settingsDoc.exists() && Boolean(settingsDoc.data()?.enabled) === false) {
         logger.log('Global notifications are disabled. Aborting.');
         return;
     }
     
-    const publicKey = functions.config().webpush.public_key as string;
-    const privateKey = functions.config().webpush.private_key as string;
+    const publicKey = webpushPublicKey.value();
+    const privateKey = webpushPrivateKey.value();
 
     if (!publicKey || !privateKey) {
         logger.error("CRITICAL: VAPID keys are not configured.");
@@ -171,8 +170,8 @@ export const projectReviewNotifier = onSchedule({ schedule: "every 24 hours", re
       logger.log('Global notifications are disabled by the owner. Aborting project review notifier.');
       return;
     }
-    const publicKey = functions.config().webpush.public_key as string;
-    const privateKey = functions.config().webpush.private_key as string;
+    const publicKey = webpushPublicKey.value();
+    const privateKey = webpushPrivateKey.value();
     if (!publicKey || !privateKey) {
       logger.error("CRITICAL: VAPID keys are not configured. Cannot send project review notifications.");
       return;
@@ -241,8 +240,8 @@ export const pendingShiftNotifier = onSchedule({ schedule: "every 1 hours", regi
       logger.log('Global notifications are disabled by the owner. Aborting pending shift notifier.');
       return;
     }
-    const publicKey = functions.config().webpush.public_key as string;
-    const privateKey = functions.config().webpush.private_key as string;
+    const publicKey = webpushPublicKey.value();
+    const privateKey = webpushPrivateKey.value();
     if (!publicKey || !privateKey) {
       logger.error("CRITICAL: VAPID keys are not configured. Cannot send pending shift reminders.");
       return;
@@ -470,26 +469,21 @@ export const zipProjectFiles = onCall(
 
     for (const doc of filesSnap.docs) {
       const data = doc.data();
-
       if (!data.fullPath || !data.name) {
-        logger.warn("Skipping file with missing data", doc.id);
+        logger.warn("Skipping file with missing data", { fileId: doc.id });
         continue;
       }
-
       try {
         const [buffer] = await bucket.file(data.fullPath).download();
         zip.file(data.name, buffer);
         added++;
       } catch (err) {
-        logger.error("Download failed:", data.fullPath, err);
+        logger.error("Download failed for file:", { fullPath: data.fullPath, error: err });
       }
     }
 
     if (added === 0) {
-      throw new HttpsError(
-        "internal",
-        "Files exist in Firestore but none could be downloaded from Storage."
-      );
+      throw new HttpsError("internal", "Files exist in Firestore but none could be downloaded from Storage. Check function logs for details.");
     }
 
     const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
