@@ -789,10 +789,12 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
                                 <FolderOpen className="mr-2 h-4 w-4" />
                                 Files
                             </Button>
-                             <Button variant="outline" size="sm" onClick={() => handleDownloadPhotosAsPdf(project)} disabled={isGeneratingPdf === project.id}>
-                                {isGeneratingPdf === project.id ? <Spinner/> : <ImageIcon className="mr-2 h-4 w-4" />}
-                                PDF
-                            </Button>
+                             {['admin', 'owner', 'manager'].includes(userProfile.role) && (
+                                <Button variant="outline" size="sm" onClick={() => handleDownloadPhotosAsPdf(project)} disabled={isGeneratingPdf === project.id}>
+                                    {isGeneratingPdf === project.id ? <Spinner/> : <ImageIcon className="mr-2 h-4 w-4" />}
+                                    PDF
+                                </Button>
+                             )}
                             {['admin', 'owner', 'manager'].includes(userProfile.role) && (
                                  <AlertDialog>
                                     <AlertDialogTrigger asChild>
@@ -841,10 +843,12 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
                                 <FolderOpen className="mr-2 h-4 w-4" />
                                 Files
                             </Button>
-                            <Button variant="outline" className="w-full" onClick={() => handleDownloadPhotosAsPdf(project)} disabled={isGeneratingPdf === project.id}>
-                                {isGeneratingPdf === project.id ? <Spinner/> : <ImageIcon className="mr-2 h-4 w-4" />}
-                                PDF
-                            </Button>
+                            {['admin', 'owner', 'manager'].includes(userProfile.role) && (
+                                <Button variant="outline" className="w-full" onClick={() => handleDownloadPhotosAsPdf(project)} disabled={isGeneratingPdf === project.id}>
+                                    {isGeneratingPdf === project.id ? <Spinner/> : <ImageIcon className="mr-2 h-4 w-4" />}
+                                    PDF
+                                </Button>
+                            )}
                              {['admin', 'owner', 'manager'].includes(userProfile.role) && (
                                 <AlertDialog>
                                     <AlertDialogTrigger asChild>
@@ -887,5 +891,6 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
     
 
     
+
 
 
