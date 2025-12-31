@@ -460,6 +460,20 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
 
     const doc = new jsPDF();
     
+    // Man-days calculation for today
+    const manDaysByManager: { [key: string]: number } = {};
+    todaysShifts.forEach(shift => {
+        const manager = shift.manager || 'Unassigned';
+        if (!manDaysByManager[manager]) {
+            manDaysByManager[manager] = 0;
+        }
+        if (shift.type === 'all-day') {
+            manDaysByManager[manager] += 1;
+        } else if (shift.type === 'am' || shift.type === 'pm') {
+            manDaysByManager[manager] += 0.5;
+        }
+    });
+    
     // Stats
     const totalShifts = todaysShifts.length;
     const completed = todaysShifts.filter(s => s.status === 'completed').length;
@@ -472,10 +486,22 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     doc.setFontSize(18);
     doc.text(`Daily Report for ${format(today, 'PPP')}`, 14, 22);
 
+    let lastY = 25;
+
     doc.setFontSize(12);
-    doc.text('Summary of Today\'s Activities:', 14, 32);
+    doc.text('Man-Days per Manager:', 14, lastY + 10);
     autoTable(doc, {
-      startY: 36,
+        startY: lastY + 14,
+        head: [['Manager', 'Total Man-Days']],
+        body: Object.entries(manDaysByManager).map(([manager, days]) => [manager, days.toFixed(1)]),
+        theme: 'striped',
+        headStyles: { fillColor: [100, 100, 100] },
+    });
+    lastY = (doc as any).lastAutoTable.finalY;
+
+    doc.text('Summary of Today\'s Activities:', 14, lastY + 10);
+    autoTable(doc, {
+      startY: lastY + 14,
       body: [
           ['Total Shifts', totalShifts],
           ['Operatives on Site', operatives],
@@ -495,7 +521,7 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
       }
     });
     
-    const lastY = (doc as any).lastAutoTable.finalY;
+    lastY = (doc as any).lastAutoTable.finalY;
 
     doc.text('All Shifts for Today:', 14, lastY + 15);
 
