@@ -595,27 +595,16 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
     // Stats
     const totalShifts = weeklyShifts.length;
     const completed = weeklyShifts.filter(s => s.status === 'completed').length;
-    const pending = weeklyShifts.filter(s => s.status === 'pending-confirmation').length;
-    const confirmed = weeklyShifts.filter(s => s.status === 'confirmed').length;
     const onSite = weeklyShifts.filter(s => s.status === 'on-site').length;
+    const confirmed = weeklyShifts.filter(s => s.status === 'confirmed').length;
     const incomplete = weeklyShifts.filter(s => s.status === 'incomplete').length;
-    const rejected = weeklyShifts.filter(s => s.status === 'rejected').length;
     const operatives = new Set(weeklyShifts.map(s => s.userId)).size;
 
     // Man-days calculation
-    const managerNames = ['Andy Kent', 'Sophie Lavender', 'Russ Brett', 'Phil Shergold'];
     const manDaysByManager: { [key: string]: number } = {};
 
     weeklyShifts.forEach(shift => {
-        const combinedText = `${shift.task} ${shift.address}`;
-        let manager = 'Unassigned';
-
-        for (const name of managerNames) {
-             if (shift.task.toLowerCase().endsWith(name.toLowerCase()) || shift.address.toLowerCase().endsWith(name.toLowerCase())) {
-                manager = name;
-                break;
-            }
-        }
+        const manager = shift.manager || 'Unassigned';
         
         if (!manDaysByManager[manager]) {
             manDaysByManager[manager] = 0;
@@ -627,7 +616,6 @@ export function ShiftScheduleOverview({ userProfile }: ShiftScheduleOverviewProp
             manDaysByManager[manager] += 0.5;
         }
     });
-
 
     doc.setFontSize(18);
     doc.text(`Weekly Report: ${format(start, 'dd MMM')} - ${format(end, 'dd MMM yyyy')}`, 14, 22);
