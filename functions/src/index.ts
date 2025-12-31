@@ -4,6 +4,7 @@ import * as functions from "firebase-functions";
 import admin from "firebase-admin";
 import * as webPush from "web-push";
 import { query } from "firebase/firestore";
+import JSZip from "jszip";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -783,4 +784,54 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
     // For other errors, re-throw a clear error message.
     throw new functions.https.HttpsError("internal", `An unexpected error occurred while deleting the user: ${error.message}`);
   }
+});
+
+
+export const zipProjectFiles = functions.runWith({timeoutSeconds: 300, memory: '1GB'}).region("europe-west2").https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Login required.");
+    }
+    const { projectId } = data;
+    if (!projectId) {
+        throw new functions.https.HttpsError("invalid-argument", "projectId is required.");
+    }
+
+    const projectRef = db.collection('projects').doc(projectId);
+    const filesSnapshot = await projectRef.collection('files').get();
+
+    if (filesSnapshot.empty) {
+        throw new functions.https.HttpsError("not-found", "No files found for this project.");
+    }
+
+    const bucket = admin.storage().bucket();
+    const zip = new JSZip();
+
+    for (const fileDoc of filesSnapshot.docs) {
+        const fileData = fileDoc.data();
+        if (!fileData.fullPath) continue;
+
+        try {
+            const [fileContents] = await bucket.file(fileData.fullPath).download();
+            zip.file(fileData.name, fileContents);
+        } catch (error) {
+            functions.logger.error(`Failed to download file: ${fileData.fullPath}`, error);
+            // We'll skip files that fail to download instead of failing the whole operation.
+        }
+    }
+
+    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+    const zipFileName = `project_${projectId}_${Date.now()}.zip`;
+    const tempZipPath = `temp_zips/${zipFileName}`;
+    const zipFile = bucket.file(tempZipPath);
+    
+    await zipFile.save(zipBuffer, {
+        contentType: 'application/zip',
+    });
+
+    const [signedUrl] = await zipFile.getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 15 * 60 * 1000, // 15 minutes
+    });
+
+    return { downloadUrl: signedUrl };
 });
