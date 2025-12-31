@@ -10,13 +10,13 @@ import { isToday } from 'date-fns';
 import { getCorrectedLocalDate } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { Skeleton } from '../ui/skeleton';
-import { Users, Sun, Moon, MapPin } from 'lucide-react';
-import { ScrollArea, ScrollBar } from '../ui/scroll-area';
+import { Users, Sun, Moon, MapPin, HardHat } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 
 interface AvailableUser {
   user: UserProfile;
-  availability: 'full' | 'am' | 'pm';
+  availability: 'full' | 'am' | 'pm' | 'busy';
   shiftLocation?: string;
 }
 
@@ -50,33 +50,35 @@ const extractLocation = (address: string | undefined): string => {
 };
 
 
-const AvailabilityList = ({ title, users, icon: Icon, color }: { title: string, users: AvailableUser[], icon: React.ElementType, color: string }) => {
-    if (users.length === 0) return null;
+const UserAvatarList = ({ users }: { users: AvailableUser[] }) => {
+    if (users.length === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center h-full">
+                <Users className="mx-auto h-10 w-10 text-muted-foreground" />
+                <p className="mt-2 text-sm text-muted-foreground">No operatives in this category.</p>
+            </div>
+        );
+    }
     return (
-        <div>
-            <h4 className={`font-semibold mb-3 flex items-center gap-2 ${color}`}>
-                <Icon className="h-5 w-5" />
-                {title} ({users.length})
-            </h4>
-            <ScrollArea className="w-full whitespace-nowrap rounded-md">
-                <div className="flex w-max space-x-6 pb-4">
-                    {users.map(({ user, shiftLocation }) => (
-                        <div key={user.uid} className="flex flex-col items-center text-center gap-2 w-24">
-                            <Avatar>
-                                <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
-                            </Avatar>
-                            <p className="text-xs font-medium truncate w-full">{user.name}</p>
-                            {shiftLocation && (
-                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                    <MapPin className="h-3 w-3" />
-                                    <span className="truncate">{extractLocation(shiftLocation)}</span>
-                                </div>
-                            )}
-                        </div>
-                    ))}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+            {users.map(({ user, shiftLocation, availability }) => (
+                <div key={user.uid} className="flex flex-col items-center text-center gap-2">
+                    <Avatar className="h-16 w-16 text-lg">
+                        <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col">
+                        <p className="text-sm font-medium truncate w-full">{user.name}</p>
+                        {shiftLocation && (
+                            <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                                <MapPin className="h-3 w-3 shrink-0" />
+                                <span className="truncate">{extractLocation(shiftLocation)}</span>
+                            </div>
+                        )}
+                         {availability === 'am' && <p className="text-xs font-semibold text-sky-600">AM Free</p>}
+                         {availability === 'pm' && <p className="text-xs font-semibold text-orange-600">PM Free</p>}
+                    </div>
                 </div>
-                 <ScrollBar orientation="horizontal" />
-            </ScrollArea>
+            ))}
         </div>
     )
 }
@@ -117,7 +119,7 @@ export function AvailabilityOverview() {
         };
     }, []);
 
-    const todaysAvailability = useMemo((): AvailableUser[] => {
+    const todaysAvailability: AvailableUser[] = useMemo(() => {
         if (loading) return [];
         
         const todaysShifts = shifts.filter(s => isToday(getCorrectedLocalDate(s.date)));
@@ -128,8 +130,8 @@ export function AvailabilityOverview() {
             if (userShiftsToday.length === 0) {
                 return { user, availability: 'full' };
             }
-            if (userShiftsToday.some(s => s.type === 'all-day')) {
-                return null;
+            if (userShiftsToday.some(s => s.type === 'all-day') || userShiftsToday.length >= 2) {
+                 return { user, availability: 'busy' };
             }
             if (userShiftsToday.length === 1) {
                 const shift = userShiftsToday[0];
@@ -140,14 +142,20 @@ export function AvailabilityOverview() {
                     return { user, availability: 'am', shiftLocation: shift.address };
                 }
             }
+            // If it's an all-day shift it gets caught by the 'busy' case above
             return null;
         }).filter((u): u is AvailableUser => u !== null);
 
     }, [loading, shifts, users]);
+    
+    const { workingToday, fullyAvailable, semiAvailable } = useMemo(() => {
+        return {
+            workingToday: todaysAvailability.filter(u => u.availability === 'busy' || u.availability === 'am' || u.availability === 'pm'),
+            fullyAvailable: todaysAvailability.filter(u => u.availability === 'full'),
+            semiAvailable: todaysAvailability.filter(u => u.availability === 'am' || u.availability === 'pm'),
+        }
+    }, [todaysAvailability]);
 
-    const fullyAvailable = useMemo(() => todaysAvailability.filter(u => u.availability === 'full'), [todaysAvailability]);
-    const amAvailable = useMemo(() => todaysAvailability.filter(u => u.availability === 'am'), [todaysAvailability]);
-    const pmAvailable = useMemo(() => todaysAvailability.filter(u => u.availability === 'pm'), [todaysAvailability]);
 
   return (
     <Card>
@@ -159,30 +167,32 @@ export function AvailabilityOverview() {
       </CardHeader>
       <CardContent>
         {loading ? (
-            <div className="space-y-4">
-                <Skeleton className="h-8 w-1/4" />
-                <div className="grid grid-cols-5 gap-4">
-                    <Skeleton className="h-16 w-full" />
-                    <Skeleton className="h-16 w-full" />
-                    <Skeleton className="h-16 w-full" />
-                    <Skeleton className="h-16 w-full" />
-                    <Skeleton className="h-16 w-full" />
-                </div>
-            </div>
-        ) : todaysAvailability.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center h-48">
-              <Users className="mx-auto h-12 w-12 text-muted-foreground" />
-              <h3 className="mt-4 text-lg font-semibold">No Operatives Available Today</h3>
-              <p className="mt-2 text-sm text-muted-foreground">
-                All operatives are scheduled for the full day.
-              </p>
+            <div className="flex items-center justify-center h-48">
+                <Spinner size="lg" />
             </div>
         ) : (
-            <div className="space-y-8">
-                <AvailabilityList title="Fully Available" users={fullyAvailable} icon={Users} color="text-green-600" />
-                <AvailabilityList title="AM Available" users={amAvailable} icon={Sun} color="text-sky-600" />
-                <AvailabilityList title="PM Available" users={pmAvailable} icon={Moon} color="text-orange-600" />
-            </div>
+            <Tabs defaultValue="working-today">
+                <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="working-today">
+                        <HardHat className="mr-2" /> Working Today ({workingToday.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="fully-available">
+                        <Sun className="mr-2" /> Fully Available ({fullyAvailable.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="semi-available">
+                        <Moon className="mr-2" /> Semi-Available ({semiAvailable.length})
+                    </TabsTrigger>
+                </TabsList>
+                <TabsContent value="working-today" className="mt-6">
+                    <UserAvatarList users={workingToday} />
+                </TabsContent>
+                <TabsContent value="fully-available" className="mt-6">
+                     <UserAvatarList users={fullyAvailable} />
+                </TabsContent>
+                <TabsContent value="semi-available" className="mt-6">
+                    <UserAvatarList users={semiAvailable} />
+                </TabsContent>
+            </Tabs>
         )}
       </CardContent>
     </Card>
