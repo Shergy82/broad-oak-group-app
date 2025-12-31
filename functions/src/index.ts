@@ -857,3 +857,5 @@ export const zipProjectFiles = onCall(
         throw new functions.https.HttpsError("internal", `An unexpected error occurred: ${error.message || 'Check function logs for details.'}`);
     }
 });
+
+    
