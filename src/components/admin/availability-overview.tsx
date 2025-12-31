@@ -9,11 +9,11 @@ import type { Shift, UserProfile } from '@/types';
 import { isToday } from 'date-fns';
 import { getCorrectedLocalDate } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '../ui/avatar';
-import { Skeleton } from '../ui/skeleton';
 import { Users, Sun, Moon, MapPin, HardHat } from 'lucide-react';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Spinner } from '../shared/spinner';
 import { ScrollArea, ScrollBar } from '../ui/scroll-area';
+import { Button } from '../ui/button';
+import { cn } from '@/lib/utils';
 
 
 interface AvailableUser {
@@ -52,19 +52,29 @@ const extractLocation = (address: string | undefined): string => {
 };
 
 
-const UserAvatarList = ({ users }: { users: AvailableUser[] }) => {
-    if (users.length === 0) {
+const UserAvatarList = ({ users, category }: { users: AvailableUser[]; category: 'working' | 'full' | 'semi' }) => {
+    
+    let filteredUsers = users;
+    if (category === 'working') {
+        filteredUsers = users.filter(u => u.availability !== 'full');
+    } else if (category === 'full') {
+        filteredUsers = users.filter(u => u.availability === 'full');
+    } else if (category === 'semi') {
+        filteredUsers = users.filter(u => u.availability === 'am' || u.availability === 'pm');
+    }
+
+    if (filteredUsers.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center h-full">
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center h-full min-h-[150px]">
                 <Users className="mx-auto h-10 w-10 text-muted-foreground" />
                 <p className="mt-2 text-sm text-muted-foreground">No operatives in this category.</p>
             </div>
         );
     }
     return (
-        <ScrollArea className="w-full whitespace-nowrap rounded-md">
+        <ScrollArea className="w-full whitespace-nowrap rounded-md border p-4">
             <div className="flex w-max space-x-6 pb-4">
-                {users.map(({ user, shiftLocation, availability }) => (
+                {filteredUsers.map(({ user, shiftLocation, availability }) => (
                     <div key={user.uid} className="flex flex-col items-center text-center gap-2 w-24">
                         <Avatar className="h-16 w-16 text-lg">
                             <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
@@ -88,10 +98,13 @@ const UserAvatarList = ({ users }: { users: AvailableUser[] }) => {
     )
 }
 
+type ActiveTab = 'working-today' | 'fully-available' | 'semi-available' | null;
+
 export function AvailabilityOverview() {
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<ActiveTab>(null);
 
     useEffect(() => {
         const shiftsQuery = query(collection(db, 'shifts'));
@@ -136,7 +149,7 @@ export function AvailabilityOverview() {
                 return { user, availability: 'full' };
             }
             if (userShiftsToday.some(s => s.type === 'all-day') || userShiftsToday.length >= 2) {
-                 return { user, availability: 'busy' };
+                 return { user, availability: 'busy', shiftLocation: userShiftsToday[0].address };
             }
             if (userShiftsToday.length === 1) {
                 const shift = userShiftsToday[0];
@@ -147,19 +160,40 @@ export function AvailabilityOverview() {
                     return { user, availability: 'am', shiftLocation: shift.address };
                 }
             }
-            // If it's an all-day shift it gets caught by the 'busy' case above
             return null;
         }).filter((u): u is AvailableUser => u !== null);
 
     }, [loading, shifts, users]);
     
-    const { workingToday, fullyAvailable, semiAvailable } = useMemo(() => {
+    const { workingTodayCount, fullyAvailableCount, semiAvailableCount } = useMemo(() => {
         return {
-            workingToday: todaysAvailability.filter(u => u.availability === 'busy' || u.availability === 'am' || u.availability === 'pm'),
-            fullyAvailable: todaysAvailability.filter(u => u.availability === 'full'),
-            semiAvailable: todaysAvailability.filter(u => u.availability === 'am' || u.availability === 'pm'),
+            workingTodayCount: todaysAvailability.filter(u => u.availability !== 'full').length,
+            fullyAvailableCount: todaysAvailability.filter(u => u.availability === 'full').length,
+            semiAvailableCount: todaysAvailability.filter(u => u.availability === 'am' || u.availability === 'pm').length,
         }
     }, [todaysAvailability]);
+
+    const handleTabClick = (tab: ActiveTab) => {
+        if (activeTab === tab) {
+            setActiveTab(null); // Close if the same tab is clicked
+        } else {
+            setActiveTab(tab);
+        }
+    };
+
+    const renderContent = () => {
+        if (!activeTab) return null;
+        switch (activeTab) {
+            case 'working-today':
+                return <UserAvatarList users={todaysAvailability} category="working" />;
+            case 'fully-available':
+                return <UserAvatarList users={todaysAvailability} category="full" />;
+            case 'semi-available':
+                return <UserAvatarList users={todaysAvailability} category="semi" />;
+            default:
+                return null;
+        }
+    };
 
 
   return (
@@ -167,7 +201,7 @@ export function AvailabilityOverview() {
       <CardHeader>
         <CardTitle>Today's Availability</CardTitle>
         <CardDescription>
-          A simple overview of which operatives are available today. Click a category to expand.
+          A simple overview of which operatives are available today. Click a category to view.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -176,38 +210,53 @@ export function AvailabilityOverview() {
                 <Spinner size="lg" />
             </div>
         ) : (
-            <Accordion type="multiple" className="w-full">
-                <AccordionItem value="working-today">
-                    <AccordionTrigger className="text-base font-semibold">
-                         <div className="flex items-center gap-3">
-                            <HardHat /> Working Today ({workingToday.length})
-                         </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="pt-6">
-                        <UserAvatarList users={workingToday} />
-                    </AccordionContent>
-                </AccordionItem>
-                 <AccordionItem value="fully-available">
-                    <AccordionTrigger className="text-base font-semibold">
+            <div className="w-full space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <Button
+                        variant={activeTab === 'working-today' ? 'default' : 'outline'}
+                        onClick={() => handleTabClick('working-today')}
+                        className="justify-start p-4 h-auto text-left"
+                    >
                         <div className="flex items-center gap-3">
-                            <Sun /> Fully Available ({fullyAvailable.length})
+                            <HardHat />
+                            <div className="flex flex-col">
+                                <span className="font-semibold">Working Today</span>
+                                <span className="text-2xl font-bold">{workingTodayCount}</span>
+                            </div>
                         </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="pt-6">
-                        <UserAvatarList users={fullyAvailable} />
-                    </AccordionContent>
-                </AccordionItem>
-                 <AccordionItem value="semi-available">
-                    <AccordionTrigger className="text-base font-semibold">
+                    </Button>
+                     <Button
+                        variant={activeTab === 'fully-available' ? 'default' : 'outline'}
+                        onClick={() => handleTabClick('fully-available')}
+                        className="justify-start p-4 h-auto text-left"
+                    >
                          <div className="flex items-center gap-3">
-                            <Moon /> Semi-Available ({semiAvailable.length})
+                            <Sun />
+                            <div className="flex flex-col">
+                                <span className="font-semibold">Fully Available</span>
+                                <span className="text-2xl font-bold">{fullyAvailableCount}</span>
+                            </div>
                         </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="pt-6">
-                        <UserAvatarList users={semiAvailable} />
-                    </AccordionContent>
-                </AccordionItem>
-            </Accordion>
+                    </Button>
+                    <Button
+                        variant={activeTab === 'semi-available' ? 'default' : 'outline'}
+                        onClick={() => handleTabClick('semi-available')}
+                        className="justify-start p-4 h-auto text-left"
+                    >
+                         <div className="flex items-center gap-3">
+                            <Moon />
+                             <div className="flex flex-col">
+                                <span className="font-semibold">Semi-Available</span>
+                                <span className="text-2xl font-bold">{semiAvailableCount}</span>
+                            </div>
+                        </div>
+                    </Button>
+                </div>
+                
+                <div className="pt-4 transition-all duration-300 ease-in-out">
+                    {renderContent()}
+                </div>
+            </div>
         )}
       </CardContent>
     </Card>
