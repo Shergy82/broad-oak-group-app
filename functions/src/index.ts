@@ -1,6 +1,6 @@
-
 'use server';
 import * as functions from "firebase-functions";
+import { onCall } from "firebase-functions/v2/https";
 import admin from "firebase-admin";
 import * as webPush from "web-push";
 import JSZip from "jszip";
@@ -786,18 +786,20 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
 });
 
 
-export const zipProjectFiles = functions.runWith({timeoutSeconds: 300, memory: '1GB'}).region("europe-west2").https.onCall(async (data, context) => {
-    functions.logger.log("Zipping function triggered for project:", data.projectId);
+export const zipProjectFiles = onCall(
+  { region: "europe-west2", timeoutSeconds: 300, memory: "1GiB" },
+  async (request) => {
+    functions.logger.log("Zipping function triggered for project:", request.data.projectId);
 
-    if (!context.auth) {
-        functions.logger.error("Unauthenticated user tried to zip files.");
-        throw new functions.https.HttpsError("unauthenticated", "Login required.");
+    if (!request.auth) {
+      functions.logger.error("Unauthenticated user tried to zip files.");
+      throw new functions.https.HttpsError("unauthenticated", "Login required.");
     }
 
-    const { projectId } = data;
+    const { projectId } = request.data;
     if (!projectId) {
-        functions.logger.error("Missing projectId in request.");
-        throw new functions.https.HttpsError("invalid-argument", "projectId is required.");
+      functions.logger.error("Missing projectId in request.");
+      throw new functions.https.HttpsError("invalid-argument", "projectId is required.");
     }
 
     try {
@@ -854,3 +856,5 @@ export const zipProjectFiles = functions.runWith({timeoutSeconds: 300, memory: '
         throw new functions.https.HttpsError("internal", `An unexpected error occurred: ${error.message || 'Check function logs for details.'}`);
     }
 });
+
+    
