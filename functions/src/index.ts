@@ -1,5 +1,3 @@
-
-'use server';
 import * as functions from "firebase-functions";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
@@ -35,6 +33,10 @@ const europeWest2 = "europe-west2";
 
 // Callable function to securely provide the VAPID public key to the client.
 export const getVapidPublicKey = onCall({ region: europeWest2 }, (request) => {
+    // This check is for v2, ensuring the user is authenticated.
+    if (!request.auth) {
+        throw new HttpsError("unauthenticated", "You must be logged in.");
+    }
     const publicKey = functions.config().webpush?.public_key;
     if (!publicKey) {
         functions.logger.error("CRITICAL: VAPID public key (webpush.public_key) not set in function configuration.");
@@ -78,7 +80,6 @@ export const setNotificationStatus = onCall({ region: europeWest2 }, async (requ
 export const sendShiftNotification = onDocumentWritten({ document: "shifts/{shiftId}", region: europeWest2 }, async (event) => {
     const shiftId = event.params.shiftId;
     
-    // Check master toggle first
     const settingsDoc = await db.collection('settings').doc('notifications').get();
     if (settingsDoc.exists() && settingsDoc.data()?.enabled === false) {
         functions.logger.log('Global notifications are disabled. Aborting.');
@@ -107,7 +108,6 @@ export const sendShiftNotification = onDocumentWritten({ document: "shifts/{shif
             body: `You have a new shift: ${afterData.task} at ${afterData.address}.`,
             data: { url: `/dashboard` },
         };
-         // Auto-create project logic remains the same
     } else if (event.data?.before.exists && !event.data?.after.exists && beforeData) {
         userId = beforeData.userId;
         payload = {
@@ -135,10 +135,10 @@ export const sendShiftNotification = onDocumentWritten({ document: "shifts/{shif
                 data: { url: `/dashboard` },
             };
         } else {
-            return; // No significant change
+            return;
         }
     } else {
-        return; // No relevant change
+        return;
     }
 
     if (!userId || !payload) return;
