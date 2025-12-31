@@ -524,6 +524,7 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
   const [isFileManagerOpen, setFileManagerOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -552,6 +553,111 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
     setFileManagerOpen(true);
   };
   
+    const handleDownloadPhotosAsPdf = async (project: Project) => {
+      if (!project) return;
+
+      setIsGeneratingPdf(project.id);
+      toast({
+        title: 'Gathering files...',
+        description: `Checking for images in project: ${project.address}`,
+      });
+
+      const filesQuery = query(collection(db, `projects/${project.id}/files`), where('type', '>=', 'image/'), where('type', '<', 'image0'));
+      const filesSnapshot = await getDocs(filesQuery);
+      
+      const imageFiles = filesSnapshot.docs.map(doc => doc.data() as ProjectFile);
+
+      if (imageFiles.length === 0) {
+        toast({
+          variant: 'destructive',
+          title: 'No Images Found',
+          description: 'This project does not have any images to include in a PDF.',
+        });
+        setIsGeneratingPdf(null);
+        return;
+      }
+    
+      toast({
+        title: 'Generating PDF...',
+        description: `Processing ${imageFiles.length} images. Please wait.`,
+      });
+    
+      const doc = new jsPDF();
+      const addTitlePage = () => {
+        doc.setFontSize(22);
+        doc.text("Project Photo Report", 105, 80, { align: 'center' });
+        doc.setFontSize(16);
+        const addressLines = doc.splitTextToSize(project.address, 180);
+        doc.text(addressLines, 105, 100, { align: 'center' });
+        doc.setFontSize(12);
+        if (project.eNumber) doc.text(`E-Number: ${project.eNumber}`, 105, 120, { align: 'center' });
+        if (project.manager) doc.text(`Manager: ${project.manager}`, 105, 128, { align: 'center' });
+        doc.setFontSize(10);
+        doc.setTextColor(150);
+        doc.text(`Report generated on: ${format(new Date(), 'PPP p')}`, 105, 150, { align: 'center' });
+      };
+
+      addTitlePage();
+
+      try {
+        for (let i = 0; i < imageFiles.length; i++) {
+          const file = imageFiles[i];
+          doc.addPage();
+          
+          const response = await fetch(`https://images.weserv.nl/?url=${encodeURIComponent(file.url)}`);
+          if (!response.ok) throw new Error(`Failed to fetch image ${file.name}`);
+
+          const blob = await response.blob();
+          const reader = new FileReader();
+          const imageData: string = await new Promise((resolve, reject) => {
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          
+          const img = new Image();
+          img.src = imageData;
+          await new Promise(resolve => { img.onload = resolve; });
+
+          const pageWidth = doc.internal.pageSize.getWidth();
+          const pageHeight = doc.internal.pageSize.getHeight();
+          const margin = 15;
+          const usableWidth = pageWidth - margin * 2;
+          const usableHeight = pageHeight - margin * 2 - 20;
+          const aspectRatio = img.width / img.height;
+          let imgWidth = usableWidth;
+          let imgHeight = imgWidth / aspectRatio;
+
+          if (imgHeight > usableHeight) {
+            imgHeight = usableHeight;
+            imgWidth = imgHeight * aspectRatio;
+          }
+
+          const x = (pageWidth - imgWidth) / 2;
+          const y = (pageHeight - imgHeight) / 2 - 10;
+          doc.addImage(imageData, 'JPEG', x, y, imgWidth, imgHeight);
+
+          doc.setFontSize(8);
+          doc.setTextColor(120);
+          const uploadedAt = file.uploadedAt ? format(file.uploadedAt.toDate(), 'dd/MM/yyyy p') : 'Unknown date';
+          const footerText = `${file.name} | Uploaded by: ${file.uploaderName} on ${uploadedAt}`;
+          doc.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' });
+        }
+
+        doc.save(`${project?.address.replace(/[^a-zA-Z0-9]/g, '_')}_photos.pdf`);
+        toast({ title: 'PDF Generated!', description: 'Your download should begin shortly.' });
+      } catch (error) {
+        console.error("Error generating PDF: ", error);
+        toast({
+          variant: 'destructive',
+          title: 'PDF Generation Failed',
+          description: 'An error occurred while creating the PDF.',
+        });
+      } finally {
+        setIsGeneratingPdf(null);
+      }
+    };
+
   const handleDeleteProject = async (project: Project) => {
     if (!['admin', 'owner', 'manager'].includes(userProfile.role)) {
         toast({ variant: 'destructive', title: 'Permission Denied', description: 'You do not have permission to delete projects.' });
@@ -679,8 +785,12 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
                         <TableCell>{project.nextReviewDate ? format(project.nextReviewDate.toDate(), 'dd/MM/yyyy') : 'N/A'}</TableCell>
                         <TableCell className="text-right space-x-2">
                             <Button variant="outline" size="sm" onClick={() => handleManageFiles(project)}>
-                            <FolderOpen className="mr-2 h-4 w-4" />
-                            Files
+                                <FolderOpen className="mr-2 h-4 w-4" />
+                                Files
+                            </Button>
+                             <Button variant="outline" size="sm" onClick={() => handleDownloadPhotosAsPdf(project)} disabled={isGeneratingPdf === project.id}>
+                                {isGeneratingPdf === project.id ? <Spinner/> : <ImageIcon className="mr-2 h-4 w-4" />}
+                                PDF
                             </Button>
                             {['admin', 'owner', 'manager'].includes(userProfile.role) && (
                                  <AlertDialog>
@@ -728,12 +838,16 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
                         <CardFooter className="grid grid-cols-2 gap-2">
                             <Button variant="outline" className="w-full" onClick={() => handleManageFiles(project)}>
                                 <FolderOpen className="mr-2 h-4 w-4" />
-                                Manage Files
+                                Files
+                            </Button>
+                            <Button variant="outline" className="w-full" onClick={() => handleDownloadPhotosAsPdf(project)} disabled={isGeneratingPdf === project.id}>
+                                {isGeneratingPdf === project.id ? <Spinner/> : <ImageIcon className="mr-2 h-4 w-4" />}
+                                PDF
                             </Button>
                              {['admin', 'owner', 'manager'].includes(userProfile.role) && (
                                 <AlertDialog>
                                     <AlertDialogTrigger asChild>
-                                        <Button variant="destructive" className="w-full">
+                                        <Button variant="destructive" className="w-full col-span-2">
                                             <Trash2 className="mr-2 h-4 w-4" /> Delete
                                         </Button>
                                     </AlertDialogTrigger>
@@ -772,3 +886,4 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
     
 
     
+
