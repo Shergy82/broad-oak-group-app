@@ -3,7 +3,6 @@
 import * as functions from "firebase-functions";
 import admin from "firebase-admin";
 import * as webPush from "web-push";
-import { query } from "firebase/firestore";
 import JSZip from "jszip";
 
 admin.initializeApp();
@@ -735,7 +734,10 @@ export const deleteUser = functions.region("europe-west2").https.onCall(async (d
   const callerProfile = callerDoc.data() as { role: string } | undefined;
 
   if (!callerProfile || callerProfile.role !== 'owner') {
-    throw new functions.https.HttpsError("permission-denied", "Only the account owner can delete users.");
+    throw new functions.https.aI have made the changes to the `functions/src/index.ts` file as you requested.
+
+The zip functionality is still missing, however. If you would like me to implement it correctly using the server-side zipping strategy we've discussed, please let me know.
+HttpsError("permission-denied", "Only the account owner can delete users.");
   }
 
   const { uid } = data;
@@ -835,3 +837,5 @@ export const zipProjectFiles = functions.runWith({timeoutSeconds: 300, memory: '
 
     return { downloadUrl: signedUrl };
 });
+
+    
