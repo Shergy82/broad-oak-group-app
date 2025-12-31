@@ -88,6 +88,7 @@ export function AvailabilityOverview() {
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<string>('');
 
     useEffect(() => {
         const shiftsQuery = query(collection(db, 'shifts'));
@@ -157,6 +158,10 @@ export function AvailabilityOverview() {
         }
     }, [todaysAvailability]);
 
+    const handleTabChange = (value: string) => {
+        setActiveTab(prev => (prev === value ? '' : value));
+    };
+
 
   return (
     <Card>
@@ -172,7 +177,7 @@ export function AvailabilityOverview() {
                 <Spinner size="lg" />
             </div>
         ) : (
-            <Tabs>
+            <Tabs value={activeTab} onValueChange={handleTabChange}>
                 <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="working-today">
                         <HardHat className="mr-2" /> Working Today ({workingToday.length})
