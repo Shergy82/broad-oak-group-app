@@ -1,14 +1,12 @@
 
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { db, storage, functions } from '@/lib/firebase';
-import { httpsCallable } from 'firebase/functions';
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
+import { db, storage, functions, httpsCallable } from '@/lib/firebase';
 import {
   collection,
   onSnapshot,
@@ -151,7 +149,7 @@ function CreateProjectDialog({ open, onOpenChange, userProfile }: CreateProjectD
 
 function FileUploader({ project, userProfile }: { project: Project; userProfile: UserProfile }) {
   const [isUploading, setIsUploading] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(isDragOver);
+  const [isDragOver, setIsDragOver] = useState(false);
   const { toast } = useToast();
 
   const handleFileUpload = (files: FileList | null) => {
@@ -271,42 +269,27 @@ function FileManagerDialog({ project, open, onOpenChange, userProfile }: { proje
     }, [project]);
 
     const handleZipAndDownload = async () => {
-      if (!project || files.length === 0) {
-        toast({ variant: 'destructive', title: 'Error', description: 'No files to zip for this project.' });
-        return;
-      }
-      setIsZipping(true);
-      toast({ title: 'Zipping files...', description: 'Please wait, this may take a moment for large projects.' });
+        if (!project || !functions || files.length === 0) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Required services not available or no files to zip.'});
+            return;
+        }
+        setIsZipping(true);
+        toast({ title: 'Zipping files...', description: 'Please wait, this may take a moment for large projects.' });
 
-      try {
-        const zip = new JSZip();
-
-        const filePromises = files.map(async (file) => {
-          try {
-            const response = await fetch(file.url);
-            if (!response.ok) {
-              throw new Error(`Failed to fetch ${file.name}`);
-            }
-            const blob = await response.blob();
-            zip.file(file.name, blob);
-          } catch (error) {
-            console.error(`Could not add ${file.name} to zip:`, error);
-            // Optionally notify user about specific file failures
-          }
-        });
-
-        await Promise.all(filePromises);
-
-        const zipBlob = await zip.generateAsync({ type: 'blob' });
-        saveAs(zipBlob, `${project.address.replace(/[^a-zA-Z0-9]/g, '_')}_files.zip`);
-
-        toast({ title: 'Success', description: 'Your download has started.' });
-      } catch (error: any) {
-        console.error("Error zipping files:", error);
-        toast({ variant: 'destructive', title: 'Zipping Failed', description: error.message || 'Could not create zip file.' });
-      } finally {
-        setIsZipping(false);
-      }
+        try {
+            const zipProjectFilesFn = httpsCallable<{ projectId: string }, { downloadUrl: string }>(functions, 'zipProjectFiles');
+            const result = await zipProjectFilesFn({ projectId: project.id });
+            const { downloadUrl } = result.data;
+            
+            toast({ title: 'Zip created!', description: 'Your download will begin shortly.' });
+            // Trigger the download by navigating to the signed URL
+            window.location.href = downloadUrl;
+        } catch (error: any) {
+            console.error("Error zipping files:", error);
+            toast({ variant: 'destructive', title: 'Zipping Failed', description: error.message || 'Could not create zip file. Check the function logs.' });
+        } finally {
+            setIsZipping(false);
+        }
     };
 
 
@@ -369,7 +352,7 @@ function FileManagerDialog({ project, open, onOpenChange, userProfile }: { proje
                                 disabled={isLoading || isZipping || files.length === 0}
                             >
                                 {isZipping ? <Spinner /> : <FileArchive className="mr-2" />}
-                                Zip &amp; Download All
+                                Zip & Download All
                             </Button>
                         </div>
                         {isLoading ? <Skeleton className="h-48 w-full" /> : files.length === 0 ? (
