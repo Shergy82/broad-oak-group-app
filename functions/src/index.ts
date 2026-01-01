@@ -6,6 +6,7 @@ import admin from "firebase-admin";
 import * as webPush from "web-push";
 import { logger } from "firebase-functions/v2";
 import { defineString } from "firebase-functions/params";
+import JSZip from "jszip";
 
 // Initialize admin SDK only once
 if (!admin.apps.length) {
@@ -437,5 +438,3 @@ export const deleteUser = onCall({ region: europeWest2 }, async (request) => {
         throw new HttpsError("internal", `An unexpected error occurred: ${error.message}`);
     }
 });
-
-    

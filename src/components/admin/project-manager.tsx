@@ -891,6 +891,3 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
     
 
     
-
-
-
