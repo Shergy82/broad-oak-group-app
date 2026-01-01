@@ -303,17 +303,13 @@ export default function UserManagementPage() {
                 )}
               </TableCell>
               <TableCell>
-                {isPrivilegedUser ? (
-                  <Input
+                 <Input
                     defaultValue={user.trade || ''}
                     onBlur={(e) => handleFieldChange(user.uid, 'trade', e.target.value)}
                     className="h-8 w-32"
                     placeholder="N/A"
                     disabled={!isPrivilegedUser}
                   />
-                ) : (
-                  user.trade || <Badge variant="outline">N/A</Badge>
-                )}
               </TableCell>
               <TableCell>{user.phoneNumber || 'N/A'}</TableCell>
               <TableCell>
@@ -445,7 +441,7 @@ export default function UserManagementPage() {
                           />
                       </div>
                       <div className="flex items-center gap-2 pt-2">
-                        <strong className="shrink-0">Trade:</strong>
+                        <strong className="shrink-0">Trade/Role:</strong>
                         <Input
                             defaultValue={user.trade || ''}
                             onBlur={(e) => handleFieldChange(user.uid, 'trade', e.target.value)}
@@ -543,7 +539,7 @@ export default function UserManagementPage() {
                     <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Operative ID</TableHead>
-                    <TableHead>Trade</TableHead>
+                    <TableHead>Trade/Role</TableHead>
                     <TableHead>Phone Number</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
@@ -602,5 +598,3 @@ export default function UserManagementPage() {
     </Card>
   );
 }
-
-    
