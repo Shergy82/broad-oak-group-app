@@ -10,7 +10,7 @@ export default function AdminPageRedirect() {
 
   useEffect(() => {
     if (!loading && userProfile) {
-      router.replace('/admin/control-panel');
+      router.replace('/admin/home');
     }
   }, [userProfile, loading, router]);
 

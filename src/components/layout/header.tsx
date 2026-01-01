@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useRouter } from 'next/navigation';
@@ -101,7 +102,7 @@ export function Header() {
                     <DropdownMenuLabel>Admin Area</DropdownMenuLabel>
                     <DropdownMenuItem onClick={() => router.push('/admin/control-panel')} className="cursor-pointer">
                       <Settings className="mr-2" />
-                      <span>Control Panel</span>
+                      <span>Home</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push('/schedule')} className="cursor-pointer">
                       <Users className="mr-2" />
