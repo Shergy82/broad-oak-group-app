@@ -11,7 +11,6 @@ import { getCorrectedLocalDate } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { Users, Sun, Moon, MapPin, HardHat } from 'lucide-react';
 import { Spinner } from '../shared/spinner';
-import { ScrollArea, ScrollBar } from '../ui/scroll-area';
 import { Button } from '../ui/button';
 import { cn } from '@/lib/utils';
 
@@ -72,8 +71,8 @@ const UserAvatarList = ({ users, category }: { users: AvailableUser[]; category:
         );
     }
     return (
-        <ScrollArea className="w-full whitespace-nowrap rounded-md border p-4">
-            <div className="flex w-max space-x-6 pb-4">
+        <div className="w-full rounded-md border p-4">
+            <div className="flex flex-wrap gap-x-6 gap-y-4">
                 {filteredUsers.map(({ user, shiftLocation, availability }) => (
                     <div key={user.uid} className="flex flex-col items-center text-center gap-2 w-24">
                         <Avatar className="h-16 w-16 text-lg">
@@ -93,8 +92,7 @@ const UserAvatarList = ({ users, category }: { users: AvailableUser[]; category:
                     </div>
                 ))}
             </div>
-            <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+        </div>
     )
 }
 
