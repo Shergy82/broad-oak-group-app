@@ -13,12 +13,20 @@ import { Users, Sun, Moon, MapPin, HardHat } from 'lucide-react';
 import { Spinner } from '../shared/spinner';
 import { Button } from '../ui/button';
 import { cn } from '@/lib/utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Badge } from '../ui/badge';
 
 
 interface AvailableUser {
   user: UserProfile;
   availability: 'full' | 'am' | 'pm' | 'busy';
-  shiftLocation?: string;
+  shifts: Shift[];
 }
 
 const getInitials = (name?: string) => {
@@ -51,7 +59,7 @@ const extractLocation = (address: string | undefined): string => {
 };
 
 
-const UserAvatarList = ({ users, category }: { users: AvailableUser[]; category: 'working' | 'full' | 'semi' }) => {
+const UserAvatarList = ({ users, category, onUserClick }: { users: AvailableUser[]; category: 'working' | 'full' | 'semi', onUserClick: (user: AvailableUser) => void; }) => {
     
     let filteredUsers = users;
     if (category === 'working') {
@@ -73,24 +81,36 @@ const UserAvatarList = ({ users, category }: { users: AvailableUser[]; category:
     return (
         <div className="w-full rounded-md border p-4">
             <div className="flex flex-wrap gap-x-6 gap-y-4">
-                {filteredUsers.map(({ user, shiftLocation, availability }) => (
-                    <div key={user.uid} className="flex flex-col items-center text-center gap-2 w-24">
-                        <Avatar className="h-16 w-16 text-lg">
-                            <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col">
-                            <p className="text-sm font-medium truncate w-full">{user.name}</p>
-                            {shiftLocation && (
-                                <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                                    <MapPin className="h-3 w-3 shrink-0" />
-                                    <span className="truncate">{extractLocation(shiftLocation)}</span>
-                                </div>
+                {filteredUsers.map((availableUser) => {
+                    const { user, shifts, availability } = availableUser;
+                    const shiftLocation = shifts[0]?.address;
+                    const isClickable = availability !== 'full';
+                    return (
+                        <div 
+                            key={user.uid} 
+                            className={cn(
+                                "flex flex-col items-center text-center gap-2 w-24",
+                                isClickable && "cursor-pointer rounded-md p-1 hover:bg-muted"
                             )}
-                            {availability === 'am' && <p className="text-xs font-semibold text-sky-600">AM Free</p>}
-                            {availability === 'pm' && <p className="text-xs font-semibold text-orange-600">PM Free</p>}
+                            onClick={() => isClickable && onUserClick(availableUser)}
+                        >
+                            <Avatar className="h-16 w-16 text-lg">
+                                <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex flex-col">
+                                <p className="text-sm font-medium truncate w-full">{user.name}</p>
+                                {shiftLocation && (
+                                    <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                                        <MapPin className="h-3 w-3 shrink-0" />
+                                        <span className="truncate">{extractLocation(shiftLocation)}</span>
+                                    </div>
+                                )}
+                                {availability === 'am' && <p className="text-xs font-semibold text-sky-600">AM Free</p>}
+                                {availability === 'pm' && <p className="text-xs font-semibold text-orange-600">PM Free</p>}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    )
+                })}
             </div>
         </div>
     )
@@ -103,6 +123,7 @@ export function AvailabilityOverview() {
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<ActiveTab>(null);
+    const [selectedUserShifts, setSelectedUserShifts] = useState<AvailableUser | null>(null);
 
     useEffect(() => {
         const shiftsQuery = query(collection(db, 'shifts'));
@@ -118,7 +139,7 @@ export function AvailabilityOverview() {
         }
 
         const unsubShifts = onSnapshot(shiftsQuery, (snapshot) => {
-            setShifts(snapshot.docs.map(doc => doc.data() as Shift));
+            setShifts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift)));
             shiftsLoaded = true;
             checkAllLoaded();
         });
@@ -144,21 +165,22 @@ export function AvailabilityOverview() {
             const userShiftsToday = todaysShifts.filter(s => s.userId === user.uid);
             
             if (userShiftsToday.length === 0) {
-                return { user, availability: 'full' };
+                return { user, availability: 'full', shifts: [] };
             }
             if (userShiftsToday.some(s => s.type === 'all-day') || userShiftsToday.length >= 2) {
-                 return { user, availability: 'busy', shiftLocation: userShiftsToday[0].address };
+                 return { user, availability: 'busy', shifts: userShiftsToday };
             }
             if (userShiftsToday.length === 1) {
                 const shift = userShiftsToday[0];
                 if (shift.type === 'am') {
-                    return { user, availability: 'pm', shiftLocation: shift.address };
+                    return { user, availability: 'pm', shifts: userShiftsToday };
                 }
                 if (shift.type === 'pm') {
-                    return { user, availability: 'am', shiftLocation: shift.address };
+                    return { user, availability: 'am', shifts: userShiftsToday };
                 }
             }
-            return null;
+            // This should not happen with the logic above, but as a fallback:
+            return { user, availability: 'busy', shifts: userShiftsToday };
         }).filter((u): u is AvailableUser => u !== null);
 
     }, [loading, shifts, users]);
@@ -178,16 +200,20 @@ export function AvailabilityOverview() {
             setActiveTab(tab);
         }
     };
+    
+    const handleUserClick = (user: AvailableUser) => {
+        setSelectedUserShifts(user);
+    };
 
     const renderContent = () => {
         if (!activeTab) return null;
         switch (activeTab) {
             case 'working-today':
-                return <UserAvatarList users={todaysAvailability} category="working" />;
+                return <UserAvatarList users={todaysAvailability} category="working" onUserClick={handleUserClick} />;
             case 'fully-available':
-                return <UserAvatarList users={todaysAvailability} category="full" />;
+                return <UserAvatarList users={todaysAvailability} category="full" onUserClick={handleUserClick} />;
             case 'semi-available':
-                return <UserAvatarList users={todaysAvailability} category="semi" />;
+                return <UserAvatarList users={todaysAvailability} category="semi" onUserClick={handleUserClick} />;
             default:
                 return null;
         }
@@ -195,6 +221,7 @@ export function AvailabilityOverview() {
 
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle>Today's Availability</CardTitle>
@@ -258,5 +285,38 @@ export function AvailabilityOverview() {
         )}
       </CardContent>
     </Card>
+    {selectedUserShifts && (
+      <Dialog open={!!selectedUserShifts} onOpenChange={() => setSelectedUserShifts(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Today's Shifts for {selectedUserShifts.user.name}</DialogTitle>
+            <DialogDescription>
+              Below are the shifts scheduled for {selectedUserShifts.user.name} today.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {selectedUserShifts.shifts.map(shift => (
+              <Card key={shift.id}>
+                <CardHeader>
+                    <CardTitle className="text-base">{shift.task}</CardTitle>
+                    <CardDescription>{shift.address}</CardDescription>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 gap-2 text-sm">
+                   <div>
+                       <p className="font-medium">Type</p>
+                       <Badge variant="outline" className="capitalize">{shift.type === 'all-day' ? 'All Day' : shift.type}</Badge>
+                   </div>
+                    <div>
+                       <p className="font-medium">Status</p>
+                       <Badge variant="secondary" className="capitalize">{shift.status.replace('-', ' ')}</Badge>
+                   </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    )}
+    </>
   );
 }
