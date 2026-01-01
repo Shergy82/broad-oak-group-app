@@ -48,7 +48,7 @@ export function PerformanceDashboard() {
     const unsubUsers = onSnapshot(usersQuery, 
       (snapshot) => {
         const fetchedUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
-        setUsers(fetchedUsers.filter(u => u.role === 'user' || u.role === 'TLO' || u.role === 'manager' || u.role === 'admin' || u.role === 'owner').sort((a,b) => a.name.localeCompare(b.name)));
+        setUsers(fetchedUsers.sort((a,b) => a.name.localeCompare(b.name)));
         setLoading(false);
       },
       (err) => {
@@ -287,4 +287,3 @@ export function PerformanceDashboard() {
     
 
     
-
