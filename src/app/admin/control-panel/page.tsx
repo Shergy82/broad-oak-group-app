@@ -1,3 +1,4 @@
+
 'use client';
 
 import { AvailabilityOverview } from '@/components/admin/availability-overview';
@@ -56,12 +57,12 @@ export default function ControlPanelPage() {
 
   return (
     <div className="space-y-8">
+      <ShiftImporter userProfile={userProfile} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <AvailabilityOverview />
         <YesterdayReportGenerator />
       </div>
       <RoleKpiDashboard allShifts={shifts} allUsers={users} />
-      <ShiftImporter userProfile={userProfile} />
     </div>
   );
 }
