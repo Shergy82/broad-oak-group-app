@@ -77,10 +77,15 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
   const allTasksCompleted = tradeTasks.length === 0 || completedTasks.size === tradeTasks.length;
 
   useEffect(() => {
-    async function fetchTradeTasks() {
-      if (userProfile?.trade && db) {
+    async function fetchTasks() {
+      if (!userProfile || !db) return;
+  
+      // Determine the category to query for. Prioritize 'trade', then fall back to 'role'.
+      const categoryName = userProfile.trade || userProfile.role;
+  
+      if (categoryName) {
         try {
-          const q = query(collection(db, 'trade_tasks'), where('name', '==', userProfile.trade));
+          const q = query(collection(db, 'trade_tasks'), where('name', '==', categoryName));
           const querySnapshot = await getDocs(q);
           if (!querySnapshot.empty) {
             const tradeData = querySnapshot.docs[0].data() as Trade;
@@ -89,12 +94,15 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
             setTradeTasks([]);
           }
         } catch (e) {
-          console.error("Failed to load trade tasks from Firestore", e);
+          console.error(`Failed to load tasks for category "${categoryName}" from Firestore`, e);
+          setTradeTasks([]); // Reset on error
         }
+      } else {
+        setTradeTasks([]); // No trade or role, so no tasks
       }
     }
-    fetchTradeTasks();
-  }, [userProfile?.trade]);
+    fetchTasks();
+  }, [userProfile]);
 
   useEffect(() => {
     if (tradeTasks.length > 0) {
