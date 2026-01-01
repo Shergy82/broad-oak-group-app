@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 type Role = 'user' | 'admin' | 'owner' | 'manager' | 'TLO';
 const ALL_ROLES: Role[] = ['user', 'TLO', 'manager', 'admin', 'owner'];
@@ -86,6 +87,7 @@ const extractLocation = (address: string | undefined): string => {
 const LS_ROLES_KEY = 'availability_selectedRoles';
 const LS_TRADES_KEY = 'availability_selectedTrades';
 const LS_VIEW_KEY = 'availability_viewMode';
+const LS_FILTER_BY_KEY = 'availability_filterBy';
 
 export default function AvailabilityPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -97,6 +99,7 @@ export default function AvailabilityPage() {
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [filterBy, setFilterBy] = useState<'role' | 'trade'>('role');
   const [selectedRoles, setSelectedRoles] = useState<Set<Role>>(new Set(ALL_ROLES));
   const [availableTrades, setAvailableTrades] = useState<string[]>([]);
   const [selectedTrades, setSelectedTrades] = useState<Set<string>>(new Set());
@@ -114,6 +117,11 @@ export default function AvailabilityPage() {
 
     // Load saved preferences from localStorage on initial mount
     try {
+        const savedFilterBy = localStorage.getItem(LS_FILTER_BY_KEY);
+        if (savedFilterBy) {
+            setFilterBy(savedFilterBy as 'role' | 'trade');
+        }
+
         const savedRoles = localStorage.getItem(LS_ROLES_KEY);
         if (savedRoles) {
             setSelectedRoles(new Set(JSON.parse(savedRoles)));
@@ -182,6 +190,15 @@ export default function AvailabilityPage() {
     }
   }, []);
 
+  const handleFilterByChange = (value: 'role' | 'trade') => {
+      setFilterBy(value);
+      try {
+        localStorage.setItem(LS_FILTER_BY_KEY, value);
+      } catch (e) {
+          console.error("Failed to save filter preference", e);
+      }
+  }
+
   const handleRoleToggle = (role: Role) => {
       setSelectedRoles(prev => {
           const newRoles = new Set(prev);
@@ -236,11 +253,15 @@ export default function AvailabilityPage() {
   
   const usersMatchingFilters = useMemo(() => {
     return allUsers.filter(u => {
-        const roleMatch = selectedRoles.size === 0 || selectedRoles.has(u.role as Role);
-        const tradeMatch = selectedTrades.size === 0 || (u.trade && selectedTrades.has(u.trade));
-        return roleMatch && tradeMatch;
+        if (filterBy === 'role') {
+            return selectedRoles.size === 0 || selectedRoles.has(u.role as Role);
+        }
+        if (filterBy === 'trade') {
+            return selectedTrades.size === 0 || (u.trade && selectedTrades.has(u.trade));
+        }
+        return true; // Should not happen
     });
-  }, [allUsers, selectedRoles, selectedTrades]);
+  }, [allUsers, filterBy, selectedRoles, selectedTrades]);
 
 
   // Effect to synchronize the selectedUserIds based on role and trade filters
@@ -657,39 +678,56 @@ export default function AvailabilityPage() {
                         <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-start">
                            <div className="space-y-4">
                                 <div className="space-y-2">
-                                    <h4 className="font-medium text-sm">Roles</h4>
-                                    <div className="flex flex-wrap gap-x-4 gap-y-2">
-                                    {ALL_ROLES.map(role => (
-                                        <div key={role} className="flex items-center space-x-2">
-                                        <Checkbox
-                                            id={`role-${role}`}
-                                            checked={selectedRoles.has(role)}
-                                            onCheckedChange={() => handleRoleToggle(role)}
-                                        />
-                                        <Label htmlFor={`role-${role}`} className="capitalize">{role}</Label>
+                                    <h4 className="font-medium text-sm">Filter By</h4>
+                                    <RadioGroup value={filterBy} onValueChange={handleFilterByChange} className="flex space-x-4">
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value="role" id="filter-role" />
+                                            <Label htmlFor="filter-role">Role</Label>
                                         </div>
-                                    ))}
-                                    </div>
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value="trade" id="filter-trade" />
+                                            <Label htmlFor="filter-trade">Trade</Label>
+                                        </div>
+                                    </RadioGroup>
                                 </div>
-                                <div className="space-y-2">
-                                     <h4 className="font-medium text-sm">Trades</h4>
-                                     {availableTrades.length > 0 ? (
+                                {filterBy === 'role' && (
+                                    <div className="space-y-2">
+                                        <h4 className="font-medium text-sm">Roles</h4>
                                         <div className="flex flex-wrap gap-x-4 gap-y-2">
-                                            {availableTrades.map(trade => (
-                                                <div key={trade} className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                        id={`trade-${trade}`}
-                                                        checked={selectedTrades.has(trade)}
-                                                        onCheckedChange={() => handleTradeToggle(trade)}
-                                                    />
-                                                    <Label htmlFor={`trade-${trade}`} className="capitalize font-normal">{trade}</Label>
-                                                </div>
-                                            ))}
+                                        {ALL_ROLES.map(role => (
+                                            <div key={role} className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id={`role-${role}`}
+                                                checked={selectedRoles.has(role)}
+                                                onCheckedChange={() => handleRoleToggle(role)}
+                                            />
+                                            <Label htmlFor={`role-${role}`} className="capitalize">{role}</Label>
+                                            </div>
+                                        ))}
                                         </div>
-                                     ) : (
-                                        <p className="text-xs text-muted-foreground">No trades assigned to users.</p>
-                                     )}
-                                </div>
+                                    </div>
+                                )}
+                                {filterBy === 'trade' && (
+                                    <div className="space-y-2">
+                                        <h4 className="font-medium text-sm">Trades</h4>
+                                        {availableTrades.length > 0 ? (
+                                            <div className="flex flex-wrap gap-x-4 gap-y-2">
+                                                {availableTrades.map(trade => (
+                                                    <div key={trade} className="flex items-center space-x-2">
+                                                        <Checkbox
+                                                            id={`trade-${trade}`}
+                                                            checked={selectedTrades.has(trade)}
+                                                            onCheckedChange={() => handleTradeToggle(trade)}
+                                                        />
+                                                        <Label htmlFor={`trade-${trade}`} className="capitalize font-normal">{trade}</Label>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-muted-foreground">No trades assigned to users.</p>
+                                        )}
+                                    </div>
+                                )}
                            </div>
                             <div className="space-y-2">
                                 <h4 className="font-medium text-sm">Users</h4>
