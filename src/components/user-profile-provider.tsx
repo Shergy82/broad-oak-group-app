@@ -1,3 +1,4 @@
+
 'use client';
 
 import { createContext, useState, useEffect } from 'react';
@@ -22,14 +23,17 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     const [isProfileLoading, setProfileLoading] = useState(true);
 
     useEffect(() => {
-        // Don't do anything until we have a user
+        if (isAuthLoading) {
+            setProfileLoading(true);
+            return;
+        }
+        
         if (!user) {
             setUserProfile(null);
             setProfileLoading(false);
             return;
         }
         
-        // If firebase is not configured, stop loading.
         if (!db) {
             setProfileLoading(false);
             return;
@@ -52,10 +56,9 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
             }
         );
 
-        // Cleanup subscription on unmount
         return () => unsubscribe();
 
-    }, [user]);
+    }, [user, isAuthLoading]);
 
     const isLoading = isAuthLoading || isProfileLoading;
 
