@@ -102,7 +102,7 @@ export function ShiftCard({ shift, userProfile, onDismiss }: ShiftCardProps) {
       }
     }
     fetchTasks();
-  }, [userProfile]);
+  }, [userProfile, shift.userId]);
 
   useEffect(() => {
     if (tradeTasks.length > 0) {
