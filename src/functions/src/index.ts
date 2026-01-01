@@ -439,7 +439,6 @@ export const deleteUser = onCall({ region: europeWest2 }, async (request) => {
     }
 });
 
-
 export const zipProjectFiles = onCall(
   { region: europeWest2, timeoutSeconds: 300, memory: "1GiB" },
   async (request) => {
@@ -498,7 +497,7 @@ export const zipProjectFiles = onCall(
 
     const [url] = await zipFile.getSignedUrl({
       action: "read",
-      expires: Date.now() + 15 * 60 * 1000,
+      expires: Date.now() + 15 * 60 * 1000, // 15 minutes
       version: "v4",
     });
 

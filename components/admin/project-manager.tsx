@@ -17,6 +17,7 @@ import {
   serverTimestamp,
   Timestamp,
   getDocs,
+  where,
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { format } from 'date-fns';
@@ -43,7 +44,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/shared/spinner';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, UploadCloud, File as FileIcon, Trash2, FolderOpen, Download, Trash, FileArchive } from 'lucide-react';
+import { PlusCircle, UploadCloud, File as FileIcon, Trash2, FolderOpen, Download, Trash, FileArchive, Image as ImageIcon } from 'lucide-react';
 import type { Project, ProjectFile, UserProfile } from '@/types';
 import { cn } from '@/lib/utils';
 import {
@@ -59,6 +60,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import jsPDF from 'jspdf';
 
 
 const projectSchema = z.object({
@@ -676,5 +678,6 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
     </div>
   );
 }
+    
 
     
