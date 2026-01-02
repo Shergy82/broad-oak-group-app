@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/shared/spinner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Upload, FileWarning, TestTube2, Sheet, ChevronDown, X, UploadCloud, FileIcon } from 'lucide-react';
-import type { Shift, UserProfile, Project } from '@/types';
+import type { Shift, UserProfile, Project, ShiftStatus } from '@/types';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
