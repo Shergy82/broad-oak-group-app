@@ -191,7 +191,7 @@ function AddUnavailabilityDialog({ users, open, onOpenChange }: { users: UserPro
                             </FormItem>
                         )} />
 
-                        <FormField control={form.control} name="range" render={({ field }) => (
+                         <FormField control={form.control} name="range" render={({ field }) => (
                              <FormItem className="flex flex-col">
                                 <FormLabel>
                                     Date Range: {field.value?.from ? (field.value.to ? `${format(field.value.from, "PPP")} - ${format(field.value.to, "PPP")}` : format(field.value.from, "PPP")) : <span>Pick a date range</span>}
