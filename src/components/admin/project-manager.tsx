@@ -529,13 +529,36 @@ export function ProjectManager({ userProfile }: ProjectManagerProps) {
   const { toast } = useToast();
 
   useEffect(() => {
-    const q = query(collection(db, 'projects'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'projects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setProjects(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)));
-      setLoading(false);
+        const fetchedProjects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+        
+        const naturalSort = (a: Project, b: Project) => {
+            const aParts = a.address.match(/(\d+)|(\D+)/g) || [];
+            const bParts = b.address.match(/(\d+)|(\D+)/g) || [];
+            
+            for (let i = 0; i < Math.min(aParts.length, bParts.length); i++) {
+                const partA = aParts[i];
+                const partB = bParts[i];
+
+                if (!isNaN(parseInt(partA)) && !isNaN(parseInt(partB))) {
+                    const numA = parseInt(partA);
+                    const numB = parseInt(partB);
+                    if (numA < numB) return -1;
+                    if (numA > numB) return 1;
+                } else {
+                    if (partA < partB) return -1;
+                    if (partA > partB) return 1;
+                }
+            }
+            return a.address.length - b.address.length;
+        };
+
+        setProjects(fetchedProjects.sort(naturalSort));
+        setLoading(false);
     }, (error) => {
-      console.error("Error fetching projects:", error);
-      setLoading(false);
+        console.error("Error fetching projects:", error);
+        setLoading(false);
     });
     return () => unsubscribe();
   }, []);
