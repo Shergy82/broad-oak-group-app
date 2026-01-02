@@ -101,7 +101,7 @@ export function Header() {
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel>Admin Area</DropdownMenuLabel>
                     <DropdownMenuItem onClick={() => router.push('/admin/control-panel')} className="cursor-pointer">
-                      <Settings className="mr-2" />
+                      <Shield className="mr-2" />
                       <span>Admin Dashboard</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push('/schedule')} className="cursor-pointer">
