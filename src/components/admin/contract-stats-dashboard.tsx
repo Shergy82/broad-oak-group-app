@@ -8,13 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { BarChart, Briefcase, User, HardHat, CheckCircle } from 'lucide-react';
+import { BarChart, Briefcase, User, HardHat, CheckCircle, Building } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 interface ContractStats {
   name: string;
-  managers: Set<string>;
   operatives: Set<string>;
+  jobs: Set<string>;
   totalShifts: number;
   completedShifts: number;
 }
@@ -56,18 +56,16 @@ export function ContractStatsDashboard() {
       if (!statsByContract[contractName]) {
         statsByContract[contractName] = {
           name: contractName,
-          managers: new Set(),
           operatives: new Set(),
+          jobs: new Set(),
           totalShifts: 0,
           completedShifts: 0,
         };
       }
 
       const contract = statsByContract[contractName];
-      if (shift.manager) {
-        contract.managers.add(shift.manager);
-      }
       contract.operatives.add(shift.userId);
+      contract.jobs.add(shift.address);
       contract.totalShifts += 1;
       if (shift.status === 'completed') {
         contract.completedShifts += 1;
@@ -128,7 +126,8 @@ export function ContractStatsDashboard() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Contract / Manager</TableHead>
+                    <TableHead>Contract</TableHead>
+                    <TableHead className="text-center">Jobs (Addresses)</TableHead>
                     <TableHead className="text-center">Operatives</TableHead>
                     <TableHead className="text-center">Total Shifts</TableHead>
                     <TableHead className="text-right">Completed Shifts</TableHead>
@@ -138,6 +137,7 @@ export function ContractStatsDashboard() {
                   {filteredContracts.map((data) => (
                       <TableRow key={data.name}>
                         <TableCell className="font-medium">{data.name}</TableCell>
+                        <TableCell className="text-center">{data.jobs.size}</TableCell>
                         <TableCell className="text-center">{data.operatives.size}</TableCell>
                         <TableCell className="text-center">{data.totalShifts}</TableCell>
                         <TableCell className="text-right">{data.completedShifts}</TableCell>
@@ -156,6 +156,13 @@ export function ContractStatsDashboard() {
                   </CardHeader>
                   <CardContent className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                      <div className="flex items-center gap-2">
+                        <Building className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                            <p className="font-medium">{data.jobs.size}</p>
+                            <p className="text-muted-foreground text-xs">Jobs</p>
+                        </div>
+                    </div>
+                     <div className="flex items-center gap-2">
                         <HardHat className="h-4 w-4 text-muted-foreground" />
                         <div>
                             <p className="font-medium">{data.operatives.size}</p>
@@ -169,11 +176,11 @@ export function ContractStatsDashboard() {
                             <p className="text-muted-foreground text-xs">Total Shifts</p>
                         </div>
                     </div>
-                     <div className="flex items-center gap-2 col-span-2">
+                     <div className="flex items-center gap-2">
                         <CheckCircle className="h-4 w-4 text-muted-foreground" />
                         <div>
                             <p className="font-medium">{data.completedShifts}</p>
-                            <p className="text-muted-foreground text-xs">Completed Shifts</p>
+                            <p className="text-muted-foreground text-xs">Completed</p>
                         </div>
                     </div>
                   </CardContent>
