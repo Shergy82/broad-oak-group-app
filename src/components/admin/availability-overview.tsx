@@ -169,19 +169,19 @@ export function AvailabilityOverview() {
             if (userShiftsToday.length === 0) {
                 return { user, availability: 'full', shifts: [] };
             }
-            if (userShiftsToday.some(s => s.type === 'all-day') || userShiftsToday.length >= 2) {
+
+            const hasAmShift = userShiftsToday.some(s => s.type === 'am' || s.type === 'all-day');
+            const hasPmShift = userShiftsToday.some(s => s.type === 'pm' || s.type === 'all-day');
+
+            if (hasAmShift && hasPmShift) {
                  return { user, availability: 'busy', shifts: userShiftsToday };
+            } else if (hasAmShift) { // Only AM or all-day shifts
+                 return { user, availability: 'pm', shifts: userShiftsToday };
+            } else if (hasPmShift) { // Only PM or all-day shifts
+                 return { user, availability: 'am', shifts: userShiftsToday };
             }
-            if (userShiftsToday.length === 1) {
-                const shift = userShiftsToday[0];
-                if (shift.type === 'am') {
-                    return { user, availability: 'pm', shifts: userShiftsToday };
-                }
-                if (shift.type === 'pm') {
-                    return { user, availability: 'am', shifts: userShiftsToday };
-                }
-            }
-            // Fallback for any other case, including a single 'all-day' shift missed by the condition above.
+
+            // Fallback for any other case, though it's unlikely
             return { user, availability: 'busy', shifts: userShiftsToday };
         }).filter((u): u is AvailableUser => u !== null);
 
