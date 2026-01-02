@@ -217,10 +217,76 @@ function AddUnavailabilityForm({ users, onSuccessfulAdd }: { users: UserProfile[
                     </FormItem>
                 )} />
                 <DialogFooter>
-                    <Button type="submit" disabled={isLoading} className="w-full">{isLoading ? <Spinner /> : 'Add Record'}</Button>
+                     <Button type="submit" disabled={isLoading} className="w-full">{isLoading ? <Spinner /> : 'Add Record'}</Button>
                 </DialogFooter>
             </form>
         </Form>
+    );
+}
+
+function UnavailabilityManagerDialog({
+    users,
+    unavailability,
+    handleDeleteUnavailability,
+    open,
+    onOpenChange,
+}: {
+    users: UserProfile[];
+    unavailability: Unavailability[];
+    handleDeleteUnavailability: (id: string) => void;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+}) {
+    const [activeTab, setActiveTab] = useState('add');
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-md">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="add">Add Unavailability</TabsTrigger>
+                        <TabsTrigger value="view">Upcoming</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="add">
+                        <DialogHeader>
+                            <DialogTitle>Add Unavailability</DialogTitle>
+                            <DialogDescription>Record a period of unavailability for an operative.</DialogDescription>
+                        </DialogHeader>
+                        <AddUnavailabilityForm users={users} onSuccessfulAdd={() => setActiveTab('view')} />
+                    </TabsContent>
+                    <TabsContent value="view">
+                        <DialogHeader>
+                            <DialogTitle className="text-lg flex items-center gap-2"><CalendarOff className="h-5 w-5 text-muted-foreground"/>Upcoming Unavailability</DialogTitle>
+                            <DialogDescription>List of all upcoming recorded periods of unavailability.</DialogDescription>
+                        </DialogHeader>
+                         <div className="py-4">
+                            {unavailability.length > 0 ? (
+                                <ScrollArea className="h-96 border rounded-md">
+                                    <Table>
+                                    <TableHeader><TableRow><TableHead>Operative</TableHead><TableHead>From</TableHead><TableHead>To</TableHead><TableHead>Reason</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                                    <TableBody>{unavailability.sort((a,b) => a.startDate.toMillis() - b.startDate.toMillis()).map(u => (
+                                        <TableRow key={u.id}>
+                                            <TableCell>{u.userName}</TableCell>
+                                            <TableCell>{format(getCorrectedLocalDate(u.startDate), 'PPP')}</TableCell>
+                                            <TableCell>{format(getCorrectedLocalDate(u.endDate), 'PPP')}</TableCell>
+                                            <TableCell><Badge variant="outline">{u.reason}</Badge></TableCell>
+                                            <TableCell className="text-right">
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild><Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-destructive/70" /></Button></AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader><AlertDialogTitle>Delete Record?</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete this unavailability record for {u.userName}?</AlertDialogDescription></AlertDialogHeader>
+                                                        <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteUnavailability(u.id)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}</TableBody>
+                                </Table></ScrollArea>
+                            ) : (<p className="text-sm text-muted-foreground text-center p-4 border rounded-md">No upcoming unavailability records found.</p>)}
+                         </div>
+                    </TabsContent>
+                </Tabs>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -244,7 +310,7 @@ export default function AvailabilityPage() {
   
   const [isDayDetailOpen, setIsDayDetailOpen] = useState(false);
   const [selectedDayData, setSelectedDayData] = useState<DayData | null>(null);
-  const [unavailabilityTab, setUnavailabilityTab] = useState('add');
+  const [isUnavailabilityManagerOpen, setIsUnavailabilityManagerOpen] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -722,12 +788,16 @@ export default function AvailabilityPage() {
 
         {viewMode === 'detailed' && (
             <>
-                <div className="col-span-1 md:col-span-2 space-y-6">
+                <div className="col-span-3 space-y-6">
                     <Card className="bg-muted/30">
                         <CardHeader className="py-4">
                             <div className="flex justify-between items-center">
                                 <CardTitle className="text-base flex items-center gap-2"><Filter className="h-4 w-4" /> Filters</CardTitle>
                                 <div className="flex gap-2">
+                                     <Button variant="outline" size="sm" onClick={() => setIsUnavailabilityManagerOpen(true)}>
+                                        <CalendarOff className="mr-2 h-4 w-4" />
+                                        Manage Unavailability
+                                    </Button>
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                             <Button variant="outline" size="sm" disabled={!dateRange?.from}><Download className="h-4 w-4 mr-2" /> Download Report</Button>
@@ -822,63 +892,17 @@ export default function AvailabilityPage() {
                         </div>
                     )}
                 </div>
-                <div className="col-span-1">
-                    <Tabs value={unavailabilityTab} onValueChange={setUnavailabilityTab} className="w-full">
-                        <TabsList className="grid w-full grid-cols-2">
-                            <TabsTrigger value="add">Add Unavailability</TabsTrigger>
-                            <TabsTrigger value="view">Upcoming</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="add">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Add Unavailability</CardTitle>
-                                    <CardDescription>Record a period of unavailability for an operative.</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <AddUnavailabilityForm users={allUsers} onSuccessfulAdd={() => setUnavailabilityTab('view')} />
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
-                        <TabsContent value="view">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-lg flex items-center gap-2"><CalendarOff className="h-5 w-5 text-muted-foreground"/>Upcoming Unavailability</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    {unavailability.length > 0 ? (
-                                        <div className="border rounded-md"><Table>
-                                            <TableHeader><TableRow><TableHead>Operative</TableHead><TableHead>From</TableHead><TableHead>To</TableHead><TableHead>Reason</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                                            <TableBody>{unavailability.sort((a,b) => a.startDate.toMillis() - b.startDate.toMillis()).map(u => (
-                                                <TableRow key={u.id}>
-                                                    <TableCell>{u.userName}</TableCell>
-                                                    <TableCell>{format(getCorrectedLocalDate(u.startDate), 'PPP')}</TableCell>
-                                                    <TableCell>{format(getCorrectedLocalDate(u.endDate), 'PPP')}</TableCell>
-                                                    <TableCell><Badge variant="outline">{u.reason}</Badge></TableCell>
-                                                    <TableCell className="text-right">
-                                                        <AlertDialog>
-                                                            <AlertDialogTrigger asChild><Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-destructive/70" /></Button></AlertDialogTrigger>
-                                                            <AlertDialogContent>
-                                                                <AlertDialogHeader><AlertDialogTitle>Delete Record?</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete this unavailability record for {u.userName}?</AlertDialogDescription></AlertDialogHeader>
-                                                                <AlertDialogFooter>
-                                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                    <AlertDialogAction onClick={() => handleDeleteUnavailability(u.id)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
-                                                                </AlertDialogFooter>
-                                                            </AlertDialogContent>
-                                                        </AlertDialog>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}</TableBody>
-                                        </Table></div>
-                                    ) : (<p className="text-sm text-muted-foreground text-center p-4 border rounded-md">No upcoming unavailability records found.</p>)}
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
-                    </Tabs>
-                </div>
             </>
         )}
       </CardContent>
       {renderDayDetailDialog()}
+       <UnavailabilityManagerDialog 
+        users={allUsers}
+        unavailability={unavailability}
+        handleDeleteUnavailability={handleDeleteUnavailability}
+        open={isUnavailabilityManagerOpen}
+        onOpenChange={setIsUnavailabilityManagerOpen}
+       />
     </Card>
   );
 }
