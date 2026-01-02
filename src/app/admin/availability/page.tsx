@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -126,14 +125,21 @@ function AddUnavailabilityDialog({ users, open, onOpenChange }: { users: UserPro
     
     const form = useForm<z.infer<typeof unavailabilitySchema>>({
         resolver: zodResolver(unavailabilitySchema),
-        defaultValues: { userId: '', reason: '' },
+        defaultValues: {
+            userId: '',
+            range: {
+                from: startOfDay(new Date()),
+                to: undefined,
+            },
+            reason: ''
+        },
     });
 
     useEffect(() => {
         if(open) {
             form.reset({
                 userId: '',
-                range: { from: new Date(), to: undefined },
+                range: { from: startOfDay(new Date()), to: undefined },
                 reason: ''
             });
         }
@@ -192,15 +198,21 @@ function AddUnavailabilityDialog({ users, open, onOpenChange }: { users: UserPro
                         )} />
 
                          <FormField control={form.control} name="range" render={({ field }) => (
-                             <FormItem className="flex flex-col">
+                            <FormItem className="flex flex-col">
                                 <FormLabel>
                                     Date Range: {field.value?.from ? (field.value.to ? `${format(field.value.from, "PPP")} - ${format(field.value.to, "PPP")}` : format(field.value.from, "PPP")) : <span>Pick a date range</span>}
                                 </FormLabel>
-                                 <div className="p-2 border rounded-md">
+                                <div className="p-2 border rounded-md">
                                     <CalendarPicker
                                         mode="range"
                                         selected={field.value}
-                                        onSelect={field.onChange}
+                                        onSelect={(range) => {
+                                            if (range?.from && range.to && isBefore(range.to, range.from)) {
+                                                field.onChange({ from: range.to, to: range.from });
+                                            } else {
+                                                field.onChange(range);
+                                            }
+                                        }}
                                         initialFocus
                                     />
                                 </div>
@@ -878,3 +890,5 @@ export default function AvailabilityPage() {
     </Card>
   );
 }
+
+    
