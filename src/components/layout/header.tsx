@@ -65,7 +65,7 @@ export function Header() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => router.push('/dashboard')} className="cursor-pointer">
                   <Calendar className="mr-2" />
-                  <span>Dashboard</span>
+                  <span>User Dashboard</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push('/site-schedule')} className="cursor-pointer">
                   <Building2 className="mr-2" />
@@ -102,7 +102,7 @@ export function Header() {
                     <DropdownMenuLabel>Admin Area</DropdownMenuLabel>
                     <DropdownMenuItem onClick={() => router.push('/admin/control-panel')} className="cursor-pointer">
                       <Settings className="mr-2" />
-                      <span>Home</span>
+                      <span>Admin Dashboard</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push('/schedule')} className="cursor-pointer">
                       <Users className="mr-2" />
