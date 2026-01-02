@@ -196,7 +196,7 @@ function AddUnavailabilityDialog({ users, open, onOpenChange }: { users: UserPro
                                 <FormLabel>
                                     Date Range: {field.value?.from ? (field.value.to ? `${format(field.value.from, "PPP")} - ${format(field.value.to, "PPP")}` : format(field.value.from, "PPP")) : <span>Pick a date range</span>}
                                 </FormLabel>
-                                <div className="p-2 border rounded-md">
+                                 <div className="p-2 border rounded-md">
                                     <CalendarPicker
                                         mode="range"
                                         selected={field.value}
