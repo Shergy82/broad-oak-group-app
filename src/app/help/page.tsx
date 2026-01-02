@@ -5,7 +5,7 @@ import { Header } from '@/components/layout/header';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { HelpCircle, Bell, ThumbsUp, HardHat, CheckCircle2, XCircle, Megaphone, TrendingUp, Briefcase, SunMoon, Shield, Building2, Fingerprint, Users, CheckSquare, CalendarCheck, BarChart2 } from 'lucide-react';
+import { HelpCircle, Bell, ThumbsUp, HardHat, CheckCircle2, XCircle, Megaphone, TrendingUp, Briefcase, SunMoon, Shield, Building2, Fingerprint, Users, CheckSquare, CalendarCheck, BarChart2, Camera } from 'lucide-react';
 import { useUserProfile } from '@/hooks/use-user-profile';
 
 export default function HelpPage() {
@@ -252,3 +252,5 @@ export default function HelpPage() {
     </div>
   );
 }
+
+    
