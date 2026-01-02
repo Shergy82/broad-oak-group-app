@@ -890,5 +890,3 @@ export default function AvailabilityPage() {
     </Card>
   );
 }
-
-    
