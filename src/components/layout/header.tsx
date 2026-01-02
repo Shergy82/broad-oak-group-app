@@ -116,6 +116,10 @@ export function Header() {
                       <CalendarCheck className="mr-2" />
                       <span>Availability</span>
                     </DropdownMenuItem>
+                     <DropdownMenuItem onClick={() => router.push('/admin/contracts')} className="cursor-pointer">
+                      <Briefcase className="mr-2" />
+                      <span>Contracts</span>
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push('/admin/performance')} className="cursor-pointer">
                       <TrendingUp className="mr-2" />
                       <span>Performance</span>
