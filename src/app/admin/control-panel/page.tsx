@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Shift } from '@/types';
+import { ContractStatsDashboard } from '@/components/admin/contract-stats-dashboard';
 
 export default function ControlPanelPage() {
   const { userProfile, loading: profileLoading } = useUserProfile();
@@ -62,6 +63,7 @@ export default function ControlPanelPage() {
         <YesterdayReportGenerator />
       </div>
       <ShiftImporter userProfile={userProfile} />
+      <ContractStatsDashboard />
       <RoleKpiDashboard allShifts={shifts} allUsers={users} />
     </div>
   );
