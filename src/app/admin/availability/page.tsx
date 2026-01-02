@@ -36,6 +36,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { Spinner } from '@/components/shared/spinner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 
 type Role = 'user' | 'admin' | 'owner' | 'manager' | 'TLO';
 const ALL_ROLES: Role[] = ['user', 'TLO', 'manager', 'admin', 'owner'];
@@ -110,7 +112,7 @@ const unavailabilitySchema = z.object({
     reason: z.string().min(1, "Please select a reason."),
 });
 
-function AddUnavailabilityForm({ users, open, onOpenChange }: { users: UserProfile[], open: boolean, onOpenChange: (open: boolean) => void }) {
+function AddUnavailabilityForm({ users, onSuccessfulAdd }: { users: UserProfile[], onSuccessfulAdd: () => void }) {
     const { toast } = useToast();
     const [isLoading, setIsLoading] = useState(false);
     
@@ -145,8 +147,12 @@ function AddUnavailabilityForm({ users, open, onOpenChange }: { users: UserProfi
                 createdAt: serverTimestamp(),
             });
             toast({ title: 'Success', description: `${user.name}'s unavailability added.` });
-            form.reset();
-            onOpenChange(false);
+            form.reset({
+                userId: '',
+                range: { from: startOfDay(new Date()) },
+                reason: ''
+            });
+            onSuccessfulAdd();
         } catch (error) {
             console.error('Error adding unavailability: ', error);
             toast({ variant: 'destructive', title: 'Error', description: 'Could not add unavailability record.' });
@@ -156,74 +162,65 @@ function AddUnavailabilityForm({ users, open, onOpenChange }: { users: UserProfi
     };
     
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-          <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Add Unavailability</DialogTitle>
-                    <DialogDescription>Record a period of unavailability for an operative.</DialogDescription>
-                </DialogHeader>
-                <Form {...form}>
-                    <form onSubmit={form.handleSubmit(handleAddUnavailability)} className="space-y-4 py-4">
-                        <FormField control={form.control} name="userId" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Operative</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl>
-                                        <SelectTrigger><SelectValue placeholder="Select an operative..." /></SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent><ScrollArea className="h-64">{users.map(u => <SelectItem key={u.uid} value={u.uid}>{u.name}</SelectItem>)}</ScrollArea></SelectContent>
-                                </Select>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
+        <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleAddUnavailability)} className="space-y-4 py-4">
+                <FormField control={form.control} name="userId" render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Operative</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                                <SelectTrigger><SelectValue placeholder="Select an operative..." /></SelectTrigger>
+                            </FormControl>
+                            <SelectContent><ScrollArea className="h-64">{users.map(u => <SelectItem key={u.uid} value={u.uid}>{u.name}</SelectItem>)}</ScrollArea></SelectContent>
+                        </Select>
+                        <FormMessage />
+                    </FormItem>
+                )} />
 
-                        <FormField control={form.control} name="range" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>
-                                    Date Range: {field.value?.from ? (field.value.to ? `${format(field.value.from, "PPP")} - ${format(field.value.to, "PPP")}` : format(field.value.from, "PPP")) : <span>Pick a date range</span>}
-                                </FormLabel>
-                                <div className="flex justify-center rounded-md border">
-                                    <CalendarPicker
-                                        mode="range"
-                                        selected={field.value}
-                                        onSelect={(range) => {
-                                            if (range?.from && range.to && isBefore(range.to, range.from)) {
-                                                field.onChange({ from: range.to, to: range.from });
-                                            } else {
-                                                field.onChange(range);
-                                            }
-                                        }}
-                                        initialFocus
-                                    />
-                                </div>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
+                <FormField control={form.control} name="range" render={({ field }) => (
+                    <FormItem>
+                         <FormLabel>
+                            Date Range: {field.value?.from ? (field.value.to ? `${format(field.value.from, "PPP")} - ${format(field.value.to, "PPP")}` : format(field.value.from, "PPP")) : <span>Pick a date range</span>}
+                        </FormLabel>
+                        <div className="flex justify-center rounded-md border">
+                            <CalendarPicker
+                                mode="range"
+                                selected={field.value}
+                                onSelect={(range) => {
+                                    if (range?.from && range.to && isBefore(range.to, range.from)) {
+                                        field.onChange({ from: range.to, to: range.from });
+                                    } else {
+                                        field.onChange(range);
+                                    }
+                                }}
+                                initialFocus
+                            />
+                        </div>
+                        <FormMessage />
+                    </FormItem>
+                )} />
 
-                        <FormField control={form.control} name="reason" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Reason</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl>
-                                        <SelectTrigger><SelectValue placeholder="Select a reason..." /></SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        <SelectItem value="Holiday">Holiday</SelectItem>
-                                        <SelectItem value="Sickness">Sickness</SelectItem>
-                                        <SelectItem value="Other">Other</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
-                        <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
-                            <Button type="submit" disabled={isLoading}>{isLoading ? <Spinner /> : 'Add Record'}</Button>
-                        </DialogFooter>
-                    </form>
-                </Form>
-          </DialogContent>
-      </Dialog>
+                <FormField control={form.control} name="reason" render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Reason</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                                <SelectTrigger><SelectValue placeholder="Select a reason..." /></SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                                <SelectItem value="Holiday">Holiday</SelectItem>
+                                <SelectItem value="Sickness">Sickness</SelectItem>
+                                <SelectItem value="Other">Other</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <FormMessage />
+                    </FormItem>
+                )} />
+                <DialogFooter>
+                    <Button type="submit" disabled={isLoading} className="w-full">{isLoading ? <Spinner /> : 'Add Record'}</Button>
+                </DialogFooter>
+            </form>
+        </Form>
     );
 }
 
@@ -247,7 +244,7 @@ export default function AvailabilityPage() {
   
   const [isDayDetailOpen, setIsDayDetailOpen] = useState(false);
   const [selectedDayData, setSelectedDayData] = useState<DayData | null>(null);
-  const [isUnavailabilityFormOpen, setUnavailabilityFormOpen] = useState(false);
+  const [unavailabilityTab, setUnavailabilityTab] = useState('add');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -825,54 +822,63 @@ export default function AvailabilityPage() {
                         </div>
                     )}
                 </div>
-                <div className="col-span-1 space-y-6">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Add Unavailability</CardTitle>
-                            <CardDescription>Record a period of unavailability for an operative.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                             <Button onClick={() => setUnavailabilityFormOpen(true)} className="w-full">
-                                <PlusCircle className="mr-2" /> Add Unavailability Record
-                            </Button>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><CalendarOff className="h-5 w-5 text-muted-foreground"/>Upcoming Unavailability</CardTitle></CardHeader>
-                        <CardContent>
-                            {unavailability.length > 0 ? (
-                                <div className="border rounded-md"><Table>
-                                    <TableHeader><TableRow><TableHead>Operative</TableHead><TableHead>From</TableHead><TableHead>To</TableHead><TableHead>Reason</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                                    <TableBody>{unavailability.sort((a,b) => a.startDate.toMillis() - b.startDate.toMillis()).map(u => (
-                                        <TableRow key={u.id}>
-                                            <TableCell>{u.userName}</TableCell>
-                                            <TableCell>{format(getCorrectedLocalDate(u.startDate), 'PPP')}</TableCell>
-                                            <TableCell>{format(getCorrectedLocalDate(u.endDate), 'PPP')}</TableCell>
-                                            <TableCell><Badge variant="outline">{u.reason}</Badge></TableCell>
-                                            <TableCell className="text-right">
-                                                <AlertDialog>
-                                                    <AlertDialogTrigger asChild><Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-destructive/70" /></Button></AlertDialogTrigger>
-                                                    <AlertDialogContent>
-                                                        <AlertDialogHeader><AlertDialogTitle>Delete Record?</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete this unavailability record for {u.userName}?</AlertDialogDescription></AlertDialogHeader>
-                                                        <AlertDialogFooter>
-                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                            <AlertDialogAction onClick={() => handleDeleteUnavailability(u.id)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}</TableBody>
-                                </Table></div>
-                            ) : (<p className="text-sm text-muted-foreground text-center p-4 border rounded-md">No upcoming unavailability records found.</p>)}
-                        </CardContent>
-                    </Card>
+                <div className="col-span-1">
+                    <Tabs value={unavailabilityTab} onValueChange={setUnavailabilityTab} className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="add">Add Unavailability</TabsTrigger>
+                            <TabsTrigger value="view">Upcoming</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="add">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Add Unavailability</CardTitle>
+                                    <CardDescription>Record a period of unavailability for an operative.</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <AddUnavailabilityForm users={allUsers} onSuccessfulAdd={() => setUnavailabilityTab('view')} />
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+                        <TabsContent value="view">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="text-lg flex items-center gap-2"><CalendarOff className="h-5 w-5 text-muted-foreground"/>Upcoming Unavailability</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    {unavailability.length > 0 ? (
+                                        <div className="border rounded-md"><Table>
+                                            <TableHeader><TableRow><TableHead>Operative</TableHead><TableHead>From</TableHead><TableHead>To</TableHead><TableHead>Reason</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                                            <TableBody>{unavailability.sort((a,b) => a.startDate.toMillis() - b.startDate.toMillis()).map(u => (
+                                                <TableRow key={u.id}>
+                                                    <TableCell>{u.userName}</TableCell>
+                                                    <TableCell>{format(getCorrectedLocalDate(u.startDate), 'PPP')}</TableCell>
+                                                    <TableCell>{format(getCorrectedLocalDate(u.endDate), 'PPP')}</TableCell>
+                                                    <TableCell><Badge variant="outline">{u.reason}</Badge></TableCell>
+                                                    <TableCell className="text-right">
+                                                        <AlertDialog>
+                                                            <AlertDialogTrigger asChild><Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-destructive/70" /></Button></AlertDialogTrigger>
+                                                            <AlertDialogContent>
+                                                                <AlertDialogHeader><AlertDialogTitle>Delete Record?</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete this unavailability record for {u.userName}?</AlertDialogDescription></AlertDialogHeader>
+                                                                <AlertDialogFooter>
+                                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                    <AlertDialogAction onClick={() => handleDeleteUnavailability(u.id)} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
+                                                                </AlertDialogFooter>
+                                                            </AlertDialogContent>
+                                                        </AlertDialog>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}</TableBody>
+                                        </Table></div>
+                                    ) : (<p className="text-sm text-muted-foreground text-center p-4 border rounded-md">No upcoming unavailability records found.</p>)}
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+                    </Tabs>
                 </div>
             </>
         )}
       </CardContent>
       {renderDayDetailDialog()}
-      <AddUnavailabilityForm users={allUsers} open={isUnavailabilityFormOpen} onOpenChange={setUnavailabilityFormOpen} />
     </Card>
   );
 }
