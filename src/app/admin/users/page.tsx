@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -285,7 +286,8 @@ export default function UserManagementPage() {
   
   const renderUserTableRows = (userList: UserProfile[]) => {
       return userList.map((user) => {
-        const canChangeRole = (isOwner || isAdmin) && user.uid !== currentUserProfile?.uid;
+        const canChangeRole = (isOwner || isAdmin) && user.uid !== currentUserProfile?.uid && user.role !== 'owner';
+        const isUserOwner = user.role === 'owner';
         return (
             <TableRow key={user.uid} className={user.status === 'suspended' ? 'bg-muted/30' : ''}>
               <TableCell className="font-medium">{user.name}</TableCell>
@@ -326,11 +328,10 @@ export default function UserManagementPage() {
                       <SelectItem value="TLO">TLO</SelectItem>
                       <SelectItem value="manager">Manager</SelectItem>
                       <SelectItem value="admin">Admin</SelectItem>
-                      {isOwner && <SelectItem value="owner">Owner</SelectItem>}
                     </SelectContent>
                   </Select>
                 ) : (
-                  <Badge variant={user.role === 'admin' ? 'secondary' : user.role === 'owner' ? 'default' : 'outline'} className={`capitalize ${user.role === 'manager' ? 'bg-orange-500 hover:bg-orange-600 text-white' : ''} ${user.role === 'TLO' ? 'bg-purple-500 hover:bg-purple-600 text-white' : ''}`}>
+                  <Badge variant={isUserOwner ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className={`capitalize ${user.role === 'manager' ? 'bg-orange-500 hover:bg-orange-600 text-white' : ''} ${user.role === 'TLO' ? 'bg-purple-500 hover:bg-purple-600 text-white' : ''}`}>
                     {user.role}
                   </Badge>
                 )}
@@ -392,7 +393,8 @@ export default function UserManagementPage() {
   
   const renderUserCards = (userList: UserProfile[]) => {
       return userList.map((user) => {
-        const canChangeRole = (isOwner || isAdmin) && user.uid !== currentUserProfile?.uid;
+        const canChangeRole = (isOwner || isAdmin) && user.uid !== currentUserProfile?.uid && user.role !== 'owner';
+        const isUserOwner = user.role === 'owner';
         return (
             <Card key={user.uid} className={user.status === 'suspended' ? 'bg-muted/50' : ''}>
               <CardHeader>
@@ -418,11 +420,10 @@ export default function UserManagementPage() {
                           <SelectItem value="TLO">TLO</SelectItem>
                           <SelectItem value="manager">Manager</SelectItem>
                           <SelectItem value="admin">Admin</SelectItem>
-                          {isOwner && <SelectItem value="owner">Owner</SelectItem>}
                         </SelectContent>
                       </Select>
                     ) : (
-                      <Badge variant={user.role === 'admin' ? 'secondary' : user.role === 'owner' ? 'default' : 'outline'} className={`capitalize ${user.role === 'manager' ? 'bg-orange-500 hover:bg-orange-600 text-white' : ''} ${user.role === 'TLO' ? 'bg-purple-500 hover:bg-purple-600 text-white' : ''}`}>
+                      <Badge variant={isUserOwner ? 'default' : user.role === 'admin' ? 'secondary' : 'outline'} className={`capitalize ${user.role === 'manager' ? 'bg-orange-500 hover:bg-orange-600 text-white' : ''} ${user.role === 'TLO' ? 'bg-purple-500 hover:bg-purple-600 text-white' : ''}`}>
                           {user.role}
                       </Badge>
                     )}
